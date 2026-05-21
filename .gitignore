@@ -1,0 +1,42 @@
+# Entornos virtuales
+.venv/
+venv/
+env/
+.venv_build/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Streamlit secrets
+.streamlit/secrets.toml
+
+# PyInstaller / ejecutables locales
+build/
+dist/
+*.spec
+*.exe
+
+# Logs y temporales
+*.log
+*.tmp
+*.temp
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# VS Code local
+.vscode/
+
+# Archivos comprimidos
+*.zip
+*.rar
+*.7z
+
+# Bases de datos locales
+*.db
+*.sqlite
+*.sqlite3

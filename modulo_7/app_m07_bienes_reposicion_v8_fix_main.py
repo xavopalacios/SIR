@@ -1534,3 +1534,5 @@ def main():
     elif seccion == "Inventario de entrega de bienes":
         pantalla_inventario_entrega()
 
+if __name__ == "__main__":
+    main()

@@ -1,7 +1,7 @@
 
 # ============================================================
 # SIR ACP - M06 Gestión Documental y Expedientes
-# Versión v18.0 - Fase de expediente calculada, Hogar→Persona y catálogo total de Persona
+# Versión v19.0 - Fase de expediente calculada, Hogar→Persona y catálogo total de Persona
 # ============================================================
 # Base funcional:
 # - Adaptación de M06 v7.
@@ -484,7 +484,7 @@ CATALOGO_MATRIZ_PRINCIPAL = [
     "activo": "Sí",
     "origen": "Catálogo legal PAC",
     "alias": "",
-    "codigos_origen": "Catálogo legal PAC: COM-TRA-P",
+    "codigos_origen": "Catálogo legal PAC: COM-ADI-P",
     "fuente_nd5": "https://www.ifc.org/content/dam/ifc/doc/2010/2012-ifc-performance-standard-5-es.pdf",
     "fuente_guia_ifc": "https://www.ifc.org/content/dam/ifc/doc/2023/ifc-handbook-for-land-acquisition-and-involuntary-resettlement.pdf",
     "origen_catalogo": "Matriz Principal"
@@ -8245,9 +8245,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 1,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-01",
+    "codigo_carpeta": "PER-ADI-01",
     "carpeta": "01 Identificación personal",
-    "codigo_documento": "PER-TRA-01-D0001",
+    "codigo_documento": "PER-ADI-01-D0001",
     "tipo_documental": "Carné migratorio o permiso de residencia",
     "nombre_formulario": "01 Identificación personal — Carné migratorio o permiso de residencia",
     "aplicabilidad_catalogo": "Según aplique",
@@ -8266,9 +8266,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 2,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-01",
+    "codigo_carpeta": "PER-ADI-01",
     "carpeta": "01 Identificación personal",
-    "codigo_documento": "PER-TRA-01-D0002",
+    "codigo_documento": "PER-ADI-01-D0002",
     "tipo_documental": "Certificado de nacimiento",
     "nombre_formulario": "01 Identificación personal — Certificado de nacimiento",
     "aplicabilidad_catalogo": "Según aplique",
@@ -8287,9 +8287,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 3,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-01",
+    "codigo_carpeta": "PER-ADI-01",
     "carpeta": "01 Identificación personal",
-    "codigo_documento": "PER-TRA-01-D0003",
+    "codigo_documento": "PER-ADI-01-D0003",
     "tipo_documental": "Documento nacional de identidad",
     "nombre_formulario": "01 Identificación personal — Documento nacional de identidad",
     "aplicabilidad_catalogo": "Según aplique",
@@ -8308,9 +8308,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 4,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-01",
+    "codigo_carpeta": "PER-ADI-01",
     "carpeta": "01 Identificación personal",
-    "codigo_documento": "PER-TRA-01-D0004",
+    "codigo_documento": "PER-ADI-01-D0004",
     "tipo_documental": "Fe de vida",
     "nombre_formulario": "01 Identificación personal — Fe de vida",
     "aplicabilidad_catalogo": "Según aplique",
@@ -8329,9 +8329,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 5,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-02",
+    "codigo_carpeta": "PER-ADI-02",
     "carpeta": "Consentimientos",
-    "codigo_documento": "PER-TRA-02-D0005",
+    "codigo_documento": "PER-ADI-02-D0005",
     "tipo_documental": "Consentimiento de participación",
     "nombre_formulario": "Consentimientos — Consentimiento de participación",
     "aplicabilidad_catalogo": "Según aplique",
@@ -8350,9 +8350,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 6,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-02",
+    "codigo_carpeta": "PER-ADI-02",
     "carpeta": "Consentimientos",
-    "codigo_documento": "PER-TRA-02-D0006",
+    "codigo_documento": "PER-ADI-02-D0006",
     "tipo_documental": "Consentimiento informado firmado",
     "nombre_formulario": "Consentimientos — Consentimiento informado firmado",
     "aplicabilidad_catalogo": "Según aplique",
@@ -8371,9 +8371,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 7,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-02",
+    "codigo_carpeta": "PER-ADI-02",
     "carpeta": "Consentimientos",
-    "codigo_documento": "PER-TRA-02-D0007",
+    "codigo_documento": "PER-ADI-02-D0007",
     "tipo_documental": "Consentimiento para tratamiento de datos personales",
     "nombre_formulario": "Consentimientos — Consentimiento para tratamiento de datos personales",
     "aplicabilidad_catalogo": "Según aplique",
@@ -8392,9 +8392,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 8,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-02",
+    "codigo_carpeta": "PER-ADI-02",
     "carpeta": "Consentimientos",
-    "codigo_documento": "PER-TRA-02-D0008",
+    "codigo_documento": "PER-ADI-02-D0008",
     "tipo_documental": "Consentimiento para verificación documental",
     "nombre_formulario": "Consentimientos — Consentimiento para verificación documental",
     "aplicabilidad_catalogo": "Según aplique",
@@ -8413,9 +8413,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 9,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-03",
+    "codigo_carpeta": "PER-ADI-03",
     "carpeta": "Declaraciones y actas personales",
-    "codigo_documento": "PER-TRA-03-D0009",
+    "codigo_documento": "PER-ADI-03-D0009",
     "tipo_documental": "Declaración jurada de beneficiario",
     "nombre_formulario": "Declaraciones y actas personales — Declaración jurada de beneficiario",
     "aplicabilidad_catalogo": "Según aplique",
@@ -8434,9 +8434,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 10,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-03",
+    "codigo_carpeta": "PER-ADI-03",
     "carpeta": "Declaraciones y actas personales",
-    "codigo_documento": "PER-TRA-03-D0010",
+    "codigo_documento": "PER-ADI-03-D0010",
     "tipo_documental": "Declaración jurada de dependencia económica",
     "nombre_formulario": "Declaraciones y actas personales — Declaración jurada de dependencia económica",
     "aplicabilidad_catalogo": "Según aplique",
@@ -8455,9 +8455,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 11,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-03",
+    "codigo_carpeta": "PER-ADI-03",
     "carpeta": "Declaraciones y actas personales",
-    "codigo_documento": "PER-TRA-03-D0011",
+    "codigo_documento": "PER-ADI-03-D0011",
     "tipo_documental": "Declaración jurada de domicilio",
     "nombre_formulario": "Declaraciones y actas personales — Declaración jurada de domicilio",
     "aplicabilidad_catalogo": "Según aplique",
@@ -8476,9 +8476,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 12,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-03",
+    "codigo_carpeta": "PER-ADI-03",
     "carpeta": "Declaraciones y actas personales",
-    "codigo_documento": "PER-TRA-03-D0012",
+    "codigo_documento": "PER-ADI-03-D0012",
     "tipo_documental": "Declaración jurada de no propiedad",
     "nombre_formulario": "Declaraciones y actas personales — Declaración jurada de no propiedad",
     "aplicabilidad_catalogo": "Según aplique",
@@ -8497,9 +8497,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 13,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-03",
+    "codigo_carpeta": "PER-ADI-03",
     "carpeta": "Declaraciones y actas personales",
-    "codigo_documento": "PER-TRA-03-D0013",
+    "codigo_documento": "PER-ADI-03-D0013",
     "tipo_documental": "Declaración jurada de parentesco",
     "nombre_formulario": "Declaraciones y actas personales — Declaración jurada de parentesco",
     "aplicabilidad_catalogo": "Según aplique",
@@ -8518,9 +8518,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 14,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-03",
+    "codigo_carpeta": "PER-ADI-03",
     "carpeta": "Declaraciones y actas personales",
-    "codigo_documento": "PER-TRA-03-D0014",
+    "codigo_documento": "PER-ADI-03-D0014",
     "tipo_documental": "Declaración jurada de posesión u ocupación",
     "nombre_formulario": "Declaraciones y actas personales — Declaración jurada de posesión u ocupación",
     "aplicabilidad_catalogo": "Según aplique",
@@ -8539,9 +8539,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 15,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-03",
+    "codigo_carpeta": "PER-ADI-03",
     "carpeta": "Declaraciones y actas personales",
-    "codigo_documento": "PER-TRA-03-D0015",
+    "codigo_documento": "PER-ADI-03-D0015",
     "tipo_documental": "Declaración jurada de tenencia u ocupación",
     "nombre_formulario": "Declaraciones y actas personales — Declaración jurada de tenencia u ocupación",
     "aplicabilidad_catalogo": "Según aplique",
@@ -8560,9 +8560,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 16,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-03",
+    "codigo_carpeta": "PER-ADI-03",
     "carpeta": "Declaraciones y actas personales",
-    "codigo_documento": "PER-TRA-03-D0016",
+    "codigo_documento": "PER-ADI-03-D0016",
     "tipo_documental": "Declaración jurada de veracidad de información",
     "nombre_formulario": "Declaraciones y actas personales — Declaración jurada de veracidad de información",
     "aplicabilidad_catalogo": "Según aplique",
@@ -8581,9 +8581,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 17,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-04",
+    "codigo_carpeta": "PER-ADI-04",
     "carpeta": "Estado civil y parentesco",
-    "codigo_documento": "PER-TRA-04-D0017",
+    "codigo_documento": "PER-ADI-04-D0017",
     "tipo_documental": "Certificado de unión libre",
     "nombre_formulario": "Estado civil y parentesco — Certificado de unión libre",
     "aplicabilidad_catalogo": "Según composición del hogar, condición legal, tenencia y circunstancias particulares.",
@@ -8602,9 +8602,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 18,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-05",
+    "codigo_carpeta": "PER-ADI-05",
     "carpeta": "Identificación",
-    "codigo_documento": "PER-TRA-05-D0018",
+    "codigo_documento": "PER-ADI-05-D0018",
     "tipo_documental": "Cédula de identidad de integrante del hogar",
     "nombre_formulario": "Identificación — Cédula de identidad de integrante del hogar",
     "aplicabilidad_catalogo": "Según composición del hogar, condición legal, tenencia y circunstancias particulares.",
@@ -8623,9 +8623,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 19,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-05",
+    "codigo_carpeta": "PER-ADI-05",
     "carpeta": "Identificación",
-    "codigo_documento": "PER-TRA-05-D0019",
+    "codigo_documento": "PER-ADI-05-D0019",
     "tipo_documental": "Cédula de identidad personal",
     "nombre_formulario": "Identificación — Cédula de identidad personal",
     "aplicabilidad_catalogo": "Según identidad, tenencia, edad y condición legal de la persona.",
@@ -8644,9 +8644,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 20,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-05",
+    "codigo_carpeta": "PER-ADI-05",
     "carpeta": "Identificación",
-    "codigo_documento": "PER-TRA-05-D0020",
+    "codigo_documento": "PER-ADI-05-D0020",
     "tipo_documental": "Cédula de identidad personal del jefe de hogar",
     "nombre_formulario": "Identificación — Cédula de identidad personal del jefe de hogar",
     "aplicabilidad_catalogo": "Según composición del hogar, condición legal, tenencia y circunstancias particulares.",
@@ -8665,9 +8665,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 21,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-05",
+    "codigo_carpeta": "PER-ADI-05",
     "carpeta": "Identificación",
-    "codigo_documento": "PER-TRA-05-D0021",
+    "codigo_documento": "PER-ADI-05-D0021",
     "tipo_documental": "Cédula juvenil",
     "nombre_formulario": "Identificación — Cédula juvenil",
     "aplicabilidad_catalogo": "Según composición del hogar, condición legal, tenencia y circunstancias particulares.",
@@ -8686,9 +8686,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 22,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-05",
+    "codigo_carpeta": "PER-ADI-05",
     "carpeta": "Identificación",
-    "codigo_documento": "PER-TRA-05-D0022",
+    "codigo_documento": "PER-ADI-05-D0022",
     "tipo_documental": "Pasaporte",
     "nombre_formulario": "Identificación — Pasaporte",
     "aplicabilidad_catalogo": "Según composición del hogar, condición legal, tenencia y circunstancias particulares.",
@@ -8707,9 +8707,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 23,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-06",
+    "codigo_carpeta": "PER-ADI-06",
     "carpeta": "Otros documentos personales",
-    "codigo_documento": "PER-TRA-06-D0023",
+    "codigo_documento": "PER-ADI-06-D0023",
     "tipo_documental": "Certificación de discapacidad",
     "nombre_formulario": "Otros documentos personales — Certificación de discapacidad",
     "aplicabilidad_catalogo": "Según composición del hogar, condición legal, tenencia y circunstancias particulares.",
@@ -8728,9 +8728,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 24,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-06",
+    "codigo_carpeta": "PER-ADI-06",
     "carpeta": "Otros documentos personales",
-    "codigo_documento": "PER-TRA-06-D0024",
+    "codigo_documento": "PER-ADI-06-D0024",
     "tipo_documental": "Certificación de jubilación",
     "nombre_formulario": "Otros documentos personales — Certificación de jubilación",
     "aplicabilidad_catalogo": "Según composición del hogar, condición legal, tenencia y circunstancias particulares.",
@@ -8749,9 +8749,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 25,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-06",
+    "codigo_carpeta": "PER-ADI-06",
     "carpeta": "Otros documentos personales",
-    "codigo_documento": "PER-TRA-06-D0025",
+    "codigo_documento": "PER-ADI-06-D0025",
     "tipo_documental": "Certificación de pensión",
     "nombre_formulario": "Otros documentos personales — Certificación de pensión",
     "aplicabilidad_catalogo": "Según composición del hogar, condición legal, tenencia y circunstancias particulares.",
@@ -8770,9 +8770,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 26,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-06",
+    "codigo_carpeta": "PER-ADI-06",
     "carpeta": "Otros documentos personales",
-    "codigo_documento": "PER-TRA-06-D0026",
+    "codigo_documento": "PER-ADI-06-D0026",
     "tipo_documental": "Constancia de inscripción en centro escolar",
     "nombre_formulario": "Otros documentos personales — Constancia de inscripción en centro escolar",
     "aplicabilidad_catalogo": "Según composición del hogar, condición legal, tenencia y circunstancias particulares.",
@@ -8791,9 +8791,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 27,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-06",
+    "codigo_carpeta": "PER-ADI-06",
     "carpeta": "Otros documentos personales",
-    "codigo_documento": "PER-TRA-06-D0027",
+    "codigo_documento": "PER-ADI-06-D0027",
     "tipo_documental": "Constancia de subsidio estatal",
     "nombre_formulario": "Otros documentos personales — Constancia de subsidio estatal",
     "aplicabilidad_catalogo": "Según composición del hogar, condición legal, tenencia y circunstancias particulares.",
@@ -8812,9 +8812,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 28,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-06",
+    "codigo_carpeta": "PER-ADI-06",
     "carpeta": "Otros documentos personales",
-    "codigo_documento": "PER-TRA-06-D0028",
+    "codigo_documento": "PER-ADI-06-D0028",
     "tipo_documental": "Informe o certificación geriátrica",
     "nombre_formulario": "Otros documentos personales — Informe o certificación geriátrica",
     "aplicabilidad_catalogo": "Según composición del hogar, condición legal, tenencia y circunstancias particulares.",
@@ -8833,9 +8833,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 29,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-07",
+    "codigo_carpeta": "PER-ADI-07",
     "carpeta": "Representación y autorizaciones",
-    "codigo_documento": "PER-TRA-07-D0029",
+    "codigo_documento": "PER-ADI-07-D0029",
     "tipo_documental": "Designación de apoderado",
     "nombre_formulario": "Representación y autorizaciones — Designación de apoderado",
     "aplicabilidad_catalogo": "Según aplique",
@@ -8854,9 +8854,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 30,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-07",
+    "codigo_carpeta": "PER-ADI-07",
     "carpeta": "Representación y autorizaciones",
-    "codigo_documento": "PER-TRA-07-D0030",
+    "codigo_documento": "PER-ADI-07-D0030",
     "tipo_documental": "Documento de representación legal",
     "nombre_formulario": "Representación y autorizaciones — Documento de representación legal",
     "aplicabilidad_catalogo": "Según composición del hogar, condición legal, tenencia y circunstancias particulares.",
@@ -8875,9 +8875,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 31,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-07",
+    "codigo_carpeta": "PER-ADI-07",
     "carpeta": "Representación y autorizaciones",
-    "codigo_documento": "PER-TRA-07-D0031",
+    "codigo_documento": "PER-ADI-07-D0031",
     "tipo_documental": "Poder especial",
     "nombre_formulario": "Representación y autorizaciones — Poder especial",
     "aplicabilidad_catalogo": "Según aplique",
@@ -8896,9 +8896,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 32,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-07",
+    "codigo_carpeta": "PER-ADI-07",
     "carpeta": "Representación y autorizaciones",
-    "codigo_documento": "PER-TRA-07-D0032",
+    "codigo_documento": "PER-ADI-07-D0032",
     "tipo_documental": "Poder general",
     "nombre_formulario": "Representación y autorizaciones — Poder general",
     "aplicabilidad_catalogo": "Según aplique",
@@ -8917,9 +8917,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 33,
     "nivel": "Persona",
     "fase": "",
-    "codigo_carpeta": "PER-TRA-07",
+    "codigo_carpeta": "PER-ADI-07",
     "carpeta": "Representación y autorizaciones",
-    "codigo_documento": "PER-TRA-07-D0033",
+    "codigo_documento": "PER-ADI-07-D0033",
     "tipo_documental": "Revocatoria de poder",
     "nombre_formulario": "Representación y autorizaciones — Revocatoria de poder",
     "aplicabilidad_catalogo": "Según aplique",
@@ -8938,9 +8938,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 61,
     "nivel": "Hogar",
     "fase": "",
-    "codigo_carpeta": "HOG-TRA-01",
+    "codigo_carpeta": "HOG-ADI-01",
     "carpeta": "01 Apertura e identificación del expediente",
-    "codigo_documento": "HOG-TRA-01-D0061",
+    "codigo_documento": "HOG-ADI-01-D0061",
     "tipo_documental": "Acta de apertura del expediente",
     "nombre_formulario": "01 Apertura e identificación del expediente — Acta de apertura del expediente",
     "aplicabilidad_catalogo": "Según aplique",
@@ -8959,9 +8959,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 62,
     "nivel": "Hogar",
     "fase": "",
-    "codigo_carpeta": "HOG-TRA-01",
+    "codigo_carpeta": "HOG-ADI-01",
     "carpeta": "01 Apertura e identificación del expediente",
-    "codigo_documento": "HOG-TRA-01-D0062",
+    "codigo_documento": "HOG-ADI-01-D0062",
     "tipo_documental": "Carátula de apertura del expediente",
     "nombre_formulario": "01 Apertura e identificación del expediente — Carátula de apertura del expediente",
     "aplicabilidad_catalogo": "Según aplique",
@@ -8980,9 +8980,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 63,
     "nivel": "Hogar",
     "fase": "",
-    "codigo_carpeta": "HOG-TRA-01",
+    "codigo_carpeta": "HOG-ADI-01",
     "carpeta": "01 Apertura e identificación del expediente",
-    "codigo_documento": "HOG-TRA-01-D0063",
+    "codigo_documento": "HOG-ADI-01-D0063",
     "tipo_documental": "Designación de representante del hogar",
     "nombre_formulario": "01 Apertura e identificación del expediente — Designación de representante del hogar",
     "aplicabilidad_catalogo": "Según aplique",
@@ -9001,9 +9001,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 64,
     "nivel": "Hogar",
     "fase": "",
-    "codigo_carpeta": "HOG-TRA-01",
+    "codigo_carpeta": "HOG-ADI-01",
     "carpeta": "01 Apertura e identificación del expediente",
-    "codigo_documento": "HOG-TRA-01-D0064",
+    "codigo_documento": "HOG-ADI-01-D0064",
     "tipo_documental": "Relación de integrantes del hogar",
     "nombre_formulario": "01 Apertura e identificación del expediente — Relación de integrantes del hogar",
     "aplicabilidad_catalogo": "Según aplique",
@@ -9022,9 +9022,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 65,
     "nivel": "Hogar",
     "fase": "",
-    "codigo_carpeta": "HOG-TRA-01",
+    "codigo_carpeta": "HOG-ADI-01",
     "carpeta": "01 Apertura e identificación del expediente",
-    "codigo_documento": "HOG-TRA-01-D0065",
+    "codigo_documento": "HOG-ADI-01-D0065",
     "tipo_documental": "Solicitud de apertura del expediente",
     "nombre_formulario": "01 Apertura e identificación del expediente — Solicitud de apertura del expediente",
     "aplicabilidad_catalogo": "Según aplique",
@@ -9043,9 +9043,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 66,
     "nivel": "Hogar",
     "fase": "",
-    "codigo_carpeta": "HOG-TRA-02",
+    "codigo_carpeta": "HOG-ADI-02",
     "carpeta": "Índice del expediente",
-    "codigo_documento": "HOG-TRA-02-D0066",
+    "codigo_documento": "HOG-ADI-02-D0066",
     "tipo_documental": "Registro de documentos sustituidos o actualizados",
     "nombre_formulario": "Índice del expediente — Registro de documentos sustituidos o actualizados",
     "aplicabilidad_catalogo": "Todos los expedientes de hogar.",
@@ -9064,9 +9064,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 67,
     "nivel": "Hogar",
     "fase": "",
-    "codigo_carpeta": "HOG-TRA-02",
+    "codigo_carpeta": "HOG-ADI-02",
     "carpeta": "Índice del expediente",
-    "codigo_documento": "HOG-TRA-02-D0067",
+    "codigo_documento": "HOG-ADI-02-D0067",
     "tipo_documental": "Registro de documentos vigentes",
     "nombre_formulario": "Índice del expediente — Registro de documentos vigentes",
     "aplicabilidad_catalogo": "Todos los expedientes de hogar.",
@@ -9085,9 +9085,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 68,
     "nivel": "Hogar",
     "fase": "",
-    "codigo_carpeta": "HOG-TRA-02",
+    "codigo_carpeta": "HOG-ADI-02",
     "carpeta": "Índice del expediente",
-    "codigo_documento": "HOG-TRA-02-D0068",
+    "codigo_documento": "HOG-ADI-02-D0068",
     "tipo_documental": "Registro de referencias cruzadas",
     "nombre_formulario": "Índice del expediente — Registro de referencias cruzadas",
     "aplicabilidad_catalogo": "Todos los expedientes de hogar.",
@@ -9106,9 +9106,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 69,
     "nivel": "Hogar",
     "fase": "",
-    "codigo_carpeta": "HOG-TRA-02",
+    "codigo_carpeta": "HOG-ADI-02",
     "carpeta": "Índice del expediente",
-    "codigo_documento": "HOG-TRA-02-D0069",
+    "codigo_documento": "HOG-ADI-02-D0069",
     "tipo_documental": "Relación actualizada de documentos",
     "nombre_formulario": "Índice del expediente — Relación actualizada de documentos",
     "aplicabilidad_catalogo": "Todos los expedientes de hogar.",
@@ -9127,9 +9127,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 70,
     "nivel": "Hogar",
     "fase": "",
-    "codigo_carpeta": "HOG-TRA-02",
+    "codigo_carpeta": "HOG-ADI-02",
     "carpeta": "Índice del expediente",
-    "codigo_documento": "HOG-TRA-02-D0070",
+    "codigo_documento": "HOG-ADI-02-D0070",
     "tipo_documental": "Índice general del expediente",
     "nombre_formulario": "Índice del expediente — Índice general del expediente",
     "aplicabilidad_catalogo": "Todos los expedientes de hogar.",
@@ -9148,9 +9148,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 276,
     "nivel": "Lugar poblado",
     "fase": "",
-    "codigo_carpeta": "LPO-TRA-01",
+    "codigo_carpeta": "LPO-ADI-01",
     "carpeta": "Comunicaciones y notificaciones",
-    "codigo_documento": "LPO-TRA-01-D0276",
+    "codigo_documento": "LPO-ADI-01-D0276",
     "tipo_documental": "Aviso público",
     "nombre_formulario": "Comunicaciones y notificaciones — Aviso público",
     "aplicabilidad_catalogo": "Según aplique",
@@ -9169,9 +9169,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 277,
     "nivel": "Lugar poblado",
     "fase": "",
-    "codigo_carpeta": "LPO-TRA-01",
+    "codigo_carpeta": "LPO-ADI-01",
     "carpeta": "Comunicaciones y notificaciones",
-    "codigo_documento": "LPO-TRA-01-D0277",
+    "codigo_documento": "LPO-ADI-01-D0277",
     "tipo_documental": "Circular informativa",
     "nombre_formulario": "Comunicaciones y notificaciones — Circular informativa",
     "aplicabilidad_catalogo": "Según aplique",
@@ -9190,9 +9190,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 278,
     "nivel": "Lugar poblado",
     "fase": "",
-    "codigo_carpeta": "LPO-TRA-01",
+    "codigo_carpeta": "LPO-ADI-01",
     "carpeta": "Comunicaciones y notificaciones",
-    "codigo_documento": "LPO-TRA-01-D0278",
+    "codigo_documento": "LPO-ADI-01-D0278",
     "tipo_documental": "Comunicación oficial",
     "nombre_formulario": "Comunicaciones y notificaciones — Comunicación oficial",
     "aplicabilidad_catalogo": "Según aplique",
@@ -9211,9 +9211,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 279,
     "nivel": "Lugar poblado",
     "fase": "",
-    "codigo_carpeta": "LPO-TRA-01",
+    "codigo_carpeta": "LPO-ADI-01",
     "carpeta": "Comunicaciones y notificaciones",
-    "codigo_documento": "LPO-TRA-01-D0279",
+    "codigo_documento": "LPO-ADI-01-D0279",
     "tipo_documental": "Notificación oficial",
     "nombre_formulario": "Comunicaciones y notificaciones — Notificación oficial",
     "aplicabilidad_catalogo": "Según aplique",
@@ -9232,9 +9232,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 280,
     "nivel": "Lugar poblado",
     "fase": "",
-    "codigo_carpeta": "LPO-TRA-02",
+    "codigo_carpeta": "LPO-ADI-02",
     "carpeta": "Convenios y compromisos",
-    "codigo_documento": "LPO-TRA-02-D0280",
+    "codigo_documento": "LPO-ADI-02-D0280",
     "tipo_documental": "Acta de compromiso",
     "nombre_formulario": "Convenios y compromisos — Acta de compromiso",
     "aplicabilidad_catalogo": "Según aplique",
@@ -9253,9 +9253,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 281,
     "nivel": "Lugar poblado",
     "fase": "",
-    "codigo_carpeta": "LPO-TRA-02",
+    "codigo_carpeta": "LPO-ADI-02",
     "carpeta": "Convenios y compromisos",
-    "codigo_documento": "LPO-TRA-02-D0281",
+    "codigo_documento": "LPO-ADI-02-D0281",
     "tipo_documental": "Adenda a convenio",
     "nombre_formulario": "Convenios y compromisos — Adenda a convenio",
     "aplicabilidad_catalogo": "Según aplique",
@@ -9274,9 +9274,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 282,
     "nivel": "Lugar poblado",
     "fase": "",
-    "codigo_carpeta": "LPO-TRA-02",
+    "codigo_carpeta": "LPO-ADI-02",
     "carpeta": "Convenios y compromisos",
-    "codigo_documento": "LPO-TRA-02-D0282",
+    "codigo_documento": "LPO-ADI-02-D0282",
     "tipo_documental": "Carta de compromiso",
     "nombre_formulario": "Convenios y compromisos — Carta de compromiso",
     "aplicabilidad_catalogo": "Según aplique",
@@ -9295,9 +9295,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 283,
     "nivel": "Lugar poblado",
     "fase": "",
-    "codigo_carpeta": "LPO-TRA-02",
+    "codigo_carpeta": "LPO-ADI-02",
     "carpeta": "Convenios y compromisos",
-    "codigo_documento": "LPO-TRA-02-D0283",
+    "codigo_documento": "LPO-ADI-02-D0283",
     "tipo_documental": "Convenio colectivo",
     "nombre_formulario": "Convenios y compromisos — Convenio colectivo",
     "aplicabilidad_catalogo": "Según aplique",
@@ -9316,9 +9316,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 284,
     "nivel": "Lugar poblado",
     "fase": "",
-    "codigo_carpeta": "LPO-TRA-02",
+    "codigo_carpeta": "LPO-ADI-02",
     "carpeta": "Convenios y compromisos",
-    "codigo_documento": "LPO-TRA-02-D0284",
+    "codigo_documento": "LPO-ADI-02-D0284",
     "tipo_documental": "Memorando de entendimiento",
     "nombre_formulario": "Convenios y compromisos — Memorando de entendimiento",
     "aplicabilidad_catalogo": "Según aplique",
@@ -9337,9 +9337,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 285,
     "nivel": "Lugar poblado",
     "fase": "",
-    "codigo_carpeta": "LPO-TRA-03",
+    "codigo_carpeta": "LPO-ADI-03",
     "carpeta": "Quejas, reclamos y respuestas",
-    "codigo_documento": "LPO-TRA-03-D0285",
+    "codigo_documento": "LPO-ADI-03-D0285",
     "tipo_documental": "Acta de mediación",
     "nombre_formulario": "Quejas, reclamos y respuestas — Acta de mediación",
     "aplicabilidad_catalogo": "Según aplique",
@@ -9358,9 +9358,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 286,
     "nivel": "Lugar poblado",
     "fase": "",
-    "codigo_carpeta": "LPO-TRA-03",
+    "codigo_carpeta": "LPO-ADI-03",
     "carpeta": "Quejas, reclamos y respuestas",
-    "codigo_documento": "LPO-TRA-03-D0286",
+    "codigo_documento": "LPO-ADI-03-D0286",
     "tipo_documental": "Acta de resolución",
     "nombre_formulario": "Quejas, reclamos y respuestas — Acta de resolución",
     "aplicabilidad_catalogo": "Según aplique",
@@ -9379,9 +9379,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 287,
     "nivel": "Lugar poblado",
     "fase": "",
-    "codigo_carpeta": "LPO-TRA-03",
+    "codigo_carpeta": "LPO-ADI-03",
     "carpeta": "Quejas, reclamos y respuestas",
-    "codigo_documento": "LPO-TRA-03-D0287",
+    "codigo_documento": "LPO-ADI-03-D0287",
     "tipo_documental": "Queja colectiva",
     "nombre_formulario": "Quejas, reclamos y respuestas — Queja colectiva",
     "aplicabilidad_catalogo": "Según aplique",
@@ -9400,9 +9400,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 288,
     "nivel": "Lugar poblado",
     "fase": "",
-    "codigo_carpeta": "LPO-TRA-03",
+    "codigo_carpeta": "LPO-ADI-03",
     "carpeta": "Quejas, reclamos y respuestas",
-    "codigo_documento": "LPO-TRA-03-D0288",
+    "codigo_documento": "LPO-ADI-03-D0288",
     "tipo_documental": "Reclamo colectivo",
     "nombre_formulario": "Quejas, reclamos y respuestas — Reclamo colectivo",
     "aplicabilidad_catalogo": "Según aplique",
@@ -9421,9 +9421,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 289,
     "nivel": "Lugar poblado",
     "fase": "",
-    "codigo_carpeta": "LPO-TRA-03",
+    "codigo_carpeta": "LPO-ADI-03",
     "carpeta": "Quejas, reclamos y respuestas",
-    "codigo_documento": "LPO-TRA-03-D0289",
+    "codigo_documento": "LPO-ADI-03-D0289",
     "tipo_documental": "Respuesta formal",
     "nombre_formulario": "Quejas, reclamos y respuestas — Respuesta formal",
     "aplicabilidad_catalogo": "Según aplique",
@@ -9442,9 +9442,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 290,
     "nivel": "Lugar poblado",
     "fase": "",
-    "codigo_carpeta": "LPO-TRA-03",
+    "codigo_carpeta": "LPO-ADI-03",
     "carpeta": "Quejas, reclamos y respuestas",
-    "codigo_documento": "LPO-TRA-03-D0290",
+    "codigo_documento": "LPO-ADI-03-D0290",
     "tipo_documental": "Solicitud formal",
     "nombre_formulario": "Quejas, reclamos y respuestas — Solicitud formal",
     "aplicabilidad_catalogo": "Según aplique",
@@ -9463,9 +9463,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 291,
     "nivel": "Lugar poblado",
     "fase": "",
-    "codigo_carpeta": "LPO-TRA-04",
+    "codigo_carpeta": "LPO-ADI-04",
     "carpeta": "Reuniones y acuerdos",
-    "codigo_documento": "LPO-TRA-04-D0291",
+    "codigo_documento": "LPO-ADI-04-D0291",
     "tipo_documental": "Acta de reunión",
     "nombre_formulario": "Reuniones y acuerdos — Acta de reunión",
     "aplicabilidad_catalogo": "Según aplique",
@@ -9484,9 +9484,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 292,
     "nivel": "Lugar poblado",
     "fase": "",
-    "codigo_carpeta": "LPO-TRA-04",
+    "codigo_carpeta": "LPO-ADI-04",
     "carpeta": "Reuniones y acuerdos",
-    "codigo_documento": "LPO-TRA-04-D0292",
+    "codigo_documento": "LPO-ADI-04-D0292",
     "tipo_documental": "Convocatoria de reunión",
     "nombre_formulario": "Reuniones y acuerdos — Convocatoria de reunión",
     "aplicabilidad_catalogo": "Según aplique",
@@ -9505,9 +9505,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 293,
     "nivel": "Lugar poblado",
     "fase": "",
-    "codigo_carpeta": "LPO-TRA-04",
+    "codigo_carpeta": "LPO-ADI-04",
     "carpeta": "Reuniones y acuerdos",
-    "codigo_documento": "LPO-TRA-04-D0293",
+    "codigo_documento": "LPO-ADI-04-D0293",
     "tipo_documental": "Minuta de reunión",
     "nombre_formulario": "Reuniones y acuerdos — Minuta de reunión",
     "aplicabilidad_catalogo": "Según aplique",
@@ -9526,9 +9526,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 294,
     "nivel": "Lugar poblado",
     "fase": "",
-    "codigo_carpeta": "LPO-TRA-04",
+    "codigo_carpeta": "LPO-ADI-04",
     "carpeta": "Reuniones y acuerdos",
-    "codigo_documento": "LPO-TRA-04-D0294",
+    "codigo_documento": "LPO-ADI-04-D0294",
     "tipo_documental": "Registro de acuerdos y compromisos",
     "nombre_formulario": "Reuniones y acuerdos — Registro de acuerdos y compromisos",
     "aplicabilidad_catalogo": "Según aplique",
@@ -9547,9 +9547,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 338,
     "nivel": "Proyecto",
     "fase": "",
-    "codigo_carpeta": "PRY-TRA-01",
+    "codigo_carpeta": "PRY-ADI-01",
     "carpeta": "Índice general",
-    "codigo_documento": "PRY-TRA-01-D0338",
+    "codigo_documento": "PRY-ADI-01-D0338",
     "tipo_documental": "Inventario documental del proyecto",
     "nombre_formulario": "Índice general — Inventario documental del proyecto",
     "aplicabilidad_catalogo": "Archivo documental general del proyecto.",
@@ -9568,9 +9568,9 @@ CATALOGO_MATRIZ_SECUNDARIA = [
     "orden": 339,
     "nivel": "Proyecto",
     "fase": "",
-    "codigo_carpeta": "PRY-TRA-01",
+    "codigo_carpeta": "PRY-ADI-01",
     "carpeta": "Índice general",
-    "codigo_documento": "PRY-TRA-01-D0339",
+    "codigo_documento": "PRY-ADI-01-D0339",
     "tipo_documental": "Índice general del archivo de proyecto",
     "nombre_formulario": "Índice general — Índice general del archivo de proyecto",
     "aplicabilidad_catalogo": "Archivo documental general del proyecto.",
@@ -9587,8 +9587,246 @@ CATALOGO_MATRIZ_SECUNDARIA = [
   }
 ]
 
+# ============================================================
+# 2.1 NORMALIZACIÓN Y DEPURACIÓN SEMÁNTICA DE CATÁLOGOS
+# ============================================================
+# Reglas de alta confianza. Solo se consolidan opciones que representan el
+# mismo documento o la misma categoría funcional. Se conservan los códigos y
+# fuentes originales en campos de trazabilidad.
+
+REGLAS_CARPETAS_EQUIVALENTES = {
+    # Persona: las matrices usan nombres diferentes para la misma categoría.
+    ("Persona", "Estado civil y parentesco"): (
+        "PER-PRE-01", "02 Estado civil y parentesco"
+    ),
+    ("Persona", "Representación y autorizaciones"): (
+        "PER-PRE-02", "03 Poderes, representación o autorizaciones"
+    ),
+    ("Persona", "Consentimientos"): (
+        "PER-PRE-03", "04 Consentimientos firmados"
+    ),
+    ("Persona", "Identificación"): (
+        "PER-ADI-01", "01 Identificación personal"
+    ),
+}
+
+REGLAS_DOCUMENTOS_EQUIVALENTES = {
+    # Persona
+    ("Persona", "Certificación de unión de hecho"): {
+        "tipo_documental": "Certificación de unión de hecho o unión libre",
+        "codigo_documento": "PER-PRE-01-D0034",
+        "codigo_carpeta": "PER-PRE-01",
+        "carpeta": "02 Estado civil y parentesco",
+    },
+    ("Persona", "Certificado de unión libre"): {
+        "tipo_documental": "Certificación de unión de hecho o unión libre",
+        "codigo_documento": "PER-PRE-01-D0034",
+        "codigo_carpeta": "PER-PRE-01",
+        "carpeta": "02 Estado civil y parentesco",
+    },
+    ("Persona", "Cédula de identidad de integrante del hogar"): {
+        "tipo_documental": "Cédula de identidad personal",
+        "codigo_documento": "PER-ADI-01-D0019",
+        "codigo_carpeta": "PER-ADI-01",
+        "carpeta": "01 Identificación personal",
+    },
+    ("Persona", "Cédula de identidad personal"): {
+        "tipo_documental": "Cédula de identidad personal",
+        "codigo_documento": "PER-ADI-01-D0019",
+        "codigo_carpeta": "PER-ADI-01",
+        "carpeta": "01 Identificación personal",
+    },
+    ("Persona", "Cédula de identidad personal del jefe de hogar"): {
+        "tipo_documental": "Cédula de identidad personal",
+        "codigo_documento": "PER-ADI-01-D0019",
+        "codigo_carpeta": "PER-ADI-01",
+        "carpeta": "01 Identificación personal",
+    },
+    ("Persona", "Declaración jurada de posesión u ocupación"): {
+        "tipo_documental": "Declaración jurada de posesión, tenencia u ocupación",
+        "codigo_documento": "PER-ADI-03-D0014",
+        "codigo_carpeta": "PER-ADI-03",
+        "carpeta": "Declaraciones y actas personales",
+    },
+    ("Persona", "Declaración jurada de tenencia u ocupación"): {
+        "tipo_documental": "Declaración jurada de posesión, tenencia u ocupación",
+        "codigo_documento": "PER-ADI-03-D0014",
+        "codigo_carpeta": "PER-ADI-03",
+        "carpeta": "Declaraciones y actas personales",
+    },
+    # Hogar
+    ("Hogar", "Relación de integrantes del hogar"): {
+        "tipo_documental": "Relación de personas del hogar",
+        "codigo_documento": "HOG-PRE-05-D0105",
+        "codigo_carpeta": "HOG-PRE-05",
+        "carpeta": "11 Personas del hogar",
+    },
+    ("Hogar", "Relación de personas del hogar"): {
+        "tipo_documental": "Relación de personas del hogar",
+        "codigo_documento": "HOG-PRE-05-D0105",
+        "codigo_carpeta": "HOG-PRE-05",
+        "carpeta": "11 Personas del hogar",
+    },
+    ("Hogar", "Informe de acompañamiento psicosocial"): {
+        "tipo_documental": "Informe de acompañamiento social o psicosocial",
+        "codigo_documento": "HOG-POST-02-D0228",
+        "codigo_carpeta": "HOG-PRE-10",
+        "carpeta": "Seguimiento social",
+    },
+    ("Hogar", "Informe de acompañamiento social o psicosocial"): {
+        "tipo_documental": "Informe de acompañamiento social o psicosocial",
+        "codigo_documento": "HOG-POST-02-D0228",
+        "codigo_carpeta": "HOG-PRE-10",
+        "carpeta": "Seguimiento social",
+    },
+    # Lugar poblado
+    ("Lugar poblado", "Adenda a acuerdo"): {
+        "tipo_documental": "Adenda a acuerdo o convenio comunitario",
+        "codigo_documento": "LPO-PRE-01-D0298",
+        "codigo_carpeta": "LPO-PRE-01",
+        "carpeta": "03 Acuerdos comunitarios",
+    },
+    ("Lugar poblado", "Adenda a convenio"): {
+        "tipo_documental": "Adenda a acuerdo o convenio comunitario",
+        "codigo_documento": "LPO-PRE-01-D0298",
+        "codigo_carpeta": "LPO-PRE-01",
+        "carpeta": "03 Acuerdos comunitarios",
+    },
+    # Proyecto
+    ("Proyecto", "Resolución"): {
+        "tipo_documental": "Resolución del caso",
+        "codigo_documento": "PRY-PRE-03-D0374",
+        "codigo_carpeta": "PRY-PRE-03",
+        "carpeta": "Mecanismo CDQR",
+    },
+    ("Proyecto", "Resolución del caso"): {
+        "tipo_documental": "Resolución del caso",
+        "codigo_documento": "PRY-PRE-03-D0374",
+        "codigo_carpeta": "PRY-PRE-03",
+        "carpeta": "Mecanismo CDQR",
+    },
+}
+
+
+def _unir_valores_trazabilidad(valores: list[str]) -> str:
+    """Concatena valores no vacíos sin repetirlos y conserva su orden."""
+    resultado: list[str] = []
+    for valor in valores:
+        texto = str(valor or "").strip()
+        if texto and texto not in resultado:
+            resultado.append(texto)
+    return " | ".join(resultado)
+
+
+def _aplicar_reglas_catalogo(registros: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Normaliza códigos, consolida equivalencias y mantiene trazabilidad."""
+    normalizados: list[dict[str, Any]] = []
+    for original in registros:
+        item = dict(original)
+
+        # Protección adicional para datos que lleguen en el futuro con TRA.
+        for campo in ("codigo_carpeta", "codigo_documento", "codigos_origen"):
+            item[campo] = str(item.get(campo, "")).replace("-TRA-", "-ADI-")
+
+        nivel = str(item.get("nivel", "")).strip()
+        carpeta_original = str(item.get("carpeta", "")).strip()
+        tipo_original = str(item.get("tipo_documental", "")).strip()
+        codigo_original = str(item.get("codigo_documento", "")).strip()
+        origen_original = str(item.get("origen_catalogo", "")).strip()
+
+        regla_carpeta = REGLAS_CARPETAS_EQUIVALENTES.get((nivel, carpeta_original))
+        if regla_carpeta:
+            item["codigo_carpeta"], item["carpeta"] = regla_carpeta
+
+        regla_documento = REGLAS_DOCUMENTOS_EQUIVALENTES.get((nivel, tipo_original))
+        if regla_documento:
+            item.update(regla_documento)
+
+        item["nombre_formulario"] = (
+            f"{item.get('carpeta', '')} — {item.get('tipo_documental', '')}"
+        )
+        item["codigos_documento_unificados"] = codigo_original
+        item["origenes_catalogo_unificados"] = origen_original
+        normalizados.append(item)
+
+    # 1) Elimina duplicados dentro de cada matriz de origen.
+    grupos: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    for item in normalizados:
+        clave = (
+            str(item.get("nivel", "")),
+            str(item.get("origen_catalogo", "")),
+            str(item.get("codigo_carpeta", "")),
+            str(item.get("tipo_documental", "")).casefold(),
+        )
+        if clave not in grupos:
+            grupos[clave] = item
+            continue
+        base = grupos[clave]
+        base["codigos_documento_unificados"] = _unir_valores_trazabilidad([
+            base.get("codigos_documento_unificados", ""),
+            item.get("codigos_documento_unificados", ""),
+        ])
+        base["codigos_origen"] = _unir_valores_trazabilidad([
+            base.get("codigos_origen", ""), item.get("codigos_origen", "")
+        ])
+        base["alias"] = _unir_valores_trazabilidad([
+            base.get("alias", ""), item.get("alias", "")
+        ])
+
+    return list(grupos.values())
+
+
+CATALOGO_MATRIZ_PRINCIPAL = _aplicar_reglas_catalogo(CATALOGO_MATRIZ_PRINCIPAL)
+CATALOGO_MATRIZ_SECUNDARIA = _aplicar_reglas_catalogo(CATALOGO_MATRIZ_SECUNDARIA)
+
+
+def _depurar_equivalencias_entre_matrices(
+    principal: list[dict[str, Any]],
+    secundaria: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Deja una sola opción cuando ambas matrices representan lo mismo."""
+    indice_principal = {
+        (
+            str(item.get("nivel", "")),
+            str(item.get("codigo_carpeta", "")),
+            str(item.get("tipo_documental", "")).casefold(),
+        ): item
+        for item in principal
+    }
+    secundaria_depurada: list[dict[str, Any]] = []
+    for item in secundaria:
+        clave = (
+            str(item.get("nivel", "")),
+            str(item.get("codigo_carpeta", "")),
+            str(item.get("tipo_documental", "")).casefold(),
+        )
+        equivalente = indice_principal.get(clave)
+        if equivalente is None:
+            secundaria_depurada.append(item)
+            continue
+        equivalente["codigos_documento_unificados"] = _unir_valores_trazabilidad([
+            equivalente.get("codigos_documento_unificados", ""),
+            item.get("codigos_documento_unificados", ""),
+        ])
+        equivalente["codigos_origen"] = _unir_valores_trazabilidad([
+            equivalente.get("codigos_origen", ""), item.get("codigos_origen", "")
+        ])
+        equivalente["origenes_catalogo_unificados"] = _unir_valores_trazabilidad([
+            equivalente.get("origenes_catalogo_unificados", "Matriz Principal"),
+            item.get("origenes_catalogo_unificados", "Matriz Secundaria"),
+        ])
+    return principal, secundaria_depurada
+
+
+CATALOGO_MATRIZ_PRINCIPAL, CATALOGO_MATRIZ_SECUNDARIA = (
+    _depurar_equivalencias_entre_matrices(
+        CATALOGO_MATRIZ_PRINCIPAL, CATALOGO_MATRIZ_SECUNDARIA
+    )
+)
+
 # Catálogo combinado para consultas generales. La interfaz decide cuál matriz
-# usar mediante el campo pertenece_fase.
+# usar mediante el campo pertenece_fase. En Persona se consolida además entre
+# ambas matrices porque esa pantalla muestra el catálogo total.
 CATALOGO_DOCUMENTAL = CATALOGO_MATRIZ_PRINCIPAL + CATALOGO_MATRIZ_SECUNDARIA
 
 
@@ -10624,27 +10862,44 @@ def carpetas_nivel_fase(
 
 
 def catalogo_total_persona() -> pd.DataFrame:
-    """Une ambas matrices para Persona sin filtrar por fase."""
+    """Une y depura ambas matrices para Persona sin filtrar por fase."""
     df = catalogo_nivel("Persona").copy()
     if df.empty:
         return df
-    # Se conserva cada código documental real y su matriz de procedencia.
-    return df.drop_duplicates(subset=["codigo_documento", "origen_catalogo"]).copy()
+
+    prioridad = {"Matriz Principal": 0, "Matriz Secundaria": 1}
+    df["_prioridad_origen"] = df["origen_catalogo"].map(prioridad).fillna(9)
+    df = df.sort_values(["_prioridad_origen", "orden"], kind="stable")
+
+    consolidados: list[dict[str, Any]] = []
+    for _, grupo in df.groupby(
+        ["codigo_carpeta", "tipo_documental"], sort=False, dropna=False
+    ):
+        base = grupo.iloc[0].to_dict()
+        base["codigos_documento_unificados"] = _unir_valores_trazabilidad(
+            grupo["codigos_documento_unificados"].astype(str).tolist()
+        )
+        base["origenes_catalogo_unificados"] = _unir_valores_trazabilidad(
+            grupo["origen_catalogo"].astype(str).tolist()
+        )
+        base["codigos_origen"] = _unir_valores_trazabilidad(
+            grupo["codigos_origen"].astype(str).tolist()
+        )
+        consolidados.append(base)
+
+    return pd.DataFrame(consolidados).drop(columns=["_prioridad_origen"], errors="ignore")
 
 
 def carpetas_total_persona() -> pd.DataFrame:
     df = catalogo_total_persona()
     if df.empty:
         return df
-    return df[["codigo_carpeta", "carpeta", "origen_catalogo"]].drop_duplicates()
+    return df[["codigo_carpeta", "carpeta"]].drop_duplicates()
 
 
-def tipos_total_persona(codigo_carpeta: str, origen_catalogo: str) -> pd.DataFrame:
+def tipos_total_persona(codigo_carpeta: str) -> pd.DataFrame:
     df = catalogo_total_persona()
-    return df[
-        df["codigo_carpeta"].astype(str).eq(str(codigo_carpeta))
-        & df["origen_catalogo"].astype(str).eq(str(origen_catalogo))
-    ].copy()
+    return df[df["codigo_carpeta"].astype(str).eq(str(codigo_carpeta))].copy()
 
 
 def tipos_por_carpeta(
@@ -11656,27 +11911,24 @@ def formulario_documento(
         if carpetas.empty:
             st.warning("No hay carpetas activas para Persona.")
             return
-        claves_carpeta = [
-            f"{row['origen_catalogo']}||{row['codigo_carpeta']}"
-            for _, row in carpetas.iterrows()
-        ]
+        codigos_carpeta = carpetas["codigo_carpeta"].astype(str).tolist()
         etiquetas_carpeta = {
-            f"{row['origen_catalogo']}||{row['codigo_carpeta']}":
+            str(row["codigo_carpeta"]):
             f"{row['codigo_carpeta']} · {row['carpeta']}"
             for _, row in carpetas.iterrows()
         }
-        clave_carpeta = st.selectbox(
+        codigo_carpeta = st.selectbox(
             "Carpeta",
-            claves_carpeta,
+            codigos_carpeta,
             format_func=lambda valor: etiquetas_carpeta.get(valor, valor),
             key=f"carpeta_total_persona_{id_exp}",
             help=(
-                "Catálogo total de Persona: combina Matriz Principal y Matriz "
-                "Secundaria sin filtrar por fase."
+                "Catálogo total y depurado de Persona: combina Matriz Principal "
+                "y Matriz Secundaria sin filtrar por fase."
             ),
         )
-        origen_catalogo, codigo_carpeta = clave_carpeta.split("||", 1)
-        opciones = tipos_total_persona(codigo_carpeta, origen_catalogo)
+        opciones = tipos_total_persona(codigo_carpeta)
+        origen_catalogo = str(opciones.iloc[0].get("origen_catalogo", ""))             if not opciones.empty else ""
     else:
         fases = fases_nivel(nivel)
         if not fases:
@@ -11747,7 +11999,9 @@ def formulario_documento(
     ].iloc[0]
     if nivel == "Persona":
         # La procedencia se conserva, aunque la fase no controle el catálogo.
-        pertenece_fase = origen_catalogo == "Matriz Principal"
+        pertenece_fase = "Matriz Principal" in str(
+            item.get("origenes_catalogo_unificados", origen_catalogo)
+        )
 
     existentes = docs[
         docs["id_expediente_principal"].astype(str).eq(str(id_exp))

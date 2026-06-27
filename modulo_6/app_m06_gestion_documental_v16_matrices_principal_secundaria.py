@@ -1,7 +1,7 @@
 
 # ============================================================
 # SIR ACP - M06 Gestión Documental y Expedientes
-# Versión v17.0 - Hogar→Persona, fase heredada y catálogo total de Persona
+# Versión v18.0 - Fase de expediente calculada, Hogar→Persona y catálogo total de Persona
 # ============================================================
 # Base funcional:
 # - Adaptación de M06 v7.
@@ -77,6 +77,19 @@ ETIQUETAS_NIVEL = {
 }
 
 FASES = ['Pre-reasentamiento', 'Durante el reasentamiento', 'Post-reasentamiento', 'Identificación y seguimiento']
+
+FASES_EXPEDIENTE = ['Pre-reasentamiento', 'Durante el reasentamiento', 'Post-reasentamiento']
+ID_FASE_EXPEDIENTE = {
+    'Pre-reasentamiento': 'FAS-PRE',
+    'Durante el reasentamiento': 'FAS-DUR',
+    'Post-reasentamiento': 'FAS-POST',
+}
+PRIORIDAD_FASE_EXPEDIENTE = {
+    'Identificación y seguimiento': 0,
+    'Pre-reasentamiento': 1,
+    'Durante el reasentamiento': 2,
+    'Post-reasentamiento': 3,
+}
 
 ESTADOS_EXPEDIENTE = ["Abierto", "En gestión", "En revisión", "Completo", "Cerrado"]
 ESTADOS_APLICABILIDAD = ["Pendiente de determinar", "Aplica", "No aplica"]
@@ -9736,14 +9749,14 @@ COLUMNAS = {
     "expedientes": [
         "id_expediente", "nivel", "id_entidad_principal", "nombre_entidad",
         "fecha_apertura", "responsable_expediente", "estado_expediente",
-        "fase_actual", "porcentaje_completitud", "observaciones",
+        "id_fase_expediente", "fase_actual", "porcentaje_completitud", "observaciones",
         "fecha_creacion", "fecha_actualizacion", "usuario_actualizacion",
     ],
     "documentos": [
         "id_documento", "id_serie_documental", "id_documento_padre",
         "tipo_registro", "es_version_vigente", "token_transaccion",
         "id_expediente_principal", "nivel_principal", "id_entidad_principal",
-        "fase", "pertenece_fase", "origen_catalogo", "codigo_carpeta", "carpeta", "codigo_documento",
+        "id_fase_expediente", "fase", "pertenece_fase", "origen_catalogo", "codigo_carpeta", "carpeta", "codigo_documento",
         "tipo_documental", "aplicabilidad", "justificacion_no_aplica",
         "confidencialidad", "nombre_archivo", "ruta_archivo",
         "hash_documento", "fecha_documento", "fecha_carga",
@@ -10364,6 +10377,7 @@ def inicializar_estado() -> None:
     st.session_state.setdefault("usuario_actual", USUARIO_BETA)
     st.session_state.setdefault("pantalla_m06", "Índice")
     actualizar_estados_vigencia()
+    recalcular_fases_todos_expedientes()
 
 
 # ============================================================
@@ -10661,10 +10675,95 @@ def hogar_de_persona(id_persona: str) -> dict[str, Any]:
     return hogar.iloc[0].to_dict() if not hogar.empty else {}
 
 
+def fase_prioritaria_documentos(documentos: pd.DataFrame) -> tuple[str, str]:
+    """Calcula la fase general del expediente por la mayor prioridad documental."""
+    if documentos.empty:
+        return "", ""
+    fases = [
+        str(valor).strip()
+        for valor in documentos.get("fase", pd.Series(dtype=str)).tolist()
+        if str(valor).strip() in PRIORIDAD_FASE_EXPEDIENTE
+    ]
+    if not fases:
+        return "", ""
+    fase_matriz = max(fases, key=lambda valor: PRIORIDAD_FASE_EXPEDIENTE[valor])
+    # Identificación y seguimiento es una etapa preparatoria y se consolida
+    # como Pre-reasentamiento para la fase general del expediente.
+    fase_expediente = (
+        "Pre-reasentamiento"
+        if fase_matriz == "Identificación y seguimiento"
+        else fase_matriz
+    )
+    return ID_FASE_EXPEDIENTE[fase_expediente], fase_expediente
+
+
+def recalcular_fase_expediente(id_expediente: str) -> tuple[str, str]:
+    expedientes = st.session_state.data_m06["expedientes"].copy()
+    docs = st.session_state.data_m06["documentos"].copy()
+    mask_exp = expedientes["id_expediente"].astype(str).eq(str(id_expediente))
+    if not mask_exp.any():
+        return "", ""
+
+    expediente = expedientes[mask_exp].iloc[0].to_dict()
+    nivel = str(expediente.get("nivel", ""))
+    id_entidad = str(expediente.get("id_entidad_principal", ""))
+
+    if nivel == "Persona":
+        hogar = hogar_de_persona(id_entidad)
+        id_hogar = str(hogar.get("id_hogar", "")).strip() if hogar else ""
+        expediente_hogar = expediente_existente("Hogar", id_hogar) if id_hogar else {}
+        id_fase = str(expediente_hogar.get("id_fase_expediente", "")).strip()
+        fase = str(expediente_hogar.get("fase_actual", "")).strip()
+    else:
+        docs_exp = docs[
+            docs["id_expediente_principal"].astype(str).eq(str(id_expediente))
+            & docs["es_version_vigente"].apply(normalizar_bool)
+        ] if not docs.empty else docs
+        id_fase, fase = fase_prioritaria_documentos(docs_exp)
+
+    expedientes.loc[mask_exp, "id_fase_expediente"] = id_fase
+    expedientes.loc[mask_exp, "fase_actual"] = fase
+    expedientes.loc[mask_exp, "fecha_actualizacion"] = ahora()
+    st.session_state.data_m06["expedientes"] = expedientes
+
+    if not docs.empty:
+        mask_docs = docs["id_expediente_principal"].astype(str).eq(str(id_expediente))
+        docs.loc[mask_docs, "id_fase_expediente"] = id_fase
+        st.session_state.data_m06["documentos"] = docs
+
+    if nivel == "Hogar":
+        personas = maestro("personas")
+        ids_persona = personas[
+            personas["id_hogar"].astype(str).eq(id_entidad)
+        ]["id_persona"].astype(str).tolist()
+        expedientes_actuales = st.session_state.data_m06["expedientes"].copy()
+        ids_exp_persona = expedientes_actuales[
+            expedientes_actuales["nivel"].astype(str).eq("Persona")
+            & expedientes_actuales["id_entidad_principal"].astype(str).isin(ids_persona)
+        ]["id_expediente"].astype(str).tolist()
+        for id_exp_persona in ids_exp_persona:
+            recalcular_fase_expediente(id_exp_persona)
+
+    return id_fase, fase
+
+
+def recalcular_fases_todos_expedientes() -> None:
+    expedientes = st.session_state.data_m06["expedientes"].copy()
+    if expedientes.empty:
+        return
+    for id_expediente in expedientes["id_expediente"].astype(str).tolist():
+        recalcular_fase_expediente(id_expediente)
+
+
 def fase_actual_hogar(id_hogar: str) -> str:
     expediente = expediente_existente("Hogar", id_hogar)
     fase = str(expediente.get("fase_actual", "")).strip()
-    return fase if fase in FASES else ""
+    return fase if fase in FASES_EXPEDIENTE else ""
+
+
+def id_fase_actual_hogar(id_hogar: str) -> str:
+    expediente = expediente_existente("Hogar", id_hogar)
+    return str(expediente.get("id_fase_expediente", "")).strip()
 
 
 # ============================================================
@@ -10677,7 +10776,6 @@ def crear_o_actualizar_expediente(
     responsable: str,
     estado: str,
     observaciones: str,
-    fase_actual: str = "",
 ) -> tuple[str, str]:
     entidad = obtener_entidad(nivel, id_entidad)
     if not entidad:
@@ -10695,10 +10793,8 @@ def crear_o_actualizar_expediente(
         "fecha_apertura": existente.get("fecha_apertura") or date.today().isoformat(),
         "responsable_expediente": responsable,
         "estado_expediente": estado,
-        "fase_actual": (
-            fase_actual if nivel == "Hogar"
-            else existente.get("fase_actual", "")
-        ),
+        "id_fase_expediente": existente.get("id_fase_expediente", ""),
+        "fase_actual": existente.get("fase_actual", ""),
         "porcentaje_completitud": existente.get("porcentaje_completitud", 0.0),
         "observaciones": observaciones,
         "fecha_creacion": existente.get("fecha_creacion") or ahora(),
@@ -10708,6 +10804,7 @@ def crear_o_actualizar_expediente(
     accion = upsert("expedientes", registro, "id_expediente")
     crear_checklist_expediente(registro)
     recalcular_progreso_expediente(id_expediente)
+    recalcular_fase_expediente(id_expediente)
     return accion, id_expediente
 
 
@@ -10976,8 +11073,9 @@ def guardar_documento(
         registro["id_serie_documental"],
         relaciones,
     )
-    guardar_memoria()
     sincronizar_checklist_documento(registro["id_documento"])
+    recalcular_fase_expediente(str(registro["id_expediente_principal"]))
+    guardar_memoria()
     return "creado"
 
 
@@ -11485,18 +11583,21 @@ def formulario_expediente(nivel: str, id_entidad: str) -> None:
                 else 0
             ),
         )
-        fase_actual = ""
-        if nivel == "Hogar":
-            fase_guardada = str(existente.get("fase_actual", ""))
-            fase_actual = st.selectbox(
-                "Fase actual del hogar",
-                FASES,
-                index=FASES.index(fase_guardada) if fase_guardada in FASES else 0,
-                help=(
-                    "Esta fase será heredada automáticamente por todas las "
-                    "personas vinculadas al hogar."
-                ),
-            )
+        fase_calculada = str(existente.get("fase_actual", "")).strip()
+        id_fase_calculada = str(existente.get("id_fase_expediente", "")).strip()
+        st.text_input(
+            "Fase general del expediente",
+            value=(
+                f"{id_fase_calculada} · {fase_calculada}"
+                if fase_calculada else "Sin fase: el expediente todavía no tiene documentos"
+            ),
+            disabled=True,
+            help=(
+                "Se calcula automáticamente según la fase documental de mayor "
+                "prioridad: Pre-reasentamiento, Durante el reasentamiento o "
+                "Post-reasentamiento."
+            ),
+        )
         observaciones = st.text_area(
             "Observaciones",
             value=str(existente.get("observaciones", "")),
@@ -11515,7 +11616,6 @@ def formulario_expediente(nivel: str, id_entidad: str) -> None:
                 responsable,
                 estado,
                 observaciones,
-                fase_actual,
             )
             st.success(f"Expediente {accion}: {id_exp}")
             st.rerun()
@@ -11540,7 +11640,8 @@ def formulario_documento(
             return
         id_hogar = str(hogar.get("id_hogar", ""))
         fase = fase_actual_hogar(id_hogar)
-        if not fase:
+        id_fase_expediente = id_fase_actual_hogar(id_hogar)
+        if not fase or not id_fase_expediente:
             st.warning(
                 "El hogar vinculado no tiene una fase actual establecida. "
                 "Actualice primero el expediente del hogar."
@@ -11548,7 +11649,7 @@ def formulario_documento(
             return
         st.info(
             f"**Hogar:** {id_hogar} · {hogar.get('nombre', '')}  |  "
-            f"**Fase heredada:** {fase}"
+            f"**Fase heredada:** {id_fase_expediente} · {fase}"
         )
         pertenece_fase = False
         carpetas = carpetas_total_persona()
@@ -11586,6 +11687,10 @@ def formulario_documento(
             "Fase",
             fases,
             key=f"fase_{nivel}_{id_exp}",
+        )
+        id_fase_expediente = ID_FASE_EXPEDIENTE.get(
+            "Pre-reasentamiento" if fase == "Identificación y seguimiento" else fase,
+            "",
         )
 
         pertenece_fase_respuesta = st.radio(
@@ -11907,6 +12012,7 @@ def formulario_documento(
                 "id_expediente_principal": id_exp,
                 "nivel_principal": nivel,
                 "id_entidad_principal": id_entidad,
+                "id_fase_expediente": id_fase_expediente,
                 "fase": fase,
                 "pertenece_fase": pertenece_fase,
                 "origen_catalogo": origen_catalogo,
@@ -13048,7 +13154,7 @@ def pantalla_nivel(nivel: str) -> None:
         ]
         if hogares.empty:
             st.warning(
-                "Primero debe existir un expediente de Hogar con fase actual establecida."
+                "Primero debe existir un expediente de Hogar. Su fase se calculará a partir de los documentos registrados."
             )
             return
         id_hogar = st.selectbox(
@@ -13082,8 +13188,11 @@ def pantalla_nivel(nivel: str) -> None:
             key=f"selector_persona_{vista}_{id_hogar}",
         )
         fase_hogar = fase_actual_hogar(id_hogar)
+        id_fase_hogar = id_fase_actual_hogar(id_hogar)
         if fase_hogar:
-            st.caption(f"Fase actual heredada del hogar: **{fase_hogar}**")
+            st.caption(
+                f"Fase actual heredada del hogar: **{id_fase_hogar} · {fase_hogar}**"
+            )
     else:
         id_entidad = selector_entidad(
             nivel,

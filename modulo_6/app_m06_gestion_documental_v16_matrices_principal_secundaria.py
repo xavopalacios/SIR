@@ -1,11 +1,12 @@
 
 # ============================================================
 # SIR ACP - M06 Gestión Documental y Expedientes
-# Versión v16.0 - Matrices Principal/Secundaria y fase obligatoria
+# Versión v17.0 - Hogar→Persona, fase heredada y catálogo total de Persona
 # ============================================================
 # Base funcional:
 # - Adaptación de M06 v7.
 # - Matriz Principal por fase y Matriz Secundaria para documentos no ligados a la fase.
+# - Persona se selecciona dentro de Hogar, hereda su fase actual y usa catálogo total combinado.
 # - Siete niveles: Persona, Hogar, Persona no residente,
 #   Organización comunitaria o productiva, Lugar poblado,
 #   Hogar sin censo y Proyecto.
@@ -9735,7 +9736,7 @@ COLUMNAS = {
     "expedientes": [
         "id_expediente", "nivel", "id_entidad_principal", "nombre_entidad",
         "fecha_apertura", "responsable_expediente", "estado_expediente",
-        "porcentaje_completitud", "observaciones",
+        "fase_actual", "porcentaje_completitud", "observaciones",
         "fecha_creacion", "fecha_actualizacion", "usuario_actualizacion",
     ],
     "documentos": [
@@ -9893,6 +9894,7 @@ def crear_datos_operativos_ejemplo() -> dict[str, pd.DataFrame]:
             ).isoformat(),
             "responsable_expediente": USUARIO_BETA,
             "estado_expediente": "En gestión",
+            "fase_actual": "Pre-reasentamiento" if nivel == "Hogar" else "",
             "porcentaje_completitud": 0.0,
             "observaciones": (
                 f"Expediente demostrativo completo para validar {nivel}."
@@ -10607,6 +10609,30 @@ def carpetas_nivel_fase(
     return df[["codigo_carpeta", "carpeta"]].drop_duplicates()
 
 
+def catalogo_total_persona() -> pd.DataFrame:
+    """Une ambas matrices para Persona sin filtrar por fase."""
+    df = catalogo_nivel("Persona").copy()
+    if df.empty:
+        return df
+    # Se conserva cada código documental real y su matriz de procedencia.
+    return df.drop_duplicates(subset=["codigo_documento", "origen_catalogo"]).copy()
+
+
+def carpetas_total_persona() -> pd.DataFrame:
+    df = catalogo_total_persona()
+    if df.empty:
+        return df
+    return df[["codigo_carpeta", "carpeta", "origen_catalogo"]].drop_duplicates()
+
+
+def tipos_total_persona(codigo_carpeta: str, origen_catalogo: str) -> pd.DataFrame:
+    df = catalogo_total_persona()
+    return df[
+        df["codigo_carpeta"].astype(str).eq(str(codigo_carpeta))
+        & df["origen_catalogo"].astype(str).eq(str(origen_catalogo))
+    ].copy()
+
+
 def tipos_por_carpeta(
     nivel: str,
     fase: str,
@@ -10622,6 +10648,25 @@ def tipos_por_carpeta(
     return df[filtro].copy()
 
 
+def hogar_de_persona(id_persona: str) -> dict[str, Any]:
+    personas = maestro("personas")
+    fila = personas[personas["id_persona"].astype(str).eq(str(id_persona))]
+    if fila.empty:
+        return {}
+    id_hogar = str(fila.iloc[0].get("id_hogar", "")).strip()
+    if not id_hogar:
+        return {}
+    hogares = maestro("hogares")
+    hogar = hogares[hogares["id_hogar"].astype(str).eq(id_hogar)]
+    return hogar.iloc[0].to_dict() if not hogar.empty else {}
+
+
+def fase_actual_hogar(id_hogar: str) -> str:
+    expediente = expediente_existente("Hogar", id_hogar)
+    fase = str(expediente.get("fase_actual", "")).strip()
+    return fase if fase in FASES else ""
+
+
 # ============================================================
 # 8. EXPEDIENTES Y CHECKLIST
 # ============================================================
@@ -10632,6 +10677,7 @@ def crear_o_actualizar_expediente(
     responsable: str,
     estado: str,
     observaciones: str,
+    fase_actual: str = "",
 ) -> tuple[str, str]:
     entidad = obtener_entidad(nivel, id_entidad)
     if not entidad:
@@ -10649,6 +10695,10 @@ def crear_o_actualizar_expediente(
         "fecha_apertura": existente.get("fecha_apertura") or date.today().isoformat(),
         "responsable_expediente": responsable,
         "estado_expediente": estado,
+        "fase_actual": (
+            fase_actual if nivel == "Hogar"
+            else existente.get("fase_actual", "")
+        ),
         "porcentaje_completitud": existente.get("porcentaje_completitud", 0.0),
         "observaciones": observaciones,
         "fecha_creacion": existente.get("fecha_creacion") or ahora(),
@@ -11435,6 +11485,18 @@ def formulario_expediente(nivel: str, id_entidad: str) -> None:
                 else 0
             ),
         )
+        fase_actual = ""
+        if nivel == "Hogar":
+            fase_guardada = str(existente.get("fase_actual", ""))
+            fase_actual = st.selectbox(
+                "Fase actual del hogar",
+                FASES,
+                index=FASES.index(fase_guardada) if fase_guardada in FASES else 0,
+                help=(
+                    "Esta fase será heredada automáticamente por todas las "
+                    "personas vinculadas al hogar."
+                ),
+            )
         observaciones = st.text_area(
             "Observaciones",
             value=str(existente.get("observaciones", "")),
@@ -11453,6 +11515,7 @@ def formulario_expediente(nivel: str, id_entidad: str) -> None:
                 responsable,
                 estado,
                 observaciones,
+                fase_actual,
             )
             st.success(f"Expediente {accion}: {id_exp}")
             st.rerun()
@@ -11468,51 +11531,97 @@ def formulario_documento(
     id_exp = expediente["id_expediente"]
     docs = st.session_state.data_m06["documentos"].copy()
 
-    fases = fases_nivel(nivel)
-    if not fases:
-        st.warning("El nivel seleccionado no tiene tipos documentales activos.")
-        return
-
-    fase = st.selectbox(
-        "Fase",
-        fases,
-        key=f"fase_{nivel}_{id_exp}",
-    )
-
-    pertenece_fase_respuesta = st.radio(
-        "¿El documento que carga pertenece a la fase seleccionada?",
-        ["Sí", "No"],
-        horizontal=True,
-        help=(
-            "La fase siempre se conserva. Si responde Sí, se usarán las carpetas "
-            "y documentos de la Matriz Principal para esa fase. Si responde No, "
-            "se utilizará la Matriz Secundaria."
-        ),
-        key=f"pertenece_fase_{nivel}_{id_exp}_{fase}",
-    )
-    pertenece_fase = pertenece_fase_respuesta == "Sí"
-    origen_catalogo = "Matriz Principal" if pertenece_fase else "Matriz Secundaria"
-
-    carpetas = carpetas_nivel_fase(nivel, fase, pertenece_fase)
-    if carpetas.empty:
-        st.warning(
-            f"No hay carpetas activas en {origen_catalogo} para este nivel"
-            + (f" y fase {fase}." if pertenece_fase else ".")
+    if nivel == "Persona":
+        hogar = hogar_de_persona(id_entidad)
+        if not hogar:
+            st.warning(
+                "La persona seleccionada no está vinculada a un hogar válido del Módulo 1."
+            )
+            return
+        id_hogar = str(hogar.get("id_hogar", ""))
+        fase = fase_actual_hogar(id_hogar)
+        if not fase:
+            st.warning(
+                "El hogar vinculado no tiene una fase actual establecida. "
+                "Actualice primero el expediente del hogar."
+            )
+            return
+        st.info(
+            f"**Hogar:** {id_hogar} · {hogar.get('nombre', '')}  |  "
+            f"**Fase heredada:** {fase}"
         )
-        return
-    codigos_carpeta = carpetas["codigo_carpeta"].astype(str).tolist()
-    etiquetas_carpeta = {
-        str(row["codigo_carpeta"]): f"{row['codigo_carpeta']} · {row['carpeta']}"
-        for _, row in carpetas.iterrows()
-    }
-    codigo_carpeta = st.selectbox(
-        "Carpeta",
-        codigos_carpeta,
-        format_func=lambda valor: etiquetas_carpeta.get(valor, valor),
-        key=f"carpeta_{nivel}_{id_exp}_{fase}_{origen_catalogo}",
-    )
+        pertenece_fase = False
+        carpetas = carpetas_total_persona()
+        if carpetas.empty:
+            st.warning("No hay carpetas activas para Persona.")
+            return
+        claves_carpeta = [
+            f"{row['origen_catalogo']}||{row['codigo_carpeta']}"
+            for _, row in carpetas.iterrows()
+        ]
+        etiquetas_carpeta = {
+            f"{row['origen_catalogo']}||{row['codigo_carpeta']}":
+            f"{row['codigo_carpeta']} · {row['carpeta']}"
+            for _, row in carpetas.iterrows()
+        }
+        clave_carpeta = st.selectbox(
+            "Carpeta",
+            claves_carpeta,
+            format_func=lambda valor: etiquetas_carpeta.get(valor, valor),
+            key=f"carpeta_total_persona_{id_exp}",
+            help=(
+                "Catálogo total de Persona: combina Matriz Principal y Matriz "
+                "Secundaria sin filtrar por fase."
+            ),
+        )
+        origen_catalogo, codigo_carpeta = clave_carpeta.split("||", 1)
+        opciones = tipos_total_persona(codigo_carpeta, origen_catalogo)
+    else:
+        fases = fases_nivel(nivel)
+        if not fases:
+            st.warning("El nivel seleccionado no tiene tipos documentales activos.")
+            return
 
-    opciones = tipos_por_carpeta(nivel, fase, codigo_carpeta, pertenece_fase)
+        fase = st.selectbox(
+            "Fase",
+            fases,
+            key=f"fase_{nivel}_{id_exp}",
+        )
+
+        pertenece_fase_respuesta = st.radio(
+            "¿El documento que carga pertenece a la fase seleccionada?",
+            ["Sí", "No"],
+            horizontal=True,
+            help=(
+                "La fase siempre se conserva. Si responde Sí, se usarán las carpetas "
+                "y documentos de la Matriz Principal para esa fase. Si responde No, "
+                "se utilizará la Matriz Secundaria."
+            ),
+            key=f"pertenece_fase_{nivel}_{id_exp}_{fase}",
+        )
+        pertenece_fase = pertenece_fase_respuesta == "Sí"
+        origen_catalogo = "Matriz Principal" if pertenece_fase else "Matriz Secundaria"
+
+        carpetas = carpetas_nivel_fase(nivel, fase, pertenece_fase)
+        if carpetas.empty:
+            st.warning(
+                f"No hay carpetas activas en {origen_catalogo} para este nivel"
+                + (f" y fase {fase}." if pertenece_fase else ".")
+            )
+            return
+        codigos_carpeta = carpetas["codigo_carpeta"].astype(str).tolist()
+        etiquetas_carpeta = {
+            str(row["codigo_carpeta"]): f"{row['codigo_carpeta']} · {row['carpeta']}"
+            for _, row in carpetas.iterrows()
+        }
+        codigo_carpeta = st.selectbox(
+            "Carpeta",
+            codigos_carpeta,
+            format_func=lambda valor: etiquetas_carpeta.get(valor, valor),
+            key=f"carpeta_{nivel}_{id_exp}_{fase}_{origen_catalogo}",
+        )
+        opciones = tipos_por_carpeta(nivel, fase, codigo_carpeta, pertenece_fase)
+
     if opciones.empty:
         st.warning("La carpeta seleccionada no tiene tipos documentales activos.")
         return
@@ -11531,6 +11640,9 @@ def formulario_documento(
     item = opciones[
         opciones["codigo_documento"].astype(str).eq(codigo_documento)
     ].iloc[0]
+    if nivel == "Persona":
+        # La procedencia se conserva, aunque la fase no controle el catálogo.
+        pertenece_fase = origen_catalogo == "Matriz Principal"
 
     existentes = docs[
         docs["id_expediente_principal"].astype(str).eq(str(id_exp))
@@ -12925,11 +13037,59 @@ def pantalla_nivel(nivel: str) -> None:
         ),
     )
 
-    id_entidad = selector_entidad(
-        nivel,
-        f"selector_{vista}",
-        solo_con_expediente=vista != "Expediente",
-    )
+    if nivel == "Persona":
+        hogares = maestro("hogares").copy()
+        expedientes_hogar = st.session_state.data_m06["expedientes"]
+        ids_hogar_con_expediente = expedientes_hogar[
+            expedientes_hogar["nivel"].astype(str).eq("Hogar")
+        ]["id_entidad_principal"].astype(str).unique().tolist()
+        hogares = hogares[
+            hogares["id_hogar"].astype(str).isin(ids_hogar_con_expediente)
+        ]
+        if hogares.empty:
+            st.warning(
+                "Primero debe existir un expediente de Hogar con fase actual establecida."
+            )
+            return
+        id_hogar = st.selectbox(
+            "Hogar",
+            hogares["id_hogar"].astype(str).tolist(),
+            format_func=lambda valor: etiqueta_entidad(
+                "Hogar",
+                hogares[hogares["id_hogar"].astype(str).eq(str(valor))].iloc[0],
+            ),
+            key=f"selector_hogar_persona_{vista}",
+        )
+        personas = maestro("personas").copy()
+        personas = personas[personas["id_hogar"].astype(str).eq(str(id_hogar))]
+        if vista != "Expediente":
+            expedientes_persona = st.session_state.data_m06["expedientes"]
+            ids_persona = expedientes_persona[
+                expedientes_persona["nivel"].astype(str).eq("Persona")
+            ]["id_entidad_principal"].astype(str).unique().tolist()
+            personas = personas[personas["id_persona"].astype(str).isin(ids_persona)]
+        if personas.empty:
+            st.warning("El hogar seleccionado no tiene personas disponibles para esta vista.")
+            return
+        etiquetas_persona = {
+            str(row["id_persona"]): etiqueta_entidad("Persona", row)
+            for _, row in personas.iterrows()
+        }
+        id_entidad = st.selectbox(
+            "Persona",
+            personas["id_persona"].astype(str).tolist(),
+            format_func=lambda valor: etiquetas_persona.get(valor, valor),
+            key=f"selector_persona_{vista}_{id_hogar}",
+        )
+        fase_hogar = fase_actual_hogar(id_hogar)
+        if fase_hogar:
+            st.caption(f"Fase actual heredada del hogar: **{fase_hogar}**")
+    else:
+        id_entidad = selector_entidad(
+            nivel,
+            f"selector_{vista}",
+            solo_con_expediente=vista != "Expediente",
+        )
     if not id_entidad:
         return
 

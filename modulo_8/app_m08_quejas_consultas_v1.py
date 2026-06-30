@@ -5,10 +5,21 @@ import uuid
 from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Iterable, Optional, List
+from io import BytesIO
+from html import escape
 
 import pandas as pd
 import streamlit as st
+from docx import Document
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.shared import Pt, Cm
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import cm, mm
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
 
 
 APP_TITLE = "SIR · Módulo de Consultas y Quejas"
@@ -719,15 +730,15 @@ PAGE_HELP = {
         "Carga exportaciones oficiales de Survey123. El sistema valida cada GlobalID "
         "para insertar, actualizar u omitir registros sin duplicarlos."
     ),
-    "Registrar caso": (
+    "Casos": (
         "Registra la consulta o queja siguiendo el mismo orden de la ficha oficial. "
         "Los datos internos de gestión se completan después."
     ),
-    "Gestionar caso": (
+    "Casos edición": (
         "Asigna responsables, actualiza el estado y registra las instrucciones internas "
         "sin modificar la información original del caso."
     ),
-    "Seguimiento": (
+    "Seguimientos": (
         "Registra cada actuación de manera independiente para conservar quién la realizó, "
         "qué hizo, cuándo la hizo y cuál fue el resultado."
     ),
@@ -735,10 +746,10 @@ PAGE_HELP = {
         "Documenta los contactos realizados con la persona solicitante y conserva la "
         "evidencia asociada."
     ),
-    "Aprobación y cierre": (
+    "Aprobaciones y cierres": (
         "Registra la recomendación, la decisión del supervisor y el cierre formal del caso."
     ),
-    "Revisión": (
+    "Revisiones": (
         "Gestiona solicitudes de revisión o apelación vinculadas al expediente original."
     ),
     "Trazabilidad": (
@@ -989,12 +1000,11 @@ with st.sidebar:
         [
             "Panel general",
             "Importación Survey123",
-            "Registrar caso",
-            "Gestionar caso",
-            "Seguimiento",
+            "Casos",
+            "Seguimientos",
             "Comunicaciones",
-            "Aprobación y cierre",
-            "Revisión",
+            "Aprobaciones y cierres",
+            "Revisiones",
             "Trazabilidad",
         ],
         help="Selecciona el proceso que deseas realizar.",
@@ -1044,1349 +1054,2073 @@ def case_selector(label: str = "Seleccione un caso") -> Optional[str]:
     return selected_id
 
 
+
 # =========================================================
-# PANEL
+# CONSULTA, HISTÓRICOS Y EXPORTACIONES
+# =========================================================
+
+TABLE_EXPORT_ORDER = [
+    "casos",
+    "seguimientos",
+    "comunicaciones",
+    "historial_estados",
+    "revisiones",
+    "documentos",
+    "auditoria",
+    "ubicaciones_survey123",
+    "importaciones_survey123",
+]
+
+
+def sql_table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?",
+        (table_name,),
+    ).fetchone() is not None
+
+
+def read_table_df(table_name: str) -> pd.DataFrame:
+    with db_connection() as conn:
+        if not sql_table_exists(conn, table_name):
+            return pd.DataFrame()
+        return pd.read_sql_query(f'SELECT * FROM "{table_name}"', conn)
+
+
+def read_query_df(query: str, params: tuple = ()) -> pd.DataFrame:
+    with db_connection() as conn:
+        return pd.read_sql_query(query, conn, params=params)
+
+
+def get_case_options() -> Dict[str, str]:
+    with db_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT id_caso, codigo_caso, clasificacion, estado_actual,
+                   COALESCE(nombre_solicitante, '') AS nombre_solicitante
+            FROM casos
+            ORDER BY fecha_registro DESC, codigo_caso DESC
+            """
+        ).fetchall()
+    return {
+        (
+            f"{row['codigo_caso']} · {row['clasificacion']} · "
+            f"{row['estado_actual']} · {row['nombre_solicitante'] or 'Anónimo/Sin nombre'}"
+        ): row["id_caso"]
+        for row in rows
+    }
+
+
+def select_case_id(label: str, key: str) -> Optional[str]:
+    options = get_case_options()
+    if not options:
+        st.warning("No hay casos registrados.")
+        return None
+    selected = st.selectbox(label, list(options.keys()), key=key)
+    case_id = options[selected]
+    with db_connection() as conn:
+        case = get_case(conn, case_id)
+    if case:
+        mostrar_resumen_caso(case)
+    return case_id
+
+
+def render_work_mode(options: List[str], key: str) -> str:
+    return st.radio(
+        "Sección de trabajo",
+        options,
+        horizontal=True,
+        key=key,
+        help="Cambia entre el histórico, la captura de nuevos registros y la edición.",
+    )
+
+
+def filter_dataframe_ui(df: pd.DataFrame, key: str) -> pd.DataFrame:
+    if df.empty:
+        return df
+    c1, c2 = st.columns([2, 1])
+    search = c1.text_input(
+        "Buscar en la tabla",
+        key=f"search_{key}",
+        placeholder="Código, nombre, estado, responsable, descripción...",
+    )
+    if search:
+        mask = df.astype(str).apply(
+            lambda col: col.str.contains(search, case=False, na=False)
+        ).any(axis=1)
+        df = df[mask]
+
+    if "estado_actual" in df.columns:
+        states = sorted(df["estado_actual"].dropna().astype(str).unique().tolist())
+        selected_states = c2.multiselect(
+            "Filtrar por estado",
+            states,
+            key=f"states_{key}",
+        )
+        if selected_states:
+            df = df[df["estado_actual"].astype(str).isin(selected_states)]
+    elif "estado_revision" in df.columns:
+        states = sorted(df["estado_revision"].dropna().astype(str).unique().tolist())
+        selected_states = c2.multiselect(
+            "Filtrar por estado",
+            states,
+            key=f"states_{key}",
+        )
+        if selected_states:
+            df = df[df["estado_revision"].astype(str).isin(selected_states)]
+    return df
+
+
+def dataframe_selection(
+    df: pd.DataFrame,
+    key: str,
+    id_column: str,
+    columns: Optional[List[str]] = None,
+) -> List[str]:
+    if df.empty:
+        st.info("No hay registros para mostrar.")
+        return []
+
+    visible_columns = [col for col in (columns or list(df.columns)) if col in df.columns]
+    view = df[visible_columns].copy()
+
+    selected_ids: List[str] = []
+    try:
+        event = st.dataframe(
+            view,
+            use_container_width=True,
+            hide_index=True,
+            key=f"grid_{key}",
+            on_select="rerun",
+            selection_mode="multi-row",
+        )
+        rows = event.selection.rows
+        selected_ids = [
+            str(df.iloc[position][id_column])
+            for position in rows
+            if position < len(df)
+        ]
+    except (TypeError, AttributeError):
+        st.dataframe(view, use_container_width=True, hide_index=True)
+        labels = {
+            f"{row[id_column]} · {row.get('codigo_caso', row.get('tipo_actuacion', 'Registro'))}": str(row[id_column])
+            for _, row in df.iterrows()
+        }
+        selected_labels = st.multiselect(
+            "Seleccionar registros",
+            list(labels.keys()),
+            key=f"fallback_select_{key}",
+        )
+        selected_ids = [labels[label] for label in selected_labels]
+
+    st.caption(
+        f"Registros visibles: {len(df)} · Seleccionados: {len(selected_ids)}"
+    )
+    return selected_ids
+
+
+def export_all_tables_excel() -> bytes:
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        with db_connection() as conn:
+            for table_name in TABLE_EXPORT_ORDER:
+                if not sql_table_exists(conn, table_name):
+                    continue
+                df = pd.read_sql_query(f'SELECT * FROM "{table_name}"', conn)
+                sheet_name = table_name[:31]
+                df.to_excel(writer, sheet_name=sheet_name, index=False)
+    output.seek(0)
+    return output.getvalue()
+
+
+def export_dataframe_excel(df: pd.DataFrame, sheet_name: str) -> bytes:
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name=sheet_name[:31], index=False)
+    output.seek(0)
+    return output.getvalue()
+
+
+def format_date_es(value: Any, include_time: bool = False) -> str:
+    if value in (None, ""):
+        return ""
+    parsed = pd.to_datetime(value, errors="coerce")
+    if pd.isna(parsed):
+        return str(value)
+    if include_time:
+        return parsed.strftime("%d/%b/%Y %I:%M %p")
+    return parsed.strftime("%d/%b/%Y")
+
+
+def get_case_bundle(case_id: str):
+    with db_connection() as conn:
+        case = conn.execute(
+            "SELECT * FROM casos WHERE id_caso = ?",
+            (case_id,),
+        ).fetchone()
+        followups = conn.execute(
+            """
+            SELECT * FROM seguimientos
+            WHERE id_caso = ?
+            ORDER BY fecha_actuacion, fecha_registro_sistema
+            """,
+            (case_id,),
+        ).fetchall()
+    return case, followups
+
+
+def add_word_field(table, row_index: int, values: List[str]) -> None:
+    cells = table.rows[row_index].cells
+    for idx, value in enumerate(values):
+        if idx < len(cells):
+            cells[idx].text = str(value or "")
+
+
+def build_cases_word(case_ids: List[str]) -> bytes:
+    document = Document()
+    section = document.sections[0]
+    section.top_margin = Cm(1.3)
+    section.bottom_margin = Cm(1.3)
+    section.left_margin = Cm(1.4)
+    section.right_margin = Cm(1.4)
+
+    for case_position, case_id in enumerate(case_ids):
+        case, followups = get_case_bundle(case_id)
+        if not case:
+            continue
+
+        heading = document.add_paragraph()
+        heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = heading.add_run("Autoridad del Canal de Panamá\n")
+        run.bold = True
+        run.font.size = Pt(12)
+        run = heading.add_run("Oficina de Proyectos Hídricos\n")
+        run.bold = True
+        run = heading.add_run("Formulario de consultas y quejas de Programa Hídrico")
+        run.bold = True
+
+        header = document.add_table(rows=1, cols=2)
+        header.style = "Table Grid"
+        add_word_field(
+            header,
+            0,
+            [
+                f"Caso: {case['codigo_caso']}",
+                (
+                    "Fecha de registro: "
+                    f"{format_date_es(case['fecha_registro'])} "
+                    f"{case['hora_registro'] or case['hora_recepcion'] or ''}"
+                ),
+            ],
+        )
+
+        document.add_heading("Información del Contacto", level=2)
+        table = document.add_table(rows=2, cols=3)
+        table.style = "Table Grid"
+        add_word_field(table, 0, [
+            f"Nombre: {case['nombre_solicitante'] or 'Anónimo'}",
+            f"Sexo: {case['sexo'] or ''}",
+            f"Cédula del contacto: {case['cedula'] or ''}",
+        ])
+        add_word_field(table, 1, [
+            f"Teléfono: {case['telefono'] or ''}",
+            f"Celular: {case['celular'] or ''}",
+            f"Correo electrónico: {case['correo'] or ''}",
+        ])
+
+        document.add_heading("Ubicación del Contacto", level=2)
+        table = document.add_table(rows=2, cols=4)
+        table.style = "Table Grid"
+        add_word_field(table, 0, [
+            f"Provincia: {case['provincia_contacto'] or ''}",
+            f"Distrito: {case['distrito_contacto'] or ''}",
+            f"Corregimiento: {case['corregimiento_contacto'] or ''}",
+            f"Comunidad: {case['lugar_poblado_contacto'] or ''}",
+        ])
+        merged = table.cell(1, 0).merge(table.cell(1, 3))
+        merged.text = f"Dirección: {case['direccion_contacto'] or ''}"
+
+        title = f"Datos de la {case['clasificacion']}"
+        document.add_heading(title, level=2)
+        details = [
+            ("Descripción", case["descripcion"]),
+            ("Nombre del responsable del origen", case["responsable_origen"]),
+            ("¿Ha sido presentada anteriormente?", "Sí" if case["presentado_anteriormente"] else "No"),
+            ("Tema", case["tema"]),
+            ("Medio por el que se recibió", case["medio_recepcion"]),
+            ("Otro medio de recepción", case["otro_medio_recepcion"]),
+            ("Recepción por", case["recibido_por"]),
+            ("Tipo de queja", case["tipo_queja"]),
+            ("Respuesta inmediata", case["respuesta_inmediata"]),
+            ("Propuesta de solución", case["propuesta_solucion"]),
+        ]
+        table = document.add_table(rows=len(details), cols=2)
+        table.style = "Table Grid"
+        for idx, (label, value) in enumerate(details):
+            add_word_field(table, idx, [label, value])
+
+        document.add_heading(f"Ubicación de la {case['clasificacion']}", level=2)
+        table = document.add_table(rows=2, cols=4)
+        table.style = "Table Grid"
+        add_word_field(table, 0, [
+            f"Provincia: {case['provincia_hecho'] or ''}",
+            f"Distrito: {case['distrito_hecho'] or ''}",
+            f"Corregimiento: {case['corregimiento_hecho'] or ''}",
+            f"Comunidad: {case['lugar_poblado_hecho'] or ''}",
+        ])
+        merged = table.cell(1, 0).merge(table.cell(1, 3))
+        merged.text = f"Dirección: {case['direccion_hecho'] or ''}"
+
+        document.add_heading(f"Seguimiento a la {case['clasificacion'].lower()}", level=2)
+        table = document.add_table(rows=1, cols=2)
+        table.style = "Table Grid"
+        add_word_field(table, 0, ["Fecha", "Descripción"])
+        for followup in followups:
+            cells = table.add_row().cells
+            cells[0].text = format_date_es(followup["fecha_actuacion"])
+            cells[1].text = followup["descripcion"] or ""
+
+        document.add_heading(f"Cierre de la {case['clasificacion'].lower()}", level=2)
+        closing = [
+            ("Respuesta brindada", case["respuesta_final"]),
+            ("¿Acepta la respuesta?", case["acepta_respuesta"]),
+            ("Nivel de satisfacción", case["nivel_satisfaccion"]),
+            ("Comentarios finales", case["comentarios_finales"]),
+            ("Firma", "____________________________"),
+            ("Fecha", format_date_es(case["fecha_cierre"])),
+        ]
+        table = document.add_table(rows=len(closing), cols=2)
+        table.style = "Table Grid"
+        for idx, (label, value) in enumerate(closing):
+            add_word_field(table, idx, [label, value])
+
+        if case_position < len(case_ids) - 1:
+            document.add_page_break()
+
+    output = BytesIO()
+    document.save(output)
+    output.seek(0)
+    return output.getvalue()
+
+
+def pdf_paragraph(value: Any, style):
+    return Paragraph(escape(str(value or "")), style)
+
+
+def build_cases_pdf(case_ids: List[str]) -> bytes:
+    output = BytesIO()
+    doc = SimpleDocTemplate(
+        output,
+        pagesize=A4,
+        leftMargin=12 * mm,
+        rightMargin=12 * mm,
+        topMargin=10 * mm,
+        bottomMargin=10 * mm,
+    )
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "case_title",
+        parent=styles["Heading1"],
+        fontName="Helvetica-Bold",
+        fontSize=11,
+        leading=14,
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#073B5A"),
+    )
+    section_style = ParagraphStyle(
+        "case_section",
+        parent=styles["Heading2"],
+        fontName="Helvetica-Bold",
+        fontSize=9.5,
+        leading=12,
+        textColor=colors.HexColor("#073B5A"),
+        spaceBefore=5,
+        spaceAfter=3,
+    )
+    cell_style = ParagraphStyle(
+        "case_cell",
+        parent=styles["Normal"],
+        fontSize=7.6,
+        leading=9.3,
+        alignment=TA_LEFT,
+    )
+    label_style = ParagraphStyle(
+        "case_label",
+        parent=cell_style,
+        fontName="Helvetica-Bold",
+    )
+
+    story = []
+    for position, case_id in enumerate(case_ids):
+        case, followups = get_case_bundle(case_id)
+        if not case:
+            continue
+
+        story.append(pdf_paragraph(
+            "Autoridad del Canal de Panamá<br/>"
+            "Oficina de Proyectos Hídricos<br/>"
+            "Formulario de consultas y quejas de Programa Hídrico",
+            title_style,
+        ))
+        story.append(Spacer(1, 5))
+
+        header_data = [[
+            pdf_paragraph(f"<b>Caso:</b> {case['codigo_caso']}", cell_style),
+            pdf_paragraph(
+                f"<b>Fecha de registro:</b> {format_date_es(case['fecha_registro'])} "
+                f"{case['hora_registro'] or case['hora_recepcion'] or ''}",
+                cell_style,
+            ),
+        ]]
+        header = Table(header_data, colWidths=[9 * cm, 9 * cm])
+        header.setStyle(TableStyle([
+            ("BOX", (0, 0), (-1, -1), .5, colors.HexColor("#D6DEE6")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F4F7F9")),
+            ("PADDING", (0, 0), (-1, -1), 5),
+        ]))
+        story.append(header)
+
+        def section_table(title, pairs, widths=(5 * cm, 13 * cm)):
+            story.append(pdf_paragraph(title, section_style))
+            rows = []
+            for label, value in pairs:
+                rows.append([
+                    pdf_paragraph(label, label_style),
+                    pdf_paragraph(value, cell_style),
+                ])
+            table = Table(rows, colWidths=list(widths))
+            table.setStyle(TableStyle([
+                ("BOX", (0, 0), (-1, -1), .4, colors.HexColor("#D6DEE6")),
+                ("INNERGRID", (0, 0), (-1, -1), .25, colors.HexColor("#E5EAF0")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("PADDING", (0, 0), (-1, -1), 4),
+            ]))
+            story.append(table)
+
+        section_table("Información del Contacto", [
+            ("Nombre", case["nombre_solicitante"] or "Anónimo"),
+            ("Sexo", case["sexo"]),
+            ("Cédula", case["cedula"]),
+            ("Teléfono / Celular", f"{case['telefono'] or ''} / {case['celular'] or ''}"),
+            ("Correo electrónico", case["correo"]),
+        ])
+        section_table("Ubicación del Contacto", [
+            ("Provincia", case["provincia_contacto"]),
+            ("Distrito", case["distrito_contacto"]),
+            ("Corregimiento", case["corregimiento_contacto"]),
+            ("Comunidad", case["lugar_poblado_contacto"]),
+            ("Dirección", case["direccion_contacto"]),
+        ])
+        section_table(f"Datos de la {case['clasificacion']}", [
+            ("Descripción", case["descripcion"]),
+            ("Responsable del origen", case["responsable_origen"]),
+            ("Presentada anteriormente", "Sí" if case["presentado_anteriormente"] else "No"),
+            ("Tema", case["tema"]),
+            ("Medio de recepción", case["medio_recepcion"]),
+            ("Otro medio", case["otro_medio_recepcion"]),
+            ("Recepción por", case["recibido_por"]),
+            ("Tipo de queja", case["tipo_queja"]),
+            ("Respuesta inmediata", case["respuesta_inmediata"]),
+            ("Propuesta de solución", case["propuesta_solucion"]),
+        ])
+        section_table(f"Ubicación de la {case['clasificacion']}", [
+            ("Provincia", case["provincia_hecho"]),
+            ("Distrito", case["distrito_hecho"]),
+            ("Corregimiento", case["corregimiento_hecho"]),
+            ("Comunidad", case["lugar_poblado_hecho"]),
+            ("Dirección", case["direccion_hecho"]),
+        ])
+
+        story.append(pdf_paragraph(f"Seguimiento a la {case['clasificacion'].lower()}", section_style))
+        followup_rows = [[
+            pdf_paragraph("Fecha", label_style),
+            pdf_paragraph("Descripción", label_style),
+        ]]
+        for item in followups:
+            followup_rows.append([
+                pdf_paragraph(format_date_es(item["fecha_actuacion"]), cell_style),
+                pdf_paragraph(item["descripcion"], cell_style),
+            ])
+        if len(followup_rows) == 1:
+            followup_rows.append([
+                pdf_paragraph("", cell_style),
+                pdf_paragraph("Sin seguimientos registrados.", cell_style),
+            ])
+        table = Table(followup_rows, colWidths=[3 * cm, 15 * cm], repeatRows=1)
+        table.setStyle(TableStyle([
+            ("BOX", (0, 0), (-1, -1), .4, colors.HexColor("#D6DEE6")),
+            ("INNERGRID", (0, 0), (-1, -1), .25, colors.HexColor("#E5EAF0")),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F4F7F9")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("PADDING", (0, 0), (-1, -1), 4),
+        ]))
+        story.append(table)
+
+        section_table(f"Cierre de la {case['clasificacion'].lower()}", [
+            ("Respuesta brindada", case["respuesta_final"]),
+            ("Acepta la respuesta", case["acepta_respuesta"]),
+            ("Satisfacción", case["nivel_satisfaccion"]),
+            ("Comentarios finales", case["comentarios_finales"]),
+            ("Firma", "____________________________"),
+            ("Fecha", format_date_es(case["fecha_cierre"])),
+        ])
+
+        if position < len(case_ids) - 1:
+            story.append(PageBreak())
+
+    doc.build(story)
+    output.seek(0)
+    return output.getvalue()
+
+
+def render_export_buttons(
+    df: pd.DataFrame,
+    selected_case_ids: Optional[List[str]],
+    key: str,
+    sheet_name: str,
+) -> None:
+    st.markdown("#### Descargas")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.download_button(
+        "Excel de tabla visible",
+        data=export_dataframe_excel(df, sheet_name),
+        file_name=f"{sheet_name.lower().replace(' ', '_')}_visible.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+        key=f"excel_visible_{key}",
+    )
+    c2.download_button(
+        "Excel de todas las tablas",
+        data=export_all_tables_excel(),
+        file_name="modulo_consultas_quejas_todas_las_tablas.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+        key=f"excel_all_{key}",
+    )
+
+    case_ids = selected_case_ids or []
+    c3.download_button(
+        "Word de formularios",
+        data=build_cases_word(case_ids) if case_ids else b"",
+        file_name="formularios_consultas_quejas.docx",
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        disabled=not bool(case_ids),
+        use_container_width=True,
+        key=f"word_cases_{key}",
+        help="Selecciona uno o varios casos en la tabla.",
+    )
+    c4.download_button(
+        "PDF de formularios",
+        data=build_cases_pdf(case_ids) if case_ids else b"",
+        file_name="formularios_consultas_quejas.pdf",
+        mime="application/pdf",
+        disabled=not bool(case_ids),
+        use_container_width=True,
+        key=f"pdf_cases_{key}",
+        help="Selecciona uno o varios casos en la tabla.",
+    )
+
+
+def cases_history_df() -> pd.DataFrame:
+    return read_query_df(
+        """
+        SELECT
+            id_caso,
+            codigo_caso,
+            fecha_registro,
+            hora_registro,
+            clasificacion,
+            nombre_solicitante,
+            tema,
+            medio_recepcion,
+            provincia_hecho,
+            distrito_hecho,
+            lugar_poblado_hecho,
+            estado_actual,
+            responsable_principal,
+            fecha_cierre,
+            fecha_ultima_actualizacion
+        FROM casos
+        ORDER BY fecha_registro DESC, codigo_caso DESC
+        """
+    )
+
+
+def followups_history_df() -> pd.DataFrame:
+    return read_query_df(
+        """
+        SELECT
+            s.id_seguimiento,
+            c.id_caso,
+            c.codigo_caso,
+            c.clasificacion,
+            s.fecha_actuacion,
+            s.tipo_actuacion,
+            s.descripcion,
+            s.resultado,
+            s.responsable_ejecutor,
+            s.estado_anterior,
+            s.estado_posterior,
+            s.proxima_accion,
+            s.fecha_compromiso,
+            s.estado_actividad,
+            s.usuario_registro,
+            s.fecha_registro_sistema
+        FROM seguimientos s
+        JOIN casos c ON c.id_caso = s.id_caso
+        ORDER BY s.fecha_actuacion DESC, s.fecha_registro_sistema DESC
+        """
+    )
+
+
+def communications_history_df() -> pd.DataFrame:
+    return read_query_df(
+        """
+        SELECT
+            m.id_comunicacion,
+            c.id_caso,
+            c.codigo_caso,
+            c.clasificacion,
+            m.tipo_comunicacion,
+            m.fecha,
+            m.medio,
+            m.destinatario,
+            m.realizada_por,
+            m.resultado_contacto,
+            m.descripcion,
+            m.es_acuse_recibo,
+            m.es_comunicacion_avance,
+            m.es_comunicacion_cierre,
+            m.fecha_registro_sistema
+        FROM comunicaciones m
+        JOIN casos c ON c.id_caso = m.id_caso
+        ORDER BY m.fecha DESC, m.fecha_registro_sistema DESC
+        """
+    )
+
+
+def approvals_history_df() -> pd.DataFrame:
+    return read_query_df(
+        """
+        SELECT
+            id_caso,
+            codigo_caso,
+            clasificacion,
+            estado_actual,
+            responsable_principal,
+            recomendacion_cierre,
+            fecha_recomendacion_cierre,
+            recomendada_por,
+            decision_supervisor,
+            observacion_supervisor,
+            fecha_decision_supervisor,
+            respuesta_final,
+            acepta_respuesta,
+            nivel_satisfaccion,
+            fecha_cierre,
+            cerrado_por,
+            motivo_cierre
+        FROM casos
+        WHERE recomendacion_cierre IS NOT NULL
+           OR decision_supervisor IS NOT NULL
+           OR fecha_cierre IS NOT NULL
+        ORDER BY COALESCE(fecha_cierre, fecha_decision_supervisor, fecha_recomendacion_cierre) DESC
+        """
+    )
+
+
+def reviews_history_df() -> pd.DataFrame:
+    return read_query_df(
+        """
+        SELECT
+            r.id_revision,
+            c.id_caso,
+            c.codigo_caso,
+            c.clasificacion,
+            r.tipo_revision,
+            r.fecha_solicitud,
+            r.solicitada_por,
+            r.motivo,
+            r.revisor,
+            r.fecha_revision,
+            r.decision,
+            r.observaciones,
+            r.estado_revision
+        FROM revisiones r
+        JOIN casos c ON c.id_caso = r.id_caso
+        ORDER BY r.fecha_solicitud DESC
+        """
+    )
+
+
+def selected_case_ids_from_related(
+    df: pd.DataFrame,
+    selected_record_ids: List[str],
+    record_id_column: str,
+) -> List[str]:
+    if not selected_record_ids or df.empty:
+        return []
+    selected = df[df[record_id_column].astype(str).isin(selected_record_ids)]
+    if "id_caso" not in selected.columns:
+        return []
+    return selected["id_caso"].dropna().astype(str).unique().tolist()
+
+
+def case_form(defaults: Optional[sqlite3.Row] = None, form_key: str = "case_form"):
+    values = dict(defaults) if defaults else {}
+    with st.form(form_key):
+        st.markdown("#### Caso, fecha y hora de registro")
+        c1, c2, c3 = st.columns(3)
+        fecha_registro = c1.date_input(
+            "Fecha de registro",
+            value=date.fromisoformat(values["fecha_registro"]) if values.get("fecha_registro") else date.today(),
+        )
+        hora_registro = c2.time_input(
+            "Hora de registro",
+            value=(
+                datetime.strptime(values.get("hora_registro") or values.get("hora_recepcion"), "%H:%M").time()
+                if (values.get("hora_registro") or values.get("hora_recepcion"))
+                else datetime.now().time().replace(second=0, microsecond=0)
+            ),
+        )
+        clasificacion = c3.selectbox(
+            "Clasificación",
+            ["Consulta", "Queja"],
+            index=0 if values.get("clasificacion", "Consulta") == "Consulta" else 1,
+        )
+
+        st.markdown("#### Información del contacto")
+        c1, c2, c3 = st.columns(3)
+        tipo_identificacion = c1.selectbox(
+            "Condición del solicitante",
+            ["Identificado", "Anónimo"],
+            index=0 if values.get("tipo_identificacion_solicitante", "Identificado") == "Identificado" else 1,
+        )
+        nombre = c2.text_input("Nombre", value=values.get("nombre_solicitante") or "")
+        sexo_values = ["", "Femenino", "Masculino", "Otro", "No informado"]
+        sexo_current = values.get("sexo") or ""
+        sexo = c3.selectbox(
+            "Sexo",
+            sexo_values,
+            index=sexo_values.index(sexo_current) if sexo_current in sexo_values else 0,
+        )
+        c1, c2, c3 = st.columns(3)
+        cedula = c1.text_input("Cédula del contacto", value=values.get("cedula") or "")
+        telefono = c2.text_input("Teléfono", value=values.get("telefono") or "")
+        celular = c3.text_input("Celular", value=values.get("celular") or "")
+        correo = st.text_input("Correo electrónico", value=values.get("correo") or "")
+
+        st.markdown("#### Ubicación del contacto")
+        c1, c2, c3, c4 = st.columns(4)
+        provincia_contacto = c1.text_input("Provincia", value=values.get("provincia_contacto") or "")
+        distrito_contacto = c2.text_input("Distrito", value=values.get("distrito_contacto") or "")
+        corregimiento_contacto = c3.text_input("Corregimiento", value=values.get("corregimiento_contacto") or "")
+        comunidad_contacto = c4.text_input("Comunidad", value=values.get("lugar_poblado_contacto") or "")
+        direccion_contacto = st.text_area("Dirección", value=values.get("direccion_contacto") or "")
+
+        st.markdown(f"#### Datos de la {clasificacion}")
+        descripcion = st.text_area(
+            f"Descripción de la {clasificacion.lower()}",
+            value=values.get("descripcion") or "",
+            height=150,
+        )
+        responsable_origen = st.text_input(
+            f"Nombre del responsable del origen de la {clasificacion.lower()}",
+            value=values.get("responsable_origen") or "",
+        )
+        c1, c2 = st.columns(2)
+        presented = c1.checkbox(
+            "¿Ha sido presentada anteriormente?",
+            value=bool(values.get("presentado_anteriormente", 0)),
+        )
+        previous_reference = c2.text_input(
+            "Referencia del caso anterior",
+            value=values.get("referencia_caso_anterior") or "",
+            disabled=not presented,
+        )
+        c1, c2 = st.columns(2)
+        tema = c1.text_input(f"Tema de la {clasificacion.lower()}", value=values.get("tema") or "")
+        tipo_queja = c2.text_input(
+            "Tipo de queja",
+            value=values.get("tipo_queja") or "",
+            disabled=clasificacion != "Queja",
+        )
+        c1, c2, c3 = st.columns(3)
+        medio_values = RECEPTION_CHANNELS
+        medio_current = values.get("medio_recepcion") or RECEPTION_CHANNELS[0]
+        medio = c1.selectbox(
+            "Medio por el que se recibió",
+            medio_values,
+            index=medio_values.index(medio_current) if medio_current in medio_values else 0,
+        )
+        otro_medio = c2.text_input("Otro medio de recepción", value=values.get("otro_medio_recepcion") or "")
+        recibido_por = c3.text_input(
+            f"Recepción de la {clasificacion.lower()} por",
+            value=values.get("recibido_por") or st.session_state.current_user,
+        )
+        respuesta_inmediata = st.text_area(
+            f"Respuesta inmediata a la {clasificacion.lower()}",
+            value=values.get("respuesta_inmediata") or "",
+        )
+        propuesta = st.text_area(
+            f"Propuesta de solución a la {clasificacion.lower()}",
+            value=values.get("propuesta_solucion") or "",
+        )
+
+        st.markdown(f"#### Ubicación de la {clasificacion}")
+        c1, c2, c3, c4 = st.columns(4)
+        provincia_hecho = c1.text_input("Provincia", value=values.get("provincia_hecho") or "", key=f"{form_key}_ph")
+        distrito_hecho = c2.text_input("Distrito", value=values.get("distrito_hecho") or "", key=f"{form_key}_dh")
+        corregimiento_hecho = c3.text_input("Corregimiento", value=values.get("corregimiento_hecho") or "", key=f"{form_key}_ch")
+        comunidad_hecho = c4.text_input("Comunidad", value=values.get("lugar_poblado_hecho") or "", key=f"{form_key}_lh")
+        direccion_hecho = st.text_area(
+            "Dirección",
+            value=values.get("direccion_hecho") or "",
+            key=f"{form_key}_dirh",
+        )
+        files = st.file_uploader(
+            "Evidencias iniciales",
+            accept_multiple_files=True,
+            key=f"{form_key}_files",
+        )
+        submitted = st.form_submit_button(
+            "Guardar caso",
+            type="primary",
+            use_container_width=True,
+        )
+
+    payload = {
+        "fecha_registro": fecha_registro.isoformat(),
+        "hora_registro": hora_registro.isoformat(timespec="minutes"),
+        "fecha_recepcion": fecha_registro.isoformat(),
+        "hora_recepcion": hora_registro.isoformat(timespec="minutes"),
+        "clasificacion": clasificacion,
+        "tipo_identificacion_solicitante": tipo_identificacion,
+        "confidencial": 0,
+        "nombre_solicitante": "" if tipo_identificacion == "Anónimo" else normalize_text(nombre),
+        "sexo": sexo,
+        "cedula": "" if tipo_identificacion == "Anónimo" else normalize_text(cedula),
+        "telefono": "" if tipo_identificacion == "Anónimo" else normalize_text(telefono),
+        "celular": "" if tipo_identificacion == "Anónimo" else normalize_text(celular),
+        "correo": "" if tipo_identificacion == "Anónimo" else normalize_text(correo),
+        "provincia_contacto": provincia_contacto,
+        "distrito_contacto": distrito_contacto,
+        "corregimiento_contacto": corregimiento_contacto,
+        "lugar_poblado_contacto": comunidad_contacto,
+        "direccion_contacto": direccion_contacto,
+        "responsable_origen": responsable_origen,
+        "descripcion": descripcion,
+        "presentado_anteriormente": int(presented),
+        "referencia_caso_anterior": previous_reference if presented else "",
+        "tema": tema,
+        "tipo_queja": tipo_queja if clasificacion == "Queja" else "",
+        "medio_recepcion": medio,
+        "otro_medio_recepcion": otro_medio,
+        "recibido_por": recibido_por,
+        "respuesta_inmediata": respuesta_inmediata,
+        "propuesta_solucion": propuesta,
+        "provincia_hecho": provincia_hecho,
+        "distrito_hecho": distrito_hecho,
+        "corregimiento_hecho": corregimiento_hecho,
+        "lugar_poblado_hecho": comunidad_hecho,
+        "direccion_hecho": direccion_hecho,
+    }
+    return submitted, payload, files
+
+
+def save_new_case(payload: Dict[str, Any], files) -> str:
+    required_text(payload["descripcion"], "Descripción")
+    required_text(payload["recibido_por"], "Recepción por")
+    if payload["tipo_identificacion_solicitante"] == "Identificado":
+        required_text(payload["nombre_solicitante"], "Nombre")
+
+    with db_connection() as conn:
+        case_id = generate_id("CASO")
+        year = int(payload["fecha_registro"][:4])
+        case_code = generate_case_code(conn, year)
+        now = now_iso()
+        data = {
+            "id_caso": case_id,
+            "codigo_caso": case_code,
+            **payload,
+            "registrado_por": st.session_state.current_user,
+            "estado_actual": "Pendiente de asignación",
+            "situacion_atencion": "",
+            "dentro_alcance": 1,
+            "motivo_fuera_alcance": "",
+            "fecha_creacion": now,
+            "fecha_ultima_actualizacion": now,
+            "actualizado_por": st.session_state.current_user,
+        }
+        fields = ", ".join(data.keys())
+        placeholders = ", ".join(["?"] * len(data))
+        conn.execute(
+            f"INSERT INTO casos ({fields}) VALUES ({placeholders})",
+            tuple(data.values()),
+        )
+        register_state_change(
+            conn,
+            case_id,
+            None,
+            "Pendiente de asignación",
+            st.session_state.current_user,
+            "Registro inicial del caso.",
+        )
+        audit_change(
+            conn,
+            case_id,
+            "CREACIÓN DE CASO",
+            st.session_state.current_user,
+            new_data=data,
+            details="Creación desde el formulario oficial.",
+        )
+
+    save_uploaded_files(
+        case_id,
+        files,
+        "Evidencia inicial",
+        st.session_state.current_user,
+    )
+    return case_code
+
+
+def update_existing_case(case_id: str, payload: Dict[str, Any], files) -> None:
+    required_text(payload["descripcion"], "Descripción")
+    required_text(payload["recibido_por"], "Recepción por")
+    with db_connection() as conn:
+        update_case_fields(
+            conn,
+            case_id,
+            payload,
+            st.session_state.current_user,
+            "EDICIÓN DE FICHA DE REGISTRO",
+            "Actualización de la ficha oficial del caso.",
+        )
+    save_uploaded_files(
+        case_id,
+        files,
+        "Evidencia adicional del registro",
+        st.session_state.current_user,
+    )
+
+
+def render_cases_history():
+    df = filter_dataframe_ui(cases_history_df(), "cases")
+    columns = [
+        "codigo_caso", "fecha_registro", "hora_registro", "clasificacion",
+        "nombre_solicitante", "tema", "estado_actual", "responsable_principal",
+        "provincia_hecho", "distrito_hecho", "lugar_poblado_hecho", "fecha_cierre",
+    ]
+    selected = dataframe_selection(df, "cases", "id_caso", columns)
+    render_export_buttons(df, selected, "cases", "Casos")
+
+
+def render_followups_history():
+    df = filter_dataframe_ui(followups_history_df(), "followups")
+    columns = [
+        "codigo_caso", "fecha_actuacion", "tipo_actuacion", "descripcion",
+        "resultado", "responsable_ejecutor", "estado_anterior",
+        "estado_posterior", "proxima_accion", "fecha_compromiso",
+        "estado_actividad",
+    ]
+    selected_records = dataframe_selection(
+        df, "followups", "id_seguimiento", columns
+    )
+    case_ids = selected_case_ids_from_related(
+        df, selected_records, "id_seguimiento"
+    )
+    render_export_buttons(df, case_ids, "followups", "Seguimientos")
+
+
+def render_communications_history():
+    df = filter_dataframe_ui(communications_history_df(), "communications")
+    columns = [
+        "codigo_caso", "tipo_comunicacion", "fecha", "medio",
+        "destinatario", "realizada_por", "resultado_contacto", "descripcion",
+    ]
+    selected_records = dataframe_selection(
+        df, "communications", "id_comunicacion", columns
+    )
+    case_ids = selected_case_ids_from_related(
+        df, selected_records, "id_comunicacion"
+    )
+    render_export_buttons(df, case_ids, "communications", "Comunicaciones")
+
+
+def render_approvals_history():
+    df = filter_dataframe_ui(approvals_history_df(), "approvals")
+    columns = [
+        "codigo_caso", "clasificacion", "estado_actual",
+        "responsable_principal", "fecha_recomendacion_cierre",
+        "recomendada_por", "decision_supervisor",
+        "fecha_decision_supervisor", "acepta_respuesta",
+        "nivel_satisfaccion", "fecha_cierre", "cerrado_por",
+    ]
+    selected = dataframe_selection(df, "approvals", "id_caso", columns)
+    render_export_buttons(df, selected, "approvals", "Aprobaciones_cierres")
+
+
+def render_reviews_history():
+    df = filter_dataframe_ui(reviews_history_df(), "reviews")
+    columns = [
+        "codigo_caso", "clasificacion", "tipo_revision",
+        "fecha_solicitud", "solicitada_por", "motivo",
+        "revisor", "fecha_revision", "decision", "estado_revision",
+    ]
+    selected_records = dataframe_selection(df, "reviews", "id_revision", columns)
+    case_ids = selected_case_ids_from_related(df, selected_records, "id_revision")
+    render_export_buttons(df, case_ids, "reviews", "Revisiones")
+
+
+def render_followup_form(edit_id: Optional[str] = None):
+    existing = None
+    if edit_id:
+        with db_connection() as conn:
+            existing = conn.execute(
+                "SELECT * FROM seguimientos WHERE id_seguimiento = ?",
+                (edit_id,),
+            ).fetchone()
+
+    case_id = existing["id_caso"] if existing else select_case_id(
+        "Caso asociado", f"followup_case_{edit_id or 'new'}"
+    )
+    if not case_id:
+        return
+
+    with db_connection() as conn:
+        case = get_case(conn, case_id)
+    values = dict(existing) if existing else {}
+
+    with st.form(f"followup_form_{edit_id or 'new'}"):
+        c1, c2 = st.columns(2)
+        action_date = c1.date_input(
+            "Fecha de la actuación",
+            value=date.fromisoformat(values["fecha_actuacion"]) if values.get("fecha_actuacion") else date.today(),
+        )
+        action_type_values = FOLLOWUP_TYPES
+        action_type_current = values.get("tipo_actuacion") or FOLLOWUP_TYPES[0]
+        action_type = c2.selectbox(
+            "Tipo de actuación",
+            action_type_values,
+            index=action_type_values.index(action_type_current) if action_type_current in action_type_values else 0,
+        )
+        executor = st.text_input(
+            "Responsable ejecutor",
+            value=values.get("responsable_ejecutor") or case["responsable_principal"] or "",
+        )
+        description = st.text_area(
+            "Actividad realizada",
+            value=values.get("descripcion") or "",
+            height=130,
+        )
+        result = st.text_area("Resultado obtenido", value=values.get("resultado") or "")
+        c1, c2 = st.columns(2)
+        state_current = values.get("estado_posterior") or case["estado_actual"]
+        posterior_state = c1.selectbox(
+            "Estado posterior",
+            CASE_STATES,
+            index=CASE_STATES.index(state_current) if state_current in CASE_STATES else 0,
+        )
+        activity_states = ["Pendiente", "En proceso", "Completada", "Cancelada"]
+        activity_current = values.get("estado_actividad") or "Pendiente"
+        activity_status = c2.selectbox(
+            "Estado de la actividad",
+            activity_states,
+            index=activity_states.index(activity_current) if activity_current in activity_states else 0,
+        )
+        next_action = st.text_area("Próxima acción", value=values.get("proxima_accion") or "")
+        commitment_date = st.date_input(
+            "Fecha compromiso",
+            value=date.fromisoformat(values["fecha_compromiso"]) if values.get("fecha_compromiso") else None,
+        )
+        visible = st.checkbox(
+            "La actuación puede ser comunicada al solicitante",
+            value=bool(values.get("visible_solicitante", 0)),
+        )
+        files = st.file_uploader(
+            "Adjuntos del seguimiento",
+            accept_multiple_files=True,
+            key=f"followup_files_{edit_id or 'new'}",
+        )
+        save = st.form_submit_button(
+            "Guardar seguimiento",
+            type="primary",
+            use_container_width=True,
+        )
+
+    if save:
+        try:
+            required_text(executor, "Responsable ejecutor")
+            required_text(description, "Actividad realizada")
+            if action_date < date.fromisoformat(case["fecha_registro"]):
+                raise ValueError("La actuación no puede ser anterior al registro del caso.")
+            if commitment_date and commitment_date < action_date:
+                raise ValueError("La fecha compromiso no puede ser anterior a la actuación.")
+
+            values_to_save = {
+                "id_caso": case_id,
+                "fecha_actuacion": action_date.isoformat(),
+                "hora_actuacion": None,
+                "tipo_actuacion": action_type,
+                "descripcion": description,
+                "resultado": result,
+                "responsable_ejecutor": executor,
+                "usuario_registro": st.session_state.current_user,
+                "estado_anterior": values.get("estado_anterior") or case["estado_actual"],
+                "estado_posterior": posterior_state,
+                "proxima_accion": next_action,
+                "fecha_compromiso": commitment_date.isoformat() if commitment_date else None,
+                "estado_actividad": activity_status,
+                "visible_solicitante": int(visible),
+                "fecha_registro_sistema": values.get("fecha_registro_sistema") or now_iso(),
+            }
+
+            with db_connection() as conn:
+                if edit_id:
+                    existing_row = dict(existing)
+                    _update(
+                        conn,
+                        "seguimientos",
+                        "id_seguimiento",
+                        edit_id,
+                        values_to_save,
+                    )
+                    audit_change(
+                        conn,
+                        case_id,
+                        "EDICIÓN DE SEGUIMIENTO",
+                        st.session_state.current_user,
+                        previous_data=existing_row,
+                        new_data=values_to_save,
+                        details=description,
+                    )
+                else:
+                    followup_id = generate_id("SEG")
+                    columns = ["id_seguimiento"] + list(values_to_save.keys())
+                    insert_values = [followup_id] + list(values_to_save.values())
+                    conn.execute(
+                        f"""
+                        INSERT INTO seguimientos ({', '.join(columns)})
+                        VALUES ({', '.join(['?'] * len(columns))})
+                        """,
+                        insert_values,
+                    )
+                    audit_change(
+                        conn,
+                        case_id,
+                        "NUEVO SEGUIMIENTO",
+                        st.session_state.current_user,
+                        new_data=values_to_save,
+                        details=description,
+                    )
+
+                if posterior_state != case["estado_actual"]:
+                    update_case_fields(
+                        conn,
+                        case_id,
+                        {"estado_actual": posterior_state},
+                        st.session_state.current_user,
+                        "CAMBIO DE ESTADO POR SEGUIMIENTO",
+                        description,
+                    )
+                    register_state_change(
+                        conn,
+                        case_id,
+                        case["estado_actual"],
+                        posterior_state,
+                        st.session_state.current_user,
+                        description,
+                        edit_id,
+                    )
+
+            if files:
+                followup_link = edit_id
+                if not followup_link:
+                    with db_connection() as conn:
+                        followup_link = conn.execute(
+                            """
+                            SELECT id_seguimiento FROM seguimientos
+                            WHERE id_caso = ?
+                            ORDER BY fecha_registro_sistema DESC LIMIT 1
+                            """,
+                            (case_id,),
+                        ).fetchone()["id_seguimiento"]
+                case_dir = UPLOAD_DIR / case_id
+                case_dir.mkdir(exist_ok=True)
+                with db_connection() as conn:
+                    for uploaded in files:
+                        safe_name = Path(uploaded.name).name
+                        target = case_dir / f"{uuid.uuid4().hex[:8]}_{safe_name}"
+                        target.write_bytes(uploaded.getbuffer())
+                        conn.execute(
+                            """
+                            INSERT INTO documentos (
+                                id_documento, id_caso, id_seguimiento,
+                                tipo_documento, nombre_archivo,
+                                ruta_archivo, fecha_carga, cargado_por
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                generate_id("DOC"), case_id, followup_link,
+                                "Evidencia de seguimiento", safe_name,
+                                str(target), now_iso(), st.session_state.current_user,
+                            ),
+                        )
+            st.success("Seguimiento guardado correctamente.")
+            st.rerun()
+        except Exception as exc:
+            st.error(str(exc))
+
+
+def render_communication_form(edit_id: Optional[str] = None):
+    existing = None
+    if edit_id:
+        with db_connection() as conn:
+            existing = conn.execute(
+                "SELECT * FROM comunicaciones WHERE id_comunicacion = ?",
+                (edit_id,),
+            ).fetchone()
+
+    case_id = existing["id_caso"] if existing else select_case_id(
+        "Caso asociado", f"communication_case_{edit_id or 'new'}"
+    )
+    if not case_id:
+        return
+    with db_connection() as conn:
+        case = get_case(conn, case_id)
+    values = dict(existing) if existing else {}
+
+    with st.form(f"communication_form_{edit_id or 'new'}"):
+        c1, c2 = st.columns(2)
+        type_current = values.get("tipo_comunicacion") or COMMUNICATION_TYPES[0]
+        comm_type = c1.selectbox(
+            "Tipo de comunicación",
+            COMMUNICATION_TYPES,
+            index=COMMUNICATION_TYPES.index(type_current) if type_current in COMMUNICATION_TYPES else 0,
+        )
+        comm_date = c2.date_input(
+            "Fecha",
+            value=date.fromisoformat(values["fecha"]) if values.get("fecha") else date.today(),
+        )
+        c1, c2 = st.columns(2)
+        medium_current = values.get("medio") or RECEPTION_CHANNELS[0]
+        medium = c1.selectbox(
+            "Medio",
+            RECEPTION_CHANNELS,
+            index=RECEPTION_CHANNELS.index(medium_current) if medium_current in RECEPTION_CHANNELS else 0,
+        )
+        recipient = c2.text_input(
+            "Destinatario",
+            value=values.get("destinatario") or case["nombre_solicitante"] or "Solicitante",
+        )
+        c1, c2 = st.columns(2)
+        performed_by = c1.text_input(
+            "Realizada por",
+            value=values.get("realizada_por") or st.session_state.current_user,
+        )
+        result_values = [
+            "Recibido", "No localizado", "Sin respuesta",
+            "Datos de contacto no disponibles",
+            "Rechazó la comunicación", "Otro",
+        ]
+        result_current = values.get("resultado_contacto") or result_values[0]
+        result_contact = c2.selectbox(
+            "Resultado del contacto",
+            result_values,
+            index=result_values.index(result_current) if result_current in result_values else 0,
+        )
+        description = st.text_area(
+            "Descripción o contenido comunicado",
+            value=values.get("descripcion") or "",
+            height=130,
+        )
+        files = st.file_uploader(
+            "Evidencia de la comunicación",
+            accept_multiple_files=True,
+            key=f"communication_files_{edit_id or 'new'}",
+        )
+        save = st.form_submit_button(
+            "Guardar comunicación",
+            type="primary",
+            use_container_width=True,
+        )
+
+    if save:
+        try:
+            required_text(performed_by, "Realizada por")
+            required_text(description, "Descripción")
+            values_to_save = {
+                "id_caso": case_id,
+                "tipo_comunicacion": comm_type,
+                "fecha": comm_date.isoformat(),
+                "hora": None,
+                "medio": medium,
+                "destinatario": recipient,
+                "realizada_por": performed_by,
+                "resultado_contacto": result_contact,
+                "descripcion": description,
+                "es_acuse_recibo": int(comm_type == "Acuse de recibo"),
+                "es_comunicacion_avance": int(comm_type == "Comunicación de avance"),
+                "es_comunicacion_cierre": int(
+                    comm_type in ("Comunicación de resultado", "Comunicación de cierre")
+                ),
+                "fecha_registro_sistema": values.get("fecha_registro_sistema") or now_iso(),
+            }
+            with db_connection() as conn:
+                if edit_id:
+                    _update(
+                        conn,
+                        "comunicaciones",
+                        "id_comunicacion",
+                        edit_id,
+                        values_to_save,
+                    )
+                    audit_change(
+                        conn,
+                        case_id,
+                        "EDICIÓN DE COMUNICACIÓN",
+                        st.session_state.current_user,
+                        previous_data=dict(existing),
+                        new_data=values_to_save,
+                        details=description,
+                    )
+                    communication_id = edit_id
+                else:
+                    communication_id = generate_id("COM")
+                    columns = ["id_comunicacion"] + list(values_to_save.keys())
+                    conn.execute(
+                        f"""
+                        INSERT INTO comunicaciones ({', '.join(columns)})
+                        VALUES ({', '.join(['?'] * len(columns))})
+                        """,
+                        [communication_id] + list(values_to_save.values()),
+                    )
+                    audit_change(
+                        conn,
+                        case_id,
+                        "NUEVA COMUNICACIÓN",
+                        st.session_state.current_user,
+                        new_data=values_to_save,
+                        details=description,
+                    )
+
+                case_changes = {}
+                if values_to_save["es_acuse_recibo"]:
+                    case_changes.update({
+                        "fecha_acuse": comm_date.isoformat(),
+                        "medio_acuse": medium,
+                        "resultado_acuse": result_contact,
+                        "realizado_acuse_por": performed_by,
+                    })
+                if values_to_save["es_comunicacion_cierre"]:
+                    case_changes.update({
+                        "fecha_comunicacion_cierre": comm_date.isoformat(),
+                        "medio_comunicacion_cierre": medium,
+                        "comunicado_por": performed_by,
+                        "resultado_comunicacion_cierre": result_contact,
+                    })
+                if case_changes:
+                    update_case_fields(
+                        conn,
+                        case_id,
+                        case_changes,
+                        st.session_state.current_user,
+                        "ACTUALIZACIÓN POR COMUNICACIÓN",
+                        description,
+                    )
+
+            if files:
+                case_dir = UPLOAD_DIR / case_id
+                case_dir.mkdir(exist_ok=True)
+                with db_connection() as conn:
+                    for uploaded in files:
+                        safe_name = Path(uploaded.name).name
+                        target = case_dir / f"{uuid.uuid4().hex[:8]}_{safe_name}"
+                        target.write_bytes(uploaded.getbuffer())
+                        conn.execute(
+                            """
+                            INSERT INTO documentos (
+                                id_documento, id_caso, id_comunicacion,
+                                tipo_documento, nombre_archivo, ruta_archivo,
+                                fecha_carga, cargado_por
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                generate_id("DOC"), case_id, communication_id,
+                                "Evidencia de comunicación", safe_name,
+                                str(target), now_iso(), st.session_state.current_user,
+                            ),
+                        )
+            st.success("Comunicación guardada correctamente.")
+            st.rerun()
+        except Exception as exc:
+            st.error(str(exc))
+
+
+def render_approval_form(case_id: str):
+    with db_connection() as conn:
+        case = get_case(conn, case_id)
+    if not case:
+        return
+
+    tab1, tab2 = st.tabs(["Aprobación interna", "Cierre formal"])
+    with tab1:
+        with st.form(f"approval_form_{case_id}"):
+            recommendation = st.text_area(
+                "Recomendación de cierre",
+                value=case["recomendacion_cierre"] or "",
+                height=130,
+            )
+            c1, c2 = st.columns(2)
+            recommendation_date = c1.date_input(
+                "Fecha de recomendación",
+                value=date.fromisoformat(case["fecha_recomendacion_cierre"])
+                if case["fecha_recomendacion_cierre"] else date.today(),
+            )
+            recommended_by = c2.text_input(
+                "Recomendada por",
+                value=case["recomendada_por"] or case["responsable_principal"] or "",
+            )
+            decision_values = [
+                "", "Aprobada", "Devuelta para corrección",
+                "Actuación adicional", "Remitida a asesoría jurídica",
+            ]
+            c1, c2 = st.columns(2)
+            decision = c1.selectbox(
+                "Decisión del supervisor",
+                decision_values,
+                index=decision_values.index(case["decision_supervisor"])
+                if case["decision_supervisor"] in decision_values else 0,
+            )
+            decision_date = c2.date_input(
+                "Fecha de decisión",
+                value=date.fromisoformat(case["fecha_decision_supervisor"])
+                if case["fecha_decision_supervisor"] else date.today(),
+            )
+            supervisor_observation = st.text_area(
+                "Observaciones del supervisor",
+                value=case["observacion_supervisor"] or "",
+            )
+            save_approval = st.form_submit_button(
+                "Guardar aprobación",
+                type="primary",
+                use_container_width=True,
+            )
+
+        if save_approval:
+            try:
+                required_text(recommendation, "Recomendación")
+                required_text(recommended_by, "Recomendada por")
+                new_state = case["estado_actual"]
+                if decision == "Aprobada":
+                    new_state = "Cierre aprobado"
+                elif decision in ("Devuelta para corrección", "Actuación adicional"):
+                    new_state = "Devuelta para atención"
+                elif decision == "Remitida a asesoría jurídica":
+                    new_state = "En atención"
+
+                changes = {
+                    "recomendacion_cierre": recommendation,
+                    "fecha_recomendacion_cierre": recommendation_date.isoformat(),
+                    "recomendada_por": recommended_by,
+                    "decision_supervisor": decision,
+                    "observacion_supervisor": supervisor_observation,
+                    "fecha_decision_supervisor": decision_date.isoformat() if decision else None,
+                    "estado_actual": new_state,
+                    "situacion_atencion": "En asesoría jurídica"
+                    if decision == "Remitida a asesoría jurídica"
+                    else case["situacion_atencion"],
+                }
+                with db_connection() as conn:
+                    update_case_fields(
+                        conn, case_id, changes,
+                        st.session_state.current_user,
+                        "RECOMENDACIÓN Y DECISIÓN",
+                        supervisor_observation,
+                    )
+                    register_state_change(
+                        conn, case_id, case["estado_actual"], new_state,
+                        st.session_state.current_user,
+                        supervisor_observation or recommendation,
+                    )
+                st.success("Aprobación guardada.")
+                st.rerun()
+            except Exception as exc:
+                st.error(str(exc))
+
+    with tab2:
+        with st.form(f"closure_form_{case_id}"):
+            final_answer = st.text_area(
+                "Respuesta final brindada",
+                value=case["respuesta_final"] or "",
+                height=130,
+            )
+            c1, c2 = st.columns(2)
+            accepted_values = ["", "Sí", "No", "No fue posible contactar", "No aplica"]
+            accepted = c1.selectbox(
+                "¿Acepta la respuesta?",
+                accepted_values,
+                index=accepted_values.index(case["acepta_respuesta"])
+                if case["acepta_respuesta"] in accepted_values else 0,
+            )
+            satisfaction_values = [
+                "", "Nada satisfecho", "Poco satisfecho",
+                "Neutral / Indiferente", "Satisfecho",
+                "Muy satisfecho", "No aplica",
+            ]
+            satisfaction = c2.selectbox(
+                "Nivel de satisfacción",
+                satisfaction_values,
+                index=satisfaction_values.index(case["nivel_satisfaccion"])
+                if case["nivel_satisfaccion"] in satisfaction_values else 0,
+            )
+            dissatisfaction = st.text_area(
+                "Comentario cuando la satisfacción sea baja",
+                value=case["comentario_insatisfaccion"] or "",
+            )
+            final_comments = st.text_area(
+                "Comentarios finales",
+                value=case["comentarios_finales"] or "",
+            )
+            confidential_close = st.checkbox(
+                "La persona solicita que su identidad se mantenga confidencial",
+                value=bool(case["confidencial"]),
+            )
+            c1, c2, c3 = st.columns(3)
+            closure_date = c1.date_input(
+                "Fecha de cierre",
+                value=date.fromisoformat(case["fecha_cierre"])
+                if case["fecha_cierre"] else date.today(),
+            )
+            signed = c2.checkbox(
+                "Firma de conformidad",
+                value=bool(case["firma_conformidad"]),
+            )
+            refusal = c3.checkbox(
+                "Negativa a firmar",
+                value=bool(case["negativa_firma"]),
+            )
+            witness = st.text_input(
+                "Testigo de la comunicación",
+                value=case["testigo_cierre"] or "",
+            )
+            closure_reason = st.text_area(
+                "Motivo de cierre",
+                value=case["motivo_cierre"] or "",
+            )
+            files = st.file_uploader(
+                "Documento firmado o constancia de cierre",
+                accept_multiple_files=True,
+                key=f"closure_files_{case_id}",
+            )
+            save_close = st.form_submit_button(
+                "Guardar cierre",
+                type="primary",
+                use_container_width=True,
+            )
+
+        if save_close:
+            try:
+                required_text(final_answer, "Respuesta final")
+                required_text(closure_reason, "Motivo de cierre")
+                validate_case_dates(
+                    date.fromisoformat(case["fecha_recepcion"]),
+                    date.fromisoformat(case["fecha_registro"]),
+                    fecha_cierre=closure_date,
+                )
+                if case["decision_supervisor"] != "Aprobada":
+                    raise ValueError("El supervisor debe aprobar el cierre antes de cerrarlo.")
+                if case["clasificacion"] == "Queja":
+                    if not signed and not refusal:
+                        raise ValueError(
+                            "Registra firma de conformidad o negativa a firmar."
+                        )
+                    if refusal:
+                        required_text(witness, "Testigo")
+                if satisfaction in ("Nada satisfecho", "Poco satisfecho"):
+                    required_text(dissatisfaction, "Comentario de insatisfacción")
+
+                changes = {
+                    "respuesta_final": final_answer,
+                    "acepta_respuesta": accepted,
+                    "nivel_satisfaccion": satisfaction,
+                    "comentario_insatisfaccion": dissatisfaction,
+                    "comentarios_finales": final_comments,
+                    "confidencial": int(confidential_close),
+                    "fecha_cierre": closure_date.isoformat(),
+                    "cerrado_por": st.session_state.current_user,
+                    "motivo_cierre": closure_reason,
+                    "firma_conformidad": int(signed),
+                    "negativa_firma": int(refusal),
+                    "testigo_cierre": witness,
+                    "estado_actual": "Cerrada",
+                }
+                with db_connection() as conn:
+                    update_case_fields(
+                        conn, case_id, changes,
+                        st.session_state.current_user,
+                        "CIERRE FORMAL", closure_reason,
+                    )
+                    register_state_change(
+                        conn, case_id, case["estado_actual"], "Cerrada",
+                        st.session_state.current_user, closure_reason,
+                    )
+                save_uploaded_files(
+                    case_id, files, "Documento de cierre",
+                    st.session_state.current_user,
+                )
+                st.success("Caso cerrado correctamente.")
+                st.rerun()
+            except Exception as exc:
+                st.error(str(exc))
+
+
+def render_review_form(edit_id: Optional[str] = None):
+    existing = None
+    if edit_id:
+        with db_connection() as conn:
+            existing = conn.execute(
+                "SELECT * FROM revisiones WHERE id_revision = ?",
+                (edit_id,),
+            ).fetchone()
+
+    case_id = existing["id_caso"] if existing else select_case_id(
+        "Caso asociado", f"review_case_{edit_id or 'new'}"
+    )
+    if not case_id:
+        return
+    with db_connection() as conn:
+        case = get_case(conn, case_id)
+    values = dict(existing) if existing else {}
+
+    with st.form(f"review_form_{edit_id or 'new'}"):
+        c1, c2 = st.columns(2)
+        type_values = ["Revisión", "Apelación"]
+        type_current = values.get("tipo_revision") or "Revisión"
+        review_type = c1.selectbox(
+            "Tipo",
+            type_values,
+            index=type_values.index(type_current) if type_current in type_values else 0,
+        )
+        request_date = c2.date_input(
+            "Fecha de solicitud",
+            value=date.fromisoformat(values["fecha_solicitud"])
+            if values.get("fecha_solicitud") else date.today(),
+        )
+        requested_by = st.text_input(
+            "Solicitada por",
+            value=values.get("solicitada_por") or case["nombre_solicitante"] or "Solicitante",
+        )
+        reason = st.text_area("Motivo de la solicitud", value=values.get("motivo") or "")
+        st.caption(
+            "La revisión debe ser atendida por el Gerente de la Unidad de Gestión "
+            "Ambiental y Social o por una instancia superior independiente designada por la ACP."
+        )
+        c1, c2 = st.columns(2)
+        reviewer = c1.text_input("Persona revisora independiente", value=values.get("revisor") or "")
+        status_values = ["Pendiente", "En análisis", "Resuelta"]
+        status_current = values.get("estado_revision") or "Pendiente"
+        review_status = c2.selectbox(
+            "Estado de la revisión",
+            status_values,
+            index=status_values.index(status_current) if status_current in status_values else 0,
+        )
+        review_date = st.date_input(
+            "Fecha de revisión",
+            value=date.fromisoformat(values["fecha_revision"])
+            if values.get("fecha_revision") else None,
+        )
+        decision = st.text_area("Decisión", value=values.get("decision") or "")
+        observations = st.text_area("Observaciones", value=values.get("observaciones") or "")
+        save = st.form_submit_button(
+            "Guardar revisión",
+            type="primary",
+            use_container_width=True,
+        )
+
+    if save:
+        try:
+            required_text(reason, "Motivo")
+            values_to_save = {
+                "id_caso": case_id,
+                "tipo_revision": review_type,
+                "fecha_solicitud": request_date.isoformat(),
+                "solicitada_por": requested_by,
+                "motivo": reason,
+                "revisor": reviewer,
+                "fecha_revision": review_date.isoformat() if review_date else None,
+                "decision": decision,
+                "observaciones": observations,
+                "estado_revision": review_status,
+            }
+            with db_connection() as conn:
+                if edit_id:
+                    _update(
+                        conn, "revisiones", "id_revision", edit_id, values_to_save
+                    )
+                    audit_change(
+                        conn, case_id, "EDICIÓN DE REVISIÓN",
+                        st.session_state.current_user,
+                        previous_data=dict(existing),
+                        new_data=values_to_save,
+                        details=reason,
+                    )
+                else:
+                    review_id = generate_id("REV")
+                    columns = ["id_revision"] + list(values_to_save.keys())
+                    conn.execute(
+                        f"""
+                        INSERT INTO revisiones ({', '.join(columns)})
+                        VALUES ({', '.join(['?'] * len(columns))})
+                        """,
+                        [review_id] + list(values_to_save.values()),
+                    )
+                    audit_change(
+                        conn, case_id, "REGISTRO DE REVISIÓN",
+                        st.session_state.current_user,
+                        new_data=values_to_save,
+                        details=reason,
+                    )
+
+                if review_status != "Resuelta":
+                    previous_state = case["estado_actual"]
+                    update_case_fields(
+                        conn, case_id, {"estado_actual": "En revisión"},
+                        st.session_state.current_user,
+                        "APERTURA DE REVISIÓN", reason,
+                    )
+                    register_state_change(
+                        conn, case_id, previous_state, "En revisión",
+                        st.session_state.current_user, reason,
+                    )
+            st.success("Revisión guardada correctamente.")
+            st.rerun()
+        except Exception as exc:
+            st.error(str(exc))
+
+
+def render_traceability():
+    case_id = select_case_id("Seleccione el expediente", "trace_case")
+    if not case_id:
+        return
+
+    with db_connection() as conn:
+        case = get_case(conn, case_id)
+        states = rows_to_df(conn.execute(
+            """
+            SELECT fecha_cambio AS fecha, 'Cambio de estado' AS tipo,
+                   usuario_cambio AS responsable,
+                   COALESCE(estado_anterior, 'Inicio') || ' → ' || estado_nuevo AS evento,
+                   motivo AS detalle
+            FROM historial_estados WHERE id_caso = ?
+            """,
+            (case_id,),
+        ).fetchall())
+        followups = rows_to_df(conn.execute(
+            """
+            SELECT fecha_registro_sistema AS fecha, 'Seguimiento' AS tipo,
+                   responsable_ejecutor AS responsable,
+                   tipo_actuacion AS evento, descripcion AS detalle
+            FROM seguimientos WHERE id_caso = ?
+            """,
+            (case_id,),
+        ).fetchall())
+        communications = rows_to_df(conn.execute(
+            """
+            SELECT fecha_registro_sistema AS fecha, 'Comunicación' AS tipo,
+                   realizada_por AS responsable,
+                   tipo_comunicacion AS evento, descripcion AS detalle
+            FROM comunicaciones WHERE id_caso = ?
+            """,
+            (case_id,),
+        ).fetchall())
+        audits = rows_to_df(conn.execute(
+            """
+            SELECT fecha_hora AS fecha, 'Auditoría' AS tipo,
+                   usuario AS responsable, accion AS evento, detalle
+            FROM auditoria WHERE id_caso = ?
+            """,
+            (case_id,),
+        ).fetchall())
+
+    timeline_parts = [df for df in [states, followups, communications, audits] if not df.empty]
+    timeline = pd.concat(timeline_parts, ignore_index=True) if timeline_parts else pd.DataFrame(
+        columns=["fecha", "tipo", "responsable", "evento", "detalle"]
+    )
+    if not timeline.empty:
+        timeline["fecha_orden"] = pd.to_datetime(timeline["fecha"], errors="coerce")
+        timeline = timeline.sort_values("fecha_orden", ascending=False).drop(columns=["fecha_orden"])
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Estado actual", case["estado_actual"])
+    c2.metric("Responsable", case["responsable_principal"] or "Sin asignar")
+    c3.metric("Seguimientos", len(followups))
+    c4.metric("Comunicaciones", len(communications))
+
+    st.markdown("#### Línea de tiempo automática")
+    st.caption(
+        "Esta vista no se llena manualmente. Se construye con cada cambio de estado, "
+        "seguimiento, comunicación y modificación registrada en el expediente."
+    )
+    st.dataframe(
+        timeline,
+        use_container_width=True,
+        hide_index=True,
+        column_config={"detalle": st.column_config.TextColumn(width="large")},
+    )
+
+    render_export_buttons(
+        timeline,
+        [case_id],
+        "traceability",
+        "Trazabilidad",
+    )
+
+
+
+# =========================================================
+# PANTALLAS
 # =========================================================
 
 if page == "Panel general":
     mostrar_ayuda_pantalla(page)
     with db_connection() as conn:
         total = conn.execute("SELECT COUNT(*) total FROM casos").fetchone()["total"]
-        open_cases = conn.execute(
+        active = conn.execute(
             "SELECT COUNT(*) total FROM casos WHERE estado_actual NOT IN ('Cerrada', 'Fuera de alcance')"
         ).fetchone()["total"]
-        closed_cases = conn.execute(
+        closed = conn.execute(
             "SELECT COUNT(*) total FROM casos WHERE estado_actual = 'Cerrada'"
         ).fetchone()["total"]
-        pending_approval = conn.execute(
+        pending = conn.execute(
             "SELECT COUNT(*) total FROM casos WHERE estado_actual = 'Pendiente de aprobación'"
         ).fetchone()["total"]
-        recent = conn.execute(
-            """
-            SELECT codigo_caso, clasificacion, estado_actual, responsable_principal,
-                   fecha_recepcion, fecha_ultima_actualizacion, descripcion
-            FROM casos
-            ORDER BY fecha_ultima_actualizacion DESC
-            LIMIT 50
-            """
-        ).fetchall()
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Casos registrados", total)
-    c2.metric("Casos activos", open_cases)
-    c3.metric("Casos cerrados", closed_cases)
-    c4.metric("Pendientes de aprobación", pending_approval)
+    c2.metric("Casos activos", active)
+    c3.metric("Casos cerrados", closed)
+    c4.metric("Pendientes de aprobación", pending)
+
+    st.markdown("### Accesos principales")
+    c1, c2, c3 = st.columns(3)
+    c1.info("**Casos**\n\nRegistrar, editar, consultar e imprimir formularios.")
+    c2.info("**Gestión**\n\nSeguimientos, comunicaciones, aprobación y cierre.")
+    c3.info("**Históricos**\n\nTablas, trazabilidad y descargas consolidadas.")
 
     st.markdown("### Casos recientes")
-    if recent:
-        recent_df = rows_to_df(recent).rename(
-            columns={
-                "codigo_caso": "Caso",
-                "clasificacion": "Clasificación",
-                "estado_actual": "Estado",
-                "responsable_principal": "Responsable",
-                "fecha_recepcion": "Fecha de recepción",
-                "fecha_ultima_actualizacion": "Última actualización",
-                "descripcion": "Descripción",
-            }
-        )
-        st.dataframe(
-            recent_df,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "Descripción": st.column_config.TextColumn(width="large"),
-                "Caso": st.column_config.TextColumn(width="small"),
-                "Estado": st.column_config.TextColumn(width="medium"),
-            },
-        )
-    else:
-        st.info("No hay información para mostrar.")
+    recent = cases_history_df().head(30)
+    st.dataframe(
+        recent.drop(columns=["id_caso"], errors="ignore"),
+        use_container_width=True,
+        hide_index=True,
+    )
+    st.download_button(
+        "Descargar todas las tablas en Excel",
+        data=export_all_tables_excel(),
+        file_name="modulo_consultas_quejas_todas_las_tablas.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+    )
 
-
-
-# =========================================================
-# IMPORTACIÓN SURVEY123
-# =========================================================
 
 elif page == "Importación Survey123":
     st.markdown("### Importación Survey123")
     mostrar_ayuda_pantalla(page)
-    st.write("Carga una exportación oficial de Survey123. Cada tabla se valida por su propio GlobalID: los registros nuevos se insertan, los modificados se actualizan y los idénticos se omiten.")
-    archivo = st.file_uploader("Archivo Excel de Survey123", type=["xlsx"], key="survey123_file")
-    if archivo:
+    uploaded_file = st.file_uploader(
+        "Cargar archivo Excel exportado desde Survey123",
+        type=["xlsx"],
+        key="survey_import",
+    )
+    if uploaded_file:
         try:
-            xls = pd.ExcelFile(archivo)
-            requeridas = ["Quejas_y_Consultas_Rio_Indi_0", "ubicacionQueja_1", "seguimiento_2"]
-            faltantes = [h for h in requeridas if h not in xls.sheet_names]
-            if faltantes:
-                st.error("Faltan las hojas: " + ", ".join(faltantes))
-            else:
-                df_c = pd.read_excel(xls, sheet_name=requeridas[0])
-                df_u = pd.read_excel(xls, sheet_name=requeridas[1])
-                df_s = pd.read_excel(xls, sheet_name=requeridas[2])
-                a,b,c = st.columns(3)
-                a.metric("Casos detectados", len(df_c)); b.metric("Ubicaciones detectadas", len(df_u)); c.metric("Seguimientos detectados", len(df_s))
-                with st.expander("Vista previa"):
-                    cols=[x for x in ["GlobalID","N° del formulario","Fecha de registro","Clasificación","Nombre del contacto","Estatus"] if x in df_c.columns]
-                    st.dataframe(df_c[cols].head(50), use_container_width=True, hide_index=True)
-                if st.button("Importar o actualizar", type="primary", use_container_width=True):
-                    archivo.seek(0)
-                    with st.spinner("Procesando archivo..."):
-                        r=importar_survey123(archivo, st.session_state.current_user)
-                    st.success("Importación finalizada")
-                    a,b,c=st.columns(3); a.metric("Casos nuevos",r["casos_nuevos"]); b.metric("Casos actualizados",r["casos_actualizados"]); c.metric("Casos sin cambios",r["casos_sin_cambios"])
-                    a,b,c=st.columns(3); a.metric("Ubicaciones nuevas",r["ubicaciones_nuevas"]); b.metric("Ubicaciones actualizadas",r["ubicaciones_actualizadas"]); c.metric("Ubicaciones sin cambios",r["ubicaciones_sin_cambios"])
-                    a,b,c=st.columns(3); a.metric("Seguimientos nuevos",r["seguimientos_nuevos"]); b.metric("Seguimientos actualizados",r["seguimientos_actualizados"]); c.metric("Seguimientos sin cambios",r["seguimientos_sin_cambios"])
-                    if r["errores"]:
-                        st.warning(f'{r["errores"]} registros requieren revisión')
-                        st.dataframe(pd.DataFrame({"Detalle":r["detalle_errores"]}), use_container_width=True, hide_index=True)
+            uploaded_file.seek(0)
+            preview = pd.ExcelFile(uploaded_file)
+            st.write("Hojas detectadas:", ", ".join(preview.sheet_names))
+            if st.button(
+                "Importar o actualizar registros",
+                type="primary",
+                use_container_width=True,
+            ):
+                uploaded_file.seek(0)
+                with st.spinner("Procesando información..."):
+                    result = importar_survey123(
+                        uploaded_file,
+                        st.session_state.current_user,
+                    )
+                st.success("Importación finalizada.")
+                st.json(result)
+                st.rerun()
         except Exception as exc:
             st.error(f"No fue posible procesar el archivo: {exc}")
-    st.markdown("#### Historial de importaciones")
-    with db_connection() as conn:
-        hist=conn.execute("SELECT fecha_importacion,nombre_archivo,usuario,casos_nuevos,casos_actualizados,casos_sin_cambios,ubicaciones_nuevas,ubicaciones_actualizadas,seguimientos_nuevos,seguimientos_actualizados,errores FROM importaciones_survey123 ORDER BY fecha_importacion DESC LIMIT 30").fetchall()
-    if hist: st.dataframe(rows_to_df(hist), use_container_width=True, hide_index=True)
-    else: st.info("Todavía no hay importaciones registradas.")
 
-# =========================================================
-# REGISTRO DE CASO
-# =========================================================
+    history = read_table_df("importaciones_survey123")
+    if not history.empty:
+        st.markdown("#### Historial de importaciones")
+        st.dataframe(history, use_container_width=True, hide_index=True)
 
-elif page == "Registrar caso":
-    st.markdown("### Registrar consulta o queja")
+
+elif page == "Casos":
+    st.markdown("### Casos")
     mostrar_ayuda_pantalla(page)
-    st.caption(
-        "La ficha conserva el orden del formulario oficial. "
-        "La asignación, los estados y la gestión interna se realizan en las pantallas posteriores."
+    mode = render_work_mode(
+        ["Histórico", "Agregar nuevo", "Editar existente"],
+        "cases_mode",
     )
 
-    with st.form("form_new_case", clear_on_submit=False):
-        # ---------------------------------------------------------
-        # ENCABEZADO DEL FORMULARIO OFICIAL
-        # ---------------------------------------------------------
-        st.markdown("#### Formulario de consultas y quejas del Programa Hídrico")
-        c1, c2, c3, c4 = st.columns([1.3, 1.2, 1.0, 1.2])
-        c1.text_input("Caso", value="Se genera automáticamente", disabled=True)
-        fecha_registro = c2.date_input("Fecha de registro", value=date.today())
-        hora_registro = c3.time_input("Hora de registro")
-        clasificacion = c4.selectbox("Clasificación", ["Consulta", "Queja"])
+    if mode == "Histórico":
+        render_cases_history()
 
-        # La fecha y hora de recepción se igualan al registro inicial.
-        # No se muestran como campos adicionales para respetar la plantilla oficial.
-        fecha_recepcion = fecha_registro
-        hora_recepcion = hora_registro
-
-        # ---------------------------------------------------------
-        # INFORMACIÓN DEL CONTACTO
-        # ---------------------------------------------------------
-        st.markdown("#### Información del contacto")
-        tipo_identificacion = st.selectbox(
-            "Condición del solicitante",
-            ["Identificado", "Anónimo"],
-        )
-
-        c1, c2, c3 = st.columns([2.0, 1.0, 1.4])
-        nombre = c1.text_input(
-            "Nombre",
-            disabled=tipo_identificacion == "Anónimo",
-        )
-        sexo = c2.selectbox(
-            "Sexo",
-            ["", "Femenino", "Masculino", "Otro", "No informado"],
-            disabled=tipo_identificacion == "Anónimo",
-        )
-        cedula = c3.text_input(
-            "Cédula del contacto",
-            disabled=tipo_identificacion == "Anónimo",
-        )
-
-        c1, c2, c3 = st.columns(3)
-        telefono = c1.text_input(
-            "Teléfono",
-            disabled=tipo_identificacion == "Anónimo",
-        )
-        celular = c2.text_input(
-            "Celular",
-            disabled=tipo_identificacion == "Anónimo",
-        )
-        correo = c3.text_input(
-            "Correo electrónico",
-            disabled=tipo_identificacion == "Anónimo",
-        )
-
-        # ---------------------------------------------------------
-        # UBICACIÓN DEL CONTACTO
-        # ---------------------------------------------------------
-        st.markdown("#### Ubicación del contacto")
-        c1, c2, c3, c4 = st.columns(4)
-        provincia_contacto = c1.text_input("Provincia")
-        distrito_contacto = c2.text_input("Distrito")
-        corregimiento_contacto = c3.text_input("Corregimiento")
-        lugar_poblado_contacto = c4.text_input("Comunidad")
-        direccion_contacto = st.text_area("Dirección")
-
-        # ---------------------------------------------------------
-        # DATOS DE LA CONSULTA O QUEJA
-        # ---------------------------------------------------------
-        titulo_tipo = "consulta" if clasificacion == "Consulta" else "queja"
-        st.markdown(f"#### Datos de la {titulo_tipo}")
-
-        descripcion = st.text_area(
-            f"Descripción de la {titulo_tipo}",
-            height=150,
-        )
-        responsable_origen = st.text_input(
-            f"Nombre del responsable del origen de la {titulo_tipo}"
-        )
-
-        c1, c2 = st.columns(2)
-        presentado_anteriormente = c1.checkbox("¿Ha sido presentada anteriormente?")
-        referencia_anterior = c2.text_input(
-            "Referencia del caso anterior",
-            disabled=not presentado_anteriormente,
-        )
-
-        tema = st.text_input(f"Tema de la {titulo_tipo}")
-
-        c1, c2 = st.columns(2)
-        medio_recepcion = c1.selectbox(
-            "Medio por el que se recibió",
-            RECEPTION_CHANNELS,
-        )
-        otro_medio = c2.text_input(
-            "Otro medio de recepción",
-            disabled=medio_recepcion != "Otro",
-        )
-
-        c1, c2 = st.columns(2)
-        recibido_por = c1.text_input(
-            f"Recepción de la {titulo_tipo} por",
-            value=st.session_state.current_user,
-        )
-        tipo_queja = c2.text_input(f"Tipo de {titulo_tipo}")
-
-        respuesta_inmediata = st.text_area(
-            f"Respuesta inmediata a la {titulo_tipo}"
-        )
-        propuesta_solucion = st.text_area(
-            f"Propuesta de solución a la {titulo_tipo}"
-        )
-
-        # ---------------------------------------------------------
-        # UBICACIÓN DE LA CONSULTA O QUEJA
-        # ---------------------------------------------------------
-        st.markdown(f"#### Ubicación de la {titulo_tipo}")
-        c1, c2, c3, c4 = st.columns(4)
-        provincia_hecho = c1.text_input("Provincia", key="provincia_hecho")
-        distrito_hecho = c2.text_input("Distrito", key="distrito_hecho")
-        corregimiento_hecho = c3.text_input("Corregimiento", key="corregimiento_hecho")
-        lugar_poblado_hecho = c4.text_input("Comunidad", key="comunidad_hecho")
-        direccion_hecho = st.text_area(
-            "Dirección",
-            key="direccion_hecho",
-        )
-
-        archivos = st.file_uploader(
-            "Evidencias iniciales",
-            accept_multiple_files=True,
-        )
-
-        submitted = st.form_submit_button("Registrar caso", use_container_width=True)
-
+    elif mode == "Agregar nuevo":
+        submitted, payload, files = case_form(form_key="new_case")
         if submitted:
             try:
-                required_text(recibido_por, f"Recepción de la {titulo_tipo} por")
-                required_text(descripcion, f"Descripción de la {titulo_tipo}")
-                if tipo_identificacion == "Identificado":
-                    required_text(nombre, "Nombre")
-
-                validate_case_dates(
-                    fecha_recepcion=fecha_recepcion,
-                    fecha_registro=fecha_registro,
-                )
-
-                with db_connection() as conn:
-                    case_id = generate_id("CASO")
-                    case_code = generate_case_code(conn, fecha_registro.year)
-                    initial_state = "Pendiente de asignación"
-
-                    data = {
-                        "id_caso": case_id,
-                        "codigo_caso": case_code,
-                        "fecha_recepcion": fecha_recepcion.isoformat(),
-                        "hora_recepcion": hora_recepcion.isoformat(timespec="minutes"),
-                        "fecha_registro": fecha_registro.isoformat(),
-                        "hora_registro": hora_registro.isoformat(timespec="minutes"),
-                        "registrado_por": st.session_state.current_user,
-                        "clasificacion": clasificacion,
-                        "estado_actual": initial_state,
-                        "situacion_atencion": "",
-                        "dentro_alcance": 1,
-                        "motivo_fuera_alcance": "",
-                        "tipo_identificacion_solicitante": tipo_identificacion,
-                        # La confidencialidad no forma parte del registro inicial.
-                        "confidencial": 0,
-                        "nombre_solicitante": "" if tipo_identificacion == "Anónimo" else normalize_text(nombre),
-                        "sexo": "" if tipo_identificacion == "Anónimo" else sexo,
-                        "cedula": "" if tipo_identificacion == "Anónimo" else normalize_text(cedula),
-                        "telefono": "" if tipo_identificacion == "Anónimo" else normalize_text(telefono),
-                        "celular": "" if tipo_identificacion == "Anónimo" else normalize_text(celular),
-                        "correo": "" if tipo_identificacion == "Anónimo" else normalize_text(correo),
-                        "provincia_contacto": provincia_contacto,
-                        "distrito_contacto": distrito_contacto,
-                        "corregimiento_contacto": corregimiento_contacto,
-                        "lugar_poblado_contacto": lugar_poblado_contacto,
-                        "direccion_contacto": direccion_contacto,
-                        "medio_recepcion": medio_recepcion,
-                        "otro_medio_recepcion": otro_medio if medio_recepcion == "Otro" else "",
-                        "recibido_por": recibido_por,
-                        "responsable_origen": responsable_origen,
-                        "tema": tema,
-                        "tipo_queja": tipo_queja,
-                        "descripcion": descripcion,
-                        "presentado_anteriormente": int(presentado_anteriormente),
-                        "referencia_caso_anterior": referencia_anterior if presentado_anteriormente else "",
-                        "respuesta_inmediata": respuesta_inmediata,
-                        "propuesta_solucion": propuesta_solucion,
-                        "provincia_hecho": provincia_hecho,
-                        "distrito_hecho": distrito_hecho,
-                        "corregimiento_hecho": corregimiento_hecho,
-                        "lugar_poblado_hecho": lugar_poblado_hecho,
-                        "direccion_hecho": direccion_hecho,
-                        # Coordenadas y asignación se gestionan fuera de la ficha inicial.
-                        "latitud": None,
-                        "longitud": None,
-                        "supervisor": "",
-                        "responsable_principal": "",
-                        "responsable_apoyo_1": "",
-                        "responsable_apoyo_2": "",
-                        "fecha_asignacion": None,
-                        "asignado_por": "",
-                        "motivo_asignacion": "",
-                        "fecha_creacion": now_iso(),
-                        "fecha_ultima_actualizacion": now_iso(),
-                        "actualizado_por": st.session_state.current_user,
-                    }
-
-                    fields = ", ".join(data.keys())
-                    placeholders = ", ".join(["?"] * len(data))
-                    conn.execute(
-                        f"INSERT INTO casos ({fields}) VALUES ({placeholders})",
-                        tuple(data.values()),
-                    )
-
-                    register_state_change(
-                        conn,
-                        case_id=case_id,
-                        previous_state=None,
-                        new_state=initial_state,
-                        user_name=st.session_state.current_user,
-                        reason="Registro inicial del caso.",
-                    )
-                    audit_change(
-                        conn,
-                        case_id=case_id,
-                        action="CREACIÓN DE CASO",
-                        user_name=st.session_state.current_user,
-                        new_data=data,
-                        details="Creación del expediente digital con el orden del formulario oficial.",
-                    )
-
-                save_uploaded_files(
-                    case_id,
-                    archivos,
-                    "Evidencia inicial",
-                    st.session_state.current_user,
-                )
-                st.success(f"Caso registrado correctamente: {case_code}")
+                code_created = save_new_case(payload, files)
+                st.success(f"Caso registrado correctamente: {code_created}")
+                st.rerun()
             except Exception as exc:
                 st.error(str(exc))
 
-
-# =========================================================
-# GESTIONAR CASO
-# =========================================================
-
-elif page == "Gestionar caso":
-    st.markdown("### Gestión del caso")
-    mostrar_ayuda_pantalla(page)
-    case_id = case_selector()
-    if case_id:
-        with db_connection() as conn:
-            case = get_case(conn, case_id)
-
-        with st.form("form_manage_case"):
-            st.markdown("#### Estado y alcance")
-            c1, c2, c3 = st.columns(3)
-            new_state = c1.selectbox(
-                "Estado actual",
-                CASE_STATES,
-                index=CASE_STATES.index(case["estado_actual"]),
+    else:
+        case_id = select_case_id("Seleccione el caso a editar", "edit_case")
+        if case_id:
+            with db_connection() as conn:
+                case = get_case(conn, case_id)
+            submitted, payload, files = case_form(
+                defaults=case,
+                form_key=f"edit_case_{case_id}",
             )
-            situation_index = ATTENTION_SITUATIONS.index(case["situacion_atencion"] or "") \
-                if (case["situacion_atencion"] or "") in ATTENTION_SITUATIONS else 0
-            new_situation = c2.selectbox(
-                "Situación de atención",
-                ATTENTION_SITUATIONS,
-                index=situation_index,
-            )
-            inside_scope = c3.checkbox("Dentro del alcance", value=bool(case["dentro_alcance"]))
-            out_scope_reason = st.text_area(
-                "Motivo fuera de alcance",
-                value=case["motivo_fuera_alcance"] or "",
-                disabled=inside_scope,
-            )
-
-            st.markdown("#### Responsables")
-            c1, c2 = st.columns(2)
-            supervisor = c1.text_input("Supervisor", value=case["supervisor"] or "")
-            main_responsible = c2.text_input(
-                "Responsable principal",
-                value=case["responsable_principal"] or "",
-            )
-            c1, c2 = st.columns(2)
-            support_1 = c1.text_input(
-                "Responsable de apoyo 1",
-                value=case["responsable_apoyo_1"] or "",
-            )
-            support_2 = c2.text_input(
-                "Responsable de apoyo 2",
-                value=case["responsable_apoyo_2"] or "",
-            )
-
-            assignment_date_value = (
-                date.fromisoformat(case["fecha_asignacion"])
-                if case["fecha_asignacion"]
-                else date.today()
-            )
-            assignment_date = st.date_input(
-                "Fecha de asignación",
-                value=assignment_date_value,
-            )
-            assignment_reason = st.text_area(
-                "Motivo o instrucción de asignación",
-                value=case["motivo_asignacion"] or "",
-            )
-            change_reason = st.text_area(
-                "Motivo de la actualización",
-                help="Obligatorio cuando se cambia el estado o los responsables.",
-            )
-
-            save = st.form_submit_button("Guardar cambios", use_container_width=True)
-
-            if save:
+            if submitted:
                 try:
-                    validate_case_dates(
-                        fecha_recepcion=date.fromisoformat(case["fecha_recepcion"]),
-                        fecha_registro=date.fromisoformat(case["fecha_registro"]),
-                        fecha_asignacion=assignment_date if normalize_text(main_responsible) else None,
-                    )
-
-                    state_or_assignment_changed = any(
-                        [
-                            new_state != case["estado_actual"],
-                            normalize_text(main_responsible) != normalize_text(case["responsable_principal"]),
-                            normalize_text(support_1) != normalize_text(case["responsable_apoyo_1"]),
-                            normalize_text(support_2) != normalize_text(case["responsable_apoyo_2"]),
-                        ]
-                    )
-                    if state_or_assignment_changed:
-                        required_text(change_reason, "Motivo de la actualización")
-
-                    changes = {
-                        "estado_actual": new_state,
-                        "situacion_atencion": new_situation,
-                        "dentro_alcance": int(inside_scope),
-                        "motivo_fuera_alcance": "" if inside_scope else out_scope_reason,
-                        "supervisor": supervisor,
-                        "responsable_principal": main_responsible,
-                        "responsable_apoyo_1": support_1,
-                        "responsable_apoyo_2": support_2,
-                        "fecha_asignacion": assignment_date.isoformat() if normalize_text(main_responsible) else None,
-                        "asignado_por": st.session_state.current_user if normalize_text(main_responsible) else "",
-                        "motivo_asignacion": assignment_reason,
-                    }
-
-                    with db_connection() as conn:
-                        update_case_fields(
-                            conn,
-                            case_id,
-                            changes,
-                            st.session_state.current_user,
-                            "ACTUALIZACIÓN GENERAL",
-                            change_reason,
-                        )
-                        register_state_change(
-                            conn,
-                            case_id,
-                            case["estado_actual"],
-                            new_state,
-                            st.session_state.current_user,
-                            change_reason,
-                        )
+                    update_existing_case(case_id, payload, files)
                     st.success("Caso actualizado correctamente.")
                     st.rerun()
                 except Exception as exc:
                     st.error(str(exc))
 
 
-# =========================================================
-# SEGUIMIENTO
-# =========================================================
-
-elif page == "Seguimiento":
-    st.markdown("### Seguimiento del caso")
+elif page == "Seguimientos":
+    st.markdown("### Seguimientos")
     mostrar_ayuda_pantalla(page)
-    case_id = case_selector()
-    if case_id:
-        with db_connection() as conn:
-            case = get_case(conn, case_id)
-            current_followups = conn.execute(
-                """
-                SELECT fecha_actuacion, tipo_actuacion,
-                       responsable_ejecutor, descripcion, resultado,
-                       estado_anterior, estado_posterior, proxima_accion,
-                       fecha_compromiso, estado_actividad, usuario_registro,
-                       fecha_registro_sistema
-                FROM seguimientos
-                WHERE id_caso = ?
-                ORDER BY fecha_actuacion DESC, fecha_registro_sistema DESC
-                """,
-                (case_id,),
-            ).fetchall()
+    mode = render_work_mode(
+        ["Histórico", "Agregar nuevo", "Editar existente"],
+        "followups_mode",
+    )
 
-        with st.form("form_followup"):
-            c1, c2 = st.columns(2)
-            action_date = c1.date_input("Fecha de la actuación", value=date.today())
-            action_type = c2.selectbox("Tipo de actuación", FOLLOWUP_TYPES)
-
-            executor = st.text_input("Responsable ejecutor")
-            description = st.text_area("Actividad realizada", height=120)
-            result = st.text_area("Resultado obtenido")
-
-            c1, c2 = st.columns(2)
-            posterior_state = c1.selectbox(
-                "Estado posterior",
-                CASE_STATES,
-                index=CASE_STATES.index(case["estado_actual"]),
-            )
-            activity_status = c2.selectbox(
-                "Estado de la actividad",
-                ["Pendiente", "En proceso", "Completada", "Cancelada"],
-            )
-
-            next_action = st.text_area("Próxima acción")
-            commitment_date = st.date_input(
-                "Fecha compromiso",
-                value=None,
-            )
-            visible = st.checkbox("La actuación puede ser comunicada al solicitante")
-            files = st.file_uploader("Adjuntos del seguimiento", accept_multiple_files=True)
-
-            submit = st.form_submit_button("Registrar seguimiento", use_container_width=True)
-
-            if submit:
-                try:
-                    required_text(executor, "Responsable ejecutor")
-                    required_text(description, "Actividad realizada")
-                    if action_date < date.fromisoformat(case["fecha_registro"]):
-                        raise ValueError(
-                            "La fecha de actuación no puede ser anterior a la fecha de registro."
-                        )
-                    if commitment_date and commitment_date < action_date:
-                        raise ValueError(
-                            "La fecha compromiso no puede ser anterior a la fecha de actuación."
-                        )
-
-                    followup_id = generate_id("SEG")
-                    with db_connection() as conn:
-                        conn.execute(
-                            """
-                            INSERT INTO seguimientos (
-                                id_seguimiento, id_caso, fecha_actuacion, hora_actuacion,
-                                tipo_actuacion, descripcion, resultado,
-                                responsable_ejecutor, usuario_registro,
-                                estado_anterior, estado_posterior,
-                                proxima_accion, fecha_compromiso, estado_actividad,
-                                visible_solicitante, fecha_registro_sistema
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            """,
-                            (
-                                followup_id,
-                                case_id,
-                                action_date.isoformat(),
-                                None,
-                                action_type,
-                                description,
-                                result,
-                                executor,
-                                st.session_state.current_user,
-                                case["estado_actual"],
-                                posterior_state,
-                                next_action,
-                                commitment_date.isoformat() if commitment_date else None,
-                                activity_status,
-                                int(visible),
-                                now_iso(),
-                            ),
-                        )
-
-                        if posterior_state != case["estado_actual"]:
-                            update_case_fields(
-                                conn,
-                                case_id,
-                                {"estado_actual": posterior_state},
-                                st.session_state.current_user,
-                                "CAMBIO DE ESTADO POR SEGUIMIENTO",
-                                description,
-                            )
-                            register_state_change(
-                                conn,
-                                case_id,
-                                case["estado_actual"],
-                                posterior_state,
-                                st.session_state.current_user,
-                                description,
-                                followup_id,
-                            )
-                        else:
-                            conn.execute(
-                                """
-                                UPDATE casos
-                                SET fecha_ultima_actualizacion = ?,
-                                    actualizado_por = ?
-                                WHERE id_caso = ?
-                                """,
-                                (now_iso(), st.session_state.current_user, case_id),
-                            )
-
-                        audit_change(
-                            conn,
-                            case_id,
-                            "NUEVO SEGUIMIENTO",
-                            st.session_state.current_user,
-                            new_data={
-                                "id_seguimiento": followup_id,
-                                "tipo_actuacion": action_type,
-                                "responsable_ejecutor": executor,
-                                "fecha_actuacion": action_date,
-                            },
-                            details=description,
-                        )
-
-                    if files:
-                        case_dir = UPLOAD_DIR / case_id
-                        case_dir.mkdir(exist_ok=True)
-                        with db_connection() as conn:
-                            for uploaded in files:
-                                safe_name = Path(uploaded.name).name
-                                target = case_dir / f"{uuid.uuid4().hex[:8]}_{safe_name}"
-                                target.write_bytes(uploaded.getbuffer())
-                                conn.execute(
-                                    """
-                                    INSERT INTO documentos (
-                                        id_documento, id_caso, id_seguimiento,
-                                        tipo_documento, nombre_archivo,
-                                        ruta_archivo, fecha_carga, cargado_por
-                                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                                    """,
-                                    (
-                                        generate_id("DOC"),
-                                        case_id,
-                                        followup_id,
-                                        "Evidencia de seguimiento",
-                                        safe_name,
-                                        str(target),
-                                        now_iso(),
-                                        st.session_state.current_user,
-                                    ),
-                                )
-                    st.success("Seguimiento registrado.")
-                    st.rerun()
-                except Exception as exc:
-                    st.error(str(exc))
-
-        st.subheader("Bitácora del caso")
-        if current_followups:
-            st.dataframe(rows_to_df(current_followups), use_container_width=True, hide_index=True)
+    if mode == "Histórico":
+        render_followups_history()
+    elif mode == "Agregar nuevo":
+        render_followup_form()
+    else:
+        df = followups_history_df()
+        if df.empty:
+            st.info("No hay seguimientos para editar.")
         else:
-            st.info("Este caso todavía no tiene seguimientos.")
+            labels = {
+                (
+                    f"{row['codigo_caso']} · {row['fecha_actuacion']} · "
+                    f"{row['tipo_actuacion']} · {str(row['descripcion'])[:70]}"
+                ): row["id_seguimiento"]
+                for _, row in df.iterrows()
+            }
+            selected = st.selectbox(
+                "Seleccione el seguimiento",
+                list(labels.keys()),
+            )
+            render_followup_form(labels[selected])
 
-
-# =========================================================
-# COMUNICACIONES
-# =========================================================
 
 elif page == "Comunicaciones":
     st.markdown("### Comunicaciones")
     mostrar_ayuda_pantalla(page)
-    case_id = case_selector()
-    if case_id:
-        with db_connection() as conn:
-            case = get_case(conn, case_id)
-            communications = conn.execute(
-                """
-                SELECT tipo_comunicacion, fecha, medio, destinatario,
-                       realizada_por, resultado_contacto, descripcion,
-                       es_acuse_recibo, es_comunicacion_avance,
-                       es_comunicacion_cierre, fecha_registro_sistema
-                FROM comunicaciones
-                WHERE id_caso = ?
-                ORDER BY fecha DESC, fecha_registro_sistema DESC
-                """,
-                (case_id,),
-            ).fetchall()
+    mode = render_work_mode(
+        ["Histórico", "Agregar nuevo", "Editar existente"],
+        "communications_mode",
+    )
 
-        with st.form("form_communication"):
-            c1, c2 = st.columns(2)
-            comm_type = c1.selectbox("Tipo de comunicación", COMMUNICATION_TYPES)
-            comm_date = c2.date_input("Fecha", value=date.today())
-
-            c1, c2 = st.columns(2)
-            medium = c1.selectbox("Medio", RECEPTION_CHANNELS)
-            recipient = c2.text_input(
-                "Destinatario",
-                value=case["nombre_solicitante"] or "Solicitante",
-            )
-
-            c1, c2 = st.columns(2)
-            performed_by = c1.text_input("Realizada por", value=st.session_state.current_user)
-            result_contact = c2.selectbox(
-                "Resultado del contacto",
-                [
-                    "Recibido",
-                    "No localizado",
-                    "Sin respuesta",
-                    "Datos de contacto no disponibles",
-                    "Rechazó la comunicación",
-                    "Otro",
-                ],
-            )
-
-            description = st.text_area("Descripción o contenido comunicado")
-            evidence = st.file_uploader("Evidencia de la comunicación", accept_multiple_files=True)
-
-            submit = st.form_submit_button("Registrar comunicación", use_container_width=True)
-
-            if submit:
-                try:
-                    required_text(performed_by, "Realizada por")
-                    required_text(description, "Descripción o contenido comunicado")
-                    if comm_date < date.fromisoformat(case["fecha_registro"]):
-                        raise ValueError(
-                            "La fecha de comunicación no puede ser anterior al registro del caso."
-                        )
-
-                    communication_id = generate_id("COM")
-                    is_ack = int(comm_type == "Acuse de recibo")
-                    is_progress = int(comm_type == "Comunicación de avance")
-                    is_closure = int(comm_type in ("Comunicación de resultado", "Comunicación de cierre"))
-
-                    with db_connection() as conn:
-                        conn.execute(
-                            """
-                            INSERT INTO comunicaciones (
-                                id_comunicacion, id_caso, tipo_comunicacion,
-                                fecha, hora, medio, destinatario, realizada_por,
-                                resultado_contacto, descripcion,
-                                es_acuse_recibo, es_comunicacion_avance,
-                                es_comunicacion_cierre, fecha_registro_sistema
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            """,
-                            (
-                                communication_id,
-                                case_id,
-                                comm_type,
-                                comm_date.isoformat(),
-                                None,
-                                medium,
-                                recipient,
-                                performed_by,
-                                result_contact,
-                                description,
-                                is_ack,
-                                is_progress,
-                                is_closure,
-                                now_iso(),
-                            ),
-                        )
-
-                        changes = {}
-                        if is_ack:
-                            changes.update(
-                                {
-                                    "fecha_acuse": comm_date.isoformat(),
-                                    "medio_acuse": medium,
-                                    "resultado_acuse": result_contact,
-                                    "realizado_acuse_por": performed_by,
-                                }
-                            )
-                        if is_closure:
-                            changes.update(
-                                {
-                                    "fecha_comunicacion_cierre": comm_date.isoformat(),
-                                    "medio_comunicacion_cierre": medium,
-                                    "comunicado_por": performed_by,
-                                    "resultado_comunicacion_cierre": result_contact,
-                                }
-                            )
-
-                        if changes:
-                            update_case_fields(
-                                conn,
-                                case_id,
-                                changes,
-                                st.session_state.current_user,
-                                "ACTUALIZACIÓN POR COMUNICACIÓN",
-                                description,
-                            )
-
-                        audit_change(
-                            conn,
-                            case_id,
-                            "NUEVA COMUNICACIÓN",
-                            st.session_state.current_user,
-                            new_data={
-                                "id_comunicacion": communication_id,
-                                "tipo": comm_type,
-                                "fecha": comm_date,
-                                "resultado": result_contact,
-                            },
-                            details=description,
-                        )
-
-                    if evidence:
-                        case_dir = UPLOAD_DIR / case_id
-                        case_dir.mkdir(exist_ok=True)
-                        with db_connection() as conn:
-                            for uploaded in evidence:
-                                safe_name = Path(uploaded.name).name
-                                target = case_dir / f"{uuid.uuid4().hex[:8]}_{safe_name}"
-                                target.write_bytes(uploaded.getbuffer())
-                                conn.execute(
-                                    """
-                                    INSERT INTO documentos (
-                                        id_documento, id_caso, id_comunicacion,
-                                        tipo_documento, nombre_archivo, ruta_archivo,
-                                        fecha_carga, cargado_por
-                                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                                    """,
-                                    (
-                                        generate_id("DOC"),
-                                        case_id,
-                                        communication_id,
-                                        "Evidencia de comunicación",
-                                        safe_name,
-                                        str(target),
-                                        now_iso(),
-                                        st.session_state.current_user,
-                                    ),
-                                )
-
-                    st.success("Comunicación registrada.")
-                    st.rerun()
-                except Exception as exc:
-                    st.error(str(exc))
-
-        st.subheader("Historial de comunicaciones")
-        if communications:
-            st.dataframe(rows_to_df(communications), use_container_width=True, hide_index=True)
+    if mode == "Histórico":
+        render_communications_history()
+    elif mode == "Agregar nuevo":
+        render_communication_form()
+    else:
+        df = communications_history_df()
+        if df.empty:
+            st.info("No hay comunicaciones para editar.")
         else:
-            st.info("No hay comunicaciones registradas.")
+            labels = {
+                (
+                    f"{row['codigo_caso']} · {row['fecha']} · "
+                    f"{row['tipo_comunicacion']} · {str(row['descripcion'])[:70]}"
+                ): row["id_comunicacion"]
+                for _, row in df.iterrows()
+            }
+            selected = st.selectbox(
+                "Seleccione la comunicación",
+                list(labels.keys()),
+            )
+            render_communication_form(labels[selected])
 
 
-# =========================================================
-# APROBACIÓN Y CIERRE
-# =========================================================
-
-elif page == "Aprobación y cierre":
-    st.markdown("### Aprobación y cierre")
+elif page == "Aprobaciones y cierres":
+    st.markdown("### Aprobaciones y cierres")
     mostrar_ayuda_pantalla(page)
-    case_id = case_selector()
-    if case_id:
-        with db_connection() as conn:
-            case = get_case(conn, case_id)
+    st.info(
+        "**Aprobación interna:** la realiza el supervisor antes del cierre. "
+        "**Revisión:** es una solicitud posterior del solicitante y la atiende una "
+        "instancia superior independiente."
+    )
+    mode = render_work_mode(
+        ["Histórico", "Agregar / editar"],
+        "approvals_mode",
+    )
 
-        st.info(
-            f"{case['codigo_caso']} · {case['clasificacion']} · "
-            f"Estado actual: **{case['estado_actual']}**"
+    if mode == "Histórico":
+        render_approvals_history()
+    else:
+        case_id = select_case_id(
+            "Seleccione el caso para aprobar o cerrar",
+            "approval_case",
         )
-
-        tab1, tab2 = st.tabs(["Recomendación y decisión", "Cierre formal"])
-
-        with tab1:
-            with st.form("form_approval"):
-                recommendation = st.text_area(
-                    "Recomendación de cierre",
-                    value=case["recomendacion_cierre"] or "",
-                    height=120,
-                )
-                recommendation_date = st.date_input(
-                    "Fecha de recomendación",
-                    value=date.fromisoformat(case["fecha_recomendacion_cierre"])
-                    if case["fecha_recomendacion_cierre"]
-                    else date.today(),
-                )
-                recommended_by = st.text_input(
-                    "Recomendada por",
-                    value=case["recomendada_por"] or case["responsable_principal"] or "",
-                )
-
-                c1, c2 = st.columns(2)
-                decision = c1.selectbox(
-                    "Decisión del supervisor",
-                    ["", "Aprobada", "Devuelta para corrección", "Actuación adicional", "Remitida a asesoría jurídica"],
-                    index=(
-                        ["", "Aprobada", "Devuelta para corrección", "Actuación adicional", "Remitida a asesoría jurídica"]
-                        .index(case["decision_supervisor"])
-                        if case["decision_supervisor"] in
-                        ["", "Aprobada", "Devuelta para corrección", "Actuación adicional", "Remitida a asesoría jurídica"]
-                        else 0
-                    ),
-                )
-                decision_date = c2.date_input(
-                    "Fecha de decisión",
-                    value=date.fromisoformat(case["fecha_decision_supervisor"])
-                    if case["fecha_decision_supervisor"]
-                    else date.today(),
-                )
-                supervisor_observation = st.text_area(
-                    "Observaciones del supervisor",
-                    value=case["observacion_supervisor"] or "",
-                )
-
-                submit = st.form_submit_button("Guardar recomendación y decisión", use_container_width=True)
-
-                if submit:
-                    try:
-                        required_text(recommendation, "Recomendación de cierre")
-                        required_text(recommended_by, "Recomendada por")
-
-                        new_state = case["estado_actual"]
-                        if decision == "Aprobada":
-                            new_state = "Cierre aprobado"
-                        elif decision in ("Devuelta para corrección", "Actuación adicional"):
-                            new_state = "Devuelta para atención"
-                        elif decision == "Remitida a asesoría jurídica":
-                            new_state = "En atención"
-
-                        changes = {
-                            "recomendacion_cierre": recommendation,
-                            "fecha_recomendacion_cierre": recommendation_date.isoformat(),
-                            "recomendada_por": recommended_by,
-                            "decision_supervisor": decision,
-                            "observacion_supervisor": supervisor_observation,
-                            "fecha_decision_supervisor": decision_date.isoformat() if decision else None,
-                            "estado_actual": new_state,
-                            "situacion_atencion": "En asesoría jurídica"
-                            if decision == "Remitida a asesoría jurídica"
-                            else case["situacion_atencion"],
-                        }
-
-                        with db_connection() as conn:
-                            update_case_fields(
-                                conn,
-                                case_id,
-                                changes,
-                                st.session_state.current_user,
-                                "RECOMENDACIÓN Y DECISIÓN",
-                                supervisor_observation,
-                            )
-                            register_state_change(
-                                conn,
-                                case_id,
-                                case["estado_actual"],
-                                new_state,
-                                st.session_state.current_user,
-                                supervisor_observation or recommendation,
-                            )
-
-                        st.success("Información guardada.")
-                        st.rerun()
-                    except Exception as exc:
-                        st.error(str(exc))
-
-        with tab2:
-            with st.form("form_close_case"):
-                st.caption(
-                    "El sistema permite registrar y cerrar una consulta o queja el mismo día, "
-                    "siempre que la fecha de cierre no sea anterior a la fecha de registro."
-                )
-                final_answer = st.text_area(
-                    "Respuesta final brindada",
-                    value=case["respuesta_final"] or "",
-                    height=130,
-                )
-                c1, c2 = st.columns(2)
-                accepted = c1.selectbox(
-                    "¿Acepta la respuesta?",
-                    ["", "Sí", "No", "No fue posible contactar", "No aplica"],
-                    index=(
-                        ["", "Sí", "No", "No fue posible contactar", "No aplica"].index(case["acepta_respuesta"])
-                        if case["acepta_respuesta"] in ["", "Sí", "No", "No fue posible contactar", "No aplica"]
-                        else 0
-                    ),
-                )
-                satisfaction_values = [
-                    "",
-                    "Nada satisfecho",
-                    "Poco satisfecho",
-                    "Neutral / Indiferente",
-                    "Satisfecho",
-                    "Muy satisfecho",
-                    "No aplica",
-                ]
-                satisfaction = c2.selectbox(
-                    "Nivel de satisfacción",
-                    satisfaction_values,
-                    index=satisfaction_values.index(case["nivel_satisfaccion"])
-                    if case["nivel_satisfaccion"] in satisfaction_values
-                    else 0,
-                )
-                dissatisfaction_comment = st.text_area(
-                    "Comentario cuando la satisfacción sea baja",
-                    value=case["comentario_insatisfaccion"] or "",
-                )
-                final_comments = st.text_area(
-                    "Comentarios finales",
-                    value=case["comentarios_finales"] or "",
-                )
-
-                c1, c2, c3 = st.columns(3)
-                closure_date = c1.date_input(
-                    "Fecha de cierre",
-                    value=date.fromisoformat(case["fecha_cierre"]) if case["fecha_cierre"] else date.today(),
-                )
-                signed = c2.checkbox(
-                    "Firma de conformidad",
-                    value=bool(case["firma_conformidad"]),
-                )
-                refusal = c3.checkbox(
-                    "Negativa a firmar",
-                    value=bool(case["negativa_firma"]),
-                )
-                witness = st.text_input(
-                    "Testigo de la comunicación",
-                    value=case["testigo_cierre"] or "",
-                )
-                closure_reason = st.text_area(
-                    "Motivo de cierre",
-                    value=case["motivo_cierre"] or "",
-                )
-                files = st.file_uploader(
-                    "Documento firmado o constancia de cierre",
-                    accept_multiple_files=True,
-                )
-
-                submit_close = st.form_submit_button("Cerrar caso", use_container_width=True)
-
-                if submit_close:
-                    try:
-                        validate_case_dates(
-                            fecha_recepcion=date.fromisoformat(case["fecha_recepcion"]),
-                            fecha_registro=date.fromisoformat(case["fecha_registro"]),
-                            fecha_cierre=closure_date,
-                        )
-                        required_text(final_answer, "Respuesta final brindada")
-                        required_text(closure_reason, "Motivo de cierre")
-
-                        if case["decision_supervisor"] != "Aprobada":
-                            raise ValueError(
-                                "El caso requiere una decisión de supervisor marcada como 'Aprobada'."
-                            )
-
-                        if case["clasificacion"] == "Queja":
-                            if not signed and not refusal:
-                                raise ValueError(
-                                    "Para una queja debe registrarse firma de conformidad o negativa a firmar."
-                                )
-                            if refusal:
-                                required_text(witness, "Testigo de la comunicación")
-
-                        if satisfaction in ("Nada satisfecho", "Poco satisfecho"):
-                            required_text(
-                                dissatisfaction_comment,
-                                "Comentario cuando la satisfacción sea baja",
-                            )
-
-                        changes = {
-                            "respuesta_final": final_answer,
-                            "acepta_respuesta": accepted,
-                            "nivel_satisfaccion": satisfaction,
-                            "comentario_insatisfaccion": dissatisfaction_comment,
-                            "comentarios_finales": final_comments,
-                            "fecha_cierre": closure_date.isoformat(),
-                            "cerrado_por": st.session_state.current_user,
-                            "motivo_cierre": closure_reason,
-                            "firma_conformidad": int(signed),
-                            "negativa_firma": int(refusal),
-                            "testigo_cierre": witness,
-                            "estado_actual": "Cerrada",
-                        }
-
-                        with db_connection() as conn:
-                            update_case_fields(
-                                conn,
-                                case_id,
-                                changes,
-                                st.session_state.current_user,
-                                "CIERRE FORMAL",
-                                closure_reason,
-                            )
-                            register_state_change(
-                                conn,
-                                case_id,
-                                case["estado_actual"],
-                                "Cerrada",
-                                st.session_state.current_user,
-                                closure_reason,
-                            )
-
-                        save_uploaded_files(
-                            case_id,
-                            files,
-                            "Documento de cierre",
-                            st.session_state.current_user,
-                        )
-                        st.success("Caso cerrado correctamente.")
-                        st.rerun()
-                    except Exception as exc:
-                        st.error(str(exc))
+        if case_id:
+            render_approval_form(case_id)
 
 
-# =========================================================
-# REVISIÓN / APELACIÓN
-# =========================================================
-
-elif page == "Revisión":
-    st.markdown("### Revisión o apelación")
+elif page == "Revisiones":
+    st.markdown("### Revisiones o apelaciones")
     mostrar_ayuda_pantalla(page)
-    case_id = case_selector()
-    if case_id:
-        with db_connection() as conn:
-            case = get_case(conn, case_id)
-            reviews = conn.execute(
-                """
-                SELECT tipo_revision, fecha_solicitud, solicitada_por, motivo,
-                       revisor, fecha_revision, decision, observaciones,
-                       estado_revision
-                FROM revisiones
-                WHERE id_caso = ?
-                ORDER BY fecha_solicitud DESC
-                """,
-                (case_id,),
-            ).fetchall()
+    st.caption(
+        "Se registra cuando la persona solicitante no está satisfecha con la respuesta. "
+        "La revisión debe ser independiente de la atención original."
+    )
+    mode = render_work_mode(
+        ["Histórico", "Agregar nuevo", "Editar existente"],
+        "reviews_mode",
+    )
 
-        with st.form("form_review"):
-            c1, c2 = st.columns(2)
-            review_type = c1.selectbox("Tipo", ["Revisión", "Apelación"])
-            request_date = c2.date_input("Fecha de solicitud", value=date.today())
-            requested_by = st.text_input(
-                "Solicitada por",
-                value=case["nombre_solicitante"] or "Solicitante",
-            )
-            reason = st.text_area("Motivo de la solicitud")
-
-            c1, c2 = st.columns(2)
-            reviewer = c1.text_input("Persona revisora")
-            review_status = c2.selectbox(
-                "Estado de la revisión",
-                ["Pendiente", "En análisis", "Resuelta"],
-            )
-
-            review_date = st.date_input("Fecha de revisión", value=None)
-            decision = st.text_area("Decisión")
-            observations = st.text_area("Observaciones")
-
-            submit = st.form_submit_button("Guardar revisión", use_container_width=True)
-
-            if submit:
-                try:
-                    required_text(reason, "Motivo de la solicitud")
-                    review_id = generate_id("REV")
-                    with db_connection() as conn:
-                        conn.execute(
-                            """
-                            INSERT INTO revisiones (
-                                id_revision, id_caso, tipo_revision,
-                                fecha_solicitud, solicitada_por, motivo,
-                                revisor, fecha_revision, decision,
-                                observaciones, estado_revision
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            """,
-                            (
-                                review_id,
-                                case_id,
-                                review_type,
-                                request_date.isoformat(),
-                                requested_by,
-                                reason,
-                                reviewer,
-                                review_date.isoformat() if review_date else None,
-                                decision,
-                                observations,
-                                review_status,
-                            ),
-                        )
-
-                        if review_status != "Resuelta":
-                            previous_state = case["estado_actual"]
-                            update_case_fields(
-                                conn,
-                                case_id,
-                                {"estado_actual": "En revisión"},
-                                st.session_state.current_user,
-                                "APERTURA DE REVISIÓN",
-                                reason,
-                            )
-                            register_state_change(
-                                conn,
-                                case_id,
-                                previous_state,
-                                "En revisión",
-                                st.session_state.current_user,
-                                reason,
-                            )
-
-                        audit_change(
-                            conn,
-                            case_id,
-                            "REGISTRO DE REVISIÓN",
-                            st.session_state.current_user,
-                            new_data={
-                                "id_revision": review_id,
-                                "tipo": review_type,
-                                "estado": review_status,
-                            },
-                            details=reason,
-                        )
-
-                    st.success("Revisión registrada.")
-                    st.rerun()
-                except Exception as exc:
-                    st.error(str(exc))
-
-        st.subheader("Historial de revisiones")
-        if reviews:
-            st.dataframe(rows_to_df(reviews), use_container_width=True, hide_index=True)
+    if mode == "Histórico":
+        render_reviews_history()
+    elif mode == "Agregar nuevo":
+        render_review_form()
+    else:
+        df = reviews_history_df()
+        if df.empty:
+            st.info("No hay revisiones para editar.")
         else:
-            st.info("No hay revisiones o apelaciones registradas.")
+            labels = {
+                (
+                    f"{row['codigo_caso']} · {row['tipo_revision']} · "
+                    f"{row['fecha_solicitud']} · {str(row['motivo'])[:70]}"
+                ): row["id_revision"]
+                for _, row in df.iterrows()
+            }
+            selected = st.selectbox(
+                "Seleccione la revisión",
+                list(labels.keys()),
+            )
+            render_review_form(labels[selected])
 
-
-# =========================================================
-# TRAZABILIDAD
-# =========================================================
 
 elif page == "Trazabilidad":
-    st.markdown("### Trazabilidad del expediente")
+    st.markdown("### Trazabilidad")
     mostrar_ayuda_pantalla(page)
-    case_id = case_selector()
-    if case_id:
-        with db_connection() as conn:
-            case = get_case(conn, case_id)
-            states = conn.execute(
-                """
-                SELECT estado_anterior, estado_nuevo, fecha_cambio,
-                       usuario_cambio, motivo
-                FROM historial_estados
-                WHERE id_caso = ?
-                ORDER BY fecha_cambio ASC
-                """,
-                (case_id,),
-            ).fetchall()
-            followups = conn.execute(
-                """
-                SELECT fecha_actuacion, tipo_actuacion, responsable_ejecutor,
-                       usuario_registro, descripcion, resultado,
-                       estado_anterior, estado_posterior,
-                       proxima_accion, fecha_compromiso, estado_actividad,
-                       fecha_registro_sistema
-                FROM seguimientos
-                WHERE id_caso = ?
-                ORDER BY fecha_registro_sistema ASC
-                """,
-                (case_id,),
-            ).fetchall()
-            communications = conn.execute(
-                """
-                SELECT fecha, tipo_comunicacion, medio, realizada_por,
-                       resultado_contacto, descripcion, fecha_registro_sistema
-                FROM comunicaciones
-                WHERE id_caso = ?
-                ORDER BY fecha_registro_sistema ASC
-                """,
-                (case_id,),
-            ).fetchall()
-            docs = conn.execute(
-                """
-                SELECT tipo_documento, nombre_archivo, ruta_archivo,
-                       fecha_carga, cargado_por
-                FROM documentos
-                WHERE id_caso = ?
-                ORDER BY fecha_carga ASC
-                """,
-                (case_id,),
-            ).fetchall()
-            audit = conn.execute(
-                """
-                SELECT accion, usuario, fecha_hora, detalle,
-                       datos_anteriores, datos_nuevos
-                FROM auditoria
-                WHERE id_caso = ?
-                ORDER BY fecha_hora ASC
-                """,
-                (case_id,),
-            ).fetchall()
-
-        st.markdown(
-            f"""
-            ### {case['codigo_caso']}
-            **Clasificación:** {case['clasificacion']}  
-            **Estado actual:** {case['estado_actual']}  
-            **Responsable principal:** {case['responsable_principal'] or 'Sin asignar'}  
-            **Fecha de recepción:** {case['fecha_recepcion']}  
-            **Fecha de registro:** {case['fecha_registro']} {case['hora_registro'] or ''}  
-            **Fecha de cierre:** {case['fecha_cierre'] or 'Caso no cerrado'}
-            """
-        )
-
-        tabs = st.tabs(
-            [
-                "Historial de estados",
-                "Seguimientos",
-                "Comunicaciones",
-                "Documentos",
-                "Auditoría",
-            ]
-        )
-
-        with tabs[0]:
-            if states:
-                st.dataframe(rows_to_df(states), use_container_width=True, hide_index=True)
-            else:
-                st.info("No hay cambios de estado.")
-
-        with tabs[1]:
-            if followups:
-                st.dataframe(rows_to_df(followups), use_container_width=True, hide_index=True)
-            else:
-                st.info("No hay seguimientos.")
-
-        with tabs[2]:
-            if communications:
-                st.dataframe(rows_to_df(communications), use_container_width=True, hide_index=True)
-            else:
-                st.info("No hay comunicaciones.")
-
-        with tabs[3]:
-            if docs:
-                st.dataframe(rows_to_df(docs), use_container_width=True, hide_index=True)
-            else:
-                st.info("No hay documentos.")
-
-        with tabs[4]:
-            if audit:
-                st.dataframe(rows_to_df(audit), use_container_width=True, hide_index=True)
-            else:
-                st.info("No hay eventos de auditoría.")
+    render_traceability()

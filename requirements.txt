@@ -5,3 +5,4 @@ streamlit-folium
 matplotlib
 reportlab
 openpyxl
+python-docx

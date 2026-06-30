@@ -701,45 +701,277 @@ COMMUNICATION_TYPES = [
 
 
 # =========================================================
-# ESTILO
+# ESTILO E INTERFAZ CORPORATIVA
 # =========================================================
 
-st.markdown(
-    """
-    <style>
-        .block-container {padding-top: 1.4rem; padding-bottom: 2rem;}
-        .sir-header {
-            border: 1px solid rgba(120,120,120,.25);
-            border-radius: 16px;
-            padding: 18px 22px;
-            margin-bottom: 18px;
-        }
-        .sir-kpi {
-            border: 1px solid rgba(120,120,120,.25);
-            border-radius: 14px;
-            padding: 14px;
-            min-height: 92px;
-        }
-        .sir-muted {opacity: .75;}
-        div[data-testid="stForm"] {
-            border: 1px solid rgba(120,120,120,.22);
-            border-radius: 16px;
-            padding: 18px;
-        }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+COLOR_PRIMARIO_SOCIONAUT = "#073B5A"
+COLOR_SECUNDARIO_SOCIONAUT = "#00A6A6"
+COLOR_CORAL = "#F05A43"
+COLOR_GRIS_CLARO = "#F4F7F9"
+COLOR_BORDE = "#D6DEE6"
 
-st.markdown(
-    f"""
-    <div class="sir-header">
-        <h2 style="margin:0">{APP_TITLE}</h2>
-        <div class="sir-muted">Registro, asignación, seguimiento, aprobación y cierre con trazabilidad completa.</div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+PAGE_HELP = {
+    "Panel general": (
+        "Consulta el estado general de los casos y selecciona registros recientes "
+        "para continuar su gestión."
+    ),
+    "Importación Survey123": (
+        "Carga exportaciones oficiales de Survey123. El sistema valida cada GlobalID "
+        "para insertar, actualizar u omitir registros sin duplicarlos."
+    ),
+    "Registrar caso": (
+        "Registra la consulta o queja siguiendo el mismo orden de la ficha oficial. "
+        "Los datos internos de gestión se completan después."
+    ),
+    "Gestionar caso": (
+        "Asigna responsables, actualiza el estado y registra las instrucciones internas "
+        "sin modificar la información original del caso."
+    ),
+    "Seguimiento": (
+        "Registra cada actuación de manera independiente para conservar quién la realizó, "
+        "qué hizo, cuándo la hizo y cuál fue el resultado."
+    ),
+    "Comunicaciones": (
+        "Documenta los contactos realizados con la persona solicitante y conserva la "
+        "evidencia asociada."
+    ),
+    "Aprobación y cierre": (
+        "Registra la recomendación, la decisión del supervisor y el cierre formal del caso."
+    ),
+    "Revisión": (
+        "Gestiona solicitudes de revisión o apelación vinculadas al expediente original."
+    ),
+    "Trazabilidad": (
+        "Consulta el historial completo de estados, seguimientos, comunicaciones, "
+        "documentos y auditoría."
+    ),
+}
+
+
+def aplicar_estilos():
+    st.markdown(
+        f"""
+        <style>
+            :root {{
+                --sir-primary: var(--primary-color, {COLOR_PRIMARIO_SOCIONAUT});
+                --sir-accent: {COLOR_SECUNDARIO_SOCIONAUT};
+                --sir-coral: {COLOR_CORAL};
+                --sir-card: var(--secondary-background-color);
+                --sir-text: var(--text-color);
+                --sir-border: rgba(128,128,128,.28);
+                --sir-shadow: rgba(0,0,0,.11);
+            }}
+
+            .block-container {{
+                padding-top: 1.15rem;
+                padding-bottom: 2.4rem;
+                max-width: 1500px;
+            }}
+
+            .main-title {{
+                font-size: clamp(1.5rem, 2.6vw, 2.25rem);
+                font-weight: 950;
+                color: var(--sir-primary);
+                letter-spacing: -0.035em;
+                margin-bottom: .15rem;
+            }}
+
+            .sub-title {{
+                opacity: .76;
+                margin-bottom: 1rem;
+                font-size: .98rem;
+            }}
+
+            .section-card, .case-card {{
+                background: var(--sir-card);
+                color: var(--sir-text);
+                border: 1px solid var(--sir-border);
+                border-radius: 22px;
+                box-shadow: 0 10px 28px var(--sir-shadow);
+                padding: 1.05rem 1.2rem;
+                margin-bottom: 1rem;
+            }}
+
+            .screen-help {{
+                border-left: 5px solid var(--sir-accent);
+                background: color-mix(in srgb, var(--sir-card) 84%, var(--sir-accent) 10%);
+                border-radius: 16px;
+                padding: .85rem 1rem;
+                margin: .45rem 0 1rem 0;
+                line-height: 1.45;
+            }}
+
+            .case-hero {{
+                display:flex;
+                justify-content:space-between;
+                gap:1rem;
+                align-items:flex-start;
+            }}
+
+            .case-kicker {{
+                color:var(--sir-accent);
+                font-weight:900;
+                text-transform:uppercase;
+                letter-spacing:.08em;
+                font-size:.72rem;
+            }}
+
+            .case-title {{
+                font-size:clamp(1.1rem,2vw,1.55rem);
+                font-weight:950;
+                letter-spacing:-.03em;
+                margin:.15rem 0;
+            }}
+
+            .case-subtitle {{
+                opacity:.72;
+                font-size:.9rem;
+            }}
+
+            .chip {{
+                display:inline-block;
+                padding:.26rem .68rem;
+                border-radius:999px;
+                font-size:.79rem;
+                font-weight:850;
+                border:1px solid var(--sir-border);
+                margin-left:.3rem;
+                margin-bottom:.3rem;
+                background: color-mix(in srgb, var(--sir-card) 80%, var(--sir-primary) 10%);
+                color:var(--sir-text);
+            }}
+
+            .chip-accent {{
+                background:rgba(0,166,166,.14);
+                border-color:rgba(0,166,166,.38);
+            }}
+
+            .chip-coral {{
+                background:rgba(240,90,67,.14);
+                border-color:rgba(240,90,67,.38);
+            }}
+
+            div[data-testid="stMetric"] {{
+                background:var(--sir-card);
+                border:1px solid var(--sir-border);
+                border-radius:18px;
+                padding:1rem;
+                box-shadow:0 8px 20px var(--sir-shadow);
+            }}
+
+            div[data-testid="stForm"] {{
+                background:var(--sir-card);
+                border:1px solid var(--sir-border);
+                border-radius:22px;
+                padding:1.15rem 1.25rem;
+                box-shadow:0 10px 28px var(--sir-shadow);
+            }}
+
+            div[data-testid="stExpander"] {{
+                border:1px solid var(--sir-border);
+                border-radius:16px;
+                overflow:hidden;
+            }}
+
+            .stButton > button, .stDownloadButton > button {{
+                min-height:2.65rem;
+                border-radius:14px !important;
+                font-weight:800 !important;
+                border:1px solid var(--sir-border) !important;
+                transition:all 160ms ease-in-out;
+                box-shadow:0 6px 16px rgba(0,0,0,.09);
+            }}
+
+            .stButton > button:hover, .stDownloadButton > button:hover {{
+                transform:translateY(-1px);
+                box-shadow:0 10px 22px rgba(0,0,0,.15);
+            }}
+
+            [data-testid="stSidebar"] {{
+                border-right:1px solid var(--sir-border);
+            }}
+
+            [data-testid="stSidebar"] .stRadio > div {{
+                gap:.25rem;
+            }}
+
+            [data-testid="stSidebar"] label[data-baseweb="radio"] {{
+                border-radius:12px;
+                padding:.38rem .55rem;
+            }}
+
+            .stTextInput label, .stSelectbox label, .stDateInput label,
+            .stTimeInput label, .stNumberInput label, .stCheckbox label,
+            .stTextArea label, .stRadio label, .stMultiSelect label,
+            .stFileUploader label {{
+                color:var(--sir-text) !important;
+                font-weight:700;
+            }}
+
+            @media (max-width:768px) {{
+                .case-hero {{ flex-direction:column; }}
+                .section-card, .case-card {{ padding:.9rem; border-radius:18px; }}
+                div[data-testid="stForm"] {{ padding:.9rem; border-radius:18px; }}
+            }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def mostrar_encabezado():
+    st.markdown(
+        '<div class="main-title">Módulo · Consultas y Quejas</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<div class="sub-title">Sistema de Información para Reasentamiento · ACP · '
+        'Registro, atención, seguimiento, aprobación y cierre</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def mostrar_ayuda_pantalla(nombre_pantalla: str) -> None:
+    texto = PAGE_HELP.get(nombre_pantalla, "")
+    if texto:
+        st.markdown(
+            f"<div class='screen-help'>💡 {texto}</div>",
+            unsafe_allow_html=True,
+        )
+
+
+def mostrar_resumen_caso(case: sqlite3.Row) -> None:
+    codigo = case["codigo_caso"] or "Sin código"
+    clasificacion = case["clasificacion"] or "Sin clasificación"
+    estado = case["estado_actual"] or "Sin estado"
+    responsable = case["responsable_principal"] or "Sin responsable asignado"
+    descripcion = (case["descripcion"] or "").strip()
+    if len(descripcion) > 180:
+        descripcion = descripcion[:177] + "..."
+
+    st.markdown(
+        f"""
+        <div class="case-card">
+            <div class="case-hero">
+                <div>
+                    <div class="case-kicker">Expediente seleccionado</div>
+                    <div class="case-title">{codigo}</div>
+                    <div class="case-subtitle">{descripcion or "Sin descripción registrada."}</div>
+                </div>
+                <div>
+                    <span class="chip chip-accent">{clasificacion}</span>
+                    <span class="chip chip-coral">{estado}</span>
+                    <span class="chip">{responsable}</span>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+aplicar_estilos()
+mostrar_encabezado()
 
 
 # =========================================================
@@ -750,14 +982,10 @@ if "current_user" not in st.session_state:
     st.session_state.current_user = "Usuario SIR"
 
 with st.sidebar:
-    st.subheader("Sesión")
-    st.session_state.current_user = st.text_input(
-        "Nombre del usuario",
-        value=st.session_state.current_user,
-        help="Se utilizará en la auditoría y en los registros de actividad.",
-    )
+    st.title("Consultas y Quejas")
+    st.caption("Controles del módulo")
     page = st.radio(
-        "Navegación",
+        "Pantalla de trabajo",
         [
             "Panel general",
             "Importación Survey123",
@@ -769,8 +997,20 @@ with st.sidebar:
             "Revisión",
             "Trazabilidad",
         ],
+        help="Selecciona el proceso que deseas realizar.",
     )
-    st.caption(f"Base local: {DB_PATH.name}")
+
+    st.markdown("---")
+    st.subheader("Sesión")
+    st.session_state.current_user = st.text_input(
+        "Usuario activo",
+        value=st.session_state.current_user,
+        help="Este nombre se utilizará en la auditoría y en los registros de actividad.",
+    )
+
+    st.markdown("---")
+    st.caption(f"Base de datos: {DB_PATH.name}")
+    st.caption("Los identificadores y registros técnicos se conservan automáticamente.")
 
 
 def case_selector(label: str = "Seleccione un caso") -> Optional[str]:
@@ -791,8 +1031,17 @@ def case_selector(label: str = "Seleccione un caso") -> Optional[str]:
         f"{r['codigo_caso']} · {r['clasificacion']} · {r['estado_actual']} · {r['descripcion'][:60]}": r["id_caso"]
         for r in rows
     }
-    selected_label = st.selectbox(label, list(options.keys()))
-    return options[selected_label]
+    selected_label = st.selectbox(
+        label,
+        list(options.keys()),
+        help="Busca el código, clasificación, estado o descripción del caso.",
+    )
+    selected_id = options[selected_label]
+    with db_connection() as conn:
+        selected_case = get_case(conn, selected_id)
+    if selected_case:
+        mostrar_resumen_caso(selected_case)
+    return selected_id
 
 
 # =========================================================
@@ -800,6 +1049,7 @@ def case_selector(label: str = "Seleccione un caso") -> Optional[str]:
 # =========================================================
 
 if page == "Panel general":
+    mostrar_ayuda_pantalla(page)
     with db_connection() as conn:
         total = conn.execute("SELECT COUNT(*) total FROM casos").fetchone()["total"]
         open_cases = conn.execute(
@@ -827,9 +1077,29 @@ if page == "Panel general":
     c3.metric("Casos cerrados", closed_cases)
     c4.metric("Pendientes de aprobación", pending_approval)
 
-    st.subheader("Casos recientes")
+    st.markdown("### Casos recientes")
     if recent:
-        st.dataframe(rows_to_df(recent), use_container_width=True, hide_index=True)
+        recent_df = rows_to_df(recent).rename(
+            columns={
+                "codigo_caso": "Caso",
+                "clasificacion": "Clasificación",
+                "estado_actual": "Estado",
+                "responsable_principal": "Responsable",
+                "fecha_recepcion": "Fecha de recepción",
+                "fecha_ultima_actualizacion": "Última actualización",
+                "descripcion": "Descripción",
+            }
+        )
+        st.dataframe(
+            recent_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Descripción": st.column_config.TextColumn(width="large"),
+                "Caso": st.column_config.TextColumn(width="small"),
+                "Estado": st.column_config.TextColumn(width="medium"),
+            },
+        )
     else:
         st.info("No hay información para mostrar.")
 
@@ -840,7 +1110,8 @@ if page == "Panel general":
 # =========================================================
 
 elif page == "Importación Survey123":
-    st.subheader("Importación Survey123")
+    st.markdown("### Importación Survey123")
+    mostrar_ayuda_pantalla(page)
     st.write("Carga una exportación oficial de Survey123. Cada tabla se valida por su propio GlobalID: los registros nuevos se insertan, los modificados se actualizan y los idénticos se omiten.")
     archivo = st.file_uploader("Archivo Excel de Survey123", type=["xlsx"], key="survey123_file")
     if archivo:
@@ -883,7 +1154,8 @@ elif page == "Importación Survey123":
 # =========================================================
 
 elif page == "Registrar caso":
-    st.subheader("Nuevo caso")
+    st.markdown("### Registrar consulta o queja")
+    mostrar_ayuda_pantalla(page)
     st.caption(
         "La ficha conserva el orden del formulario oficial. "
         "La asignación, los estados y la gestión interna se realizan en las pantallas posteriores."
@@ -1137,15 +1409,12 @@ elif page == "Registrar caso":
 # =========================================================
 
 elif page == "Gestionar caso":
+    st.markdown("### Gestión del caso")
+    mostrar_ayuda_pantalla(page)
     case_id = case_selector()
     if case_id:
         with db_connection() as conn:
             case = get_case(conn, case_id)
-
-        st.info(
-            f"**{case['codigo_caso']}** · {case['clasificacion']} · "
-            f"Estado actual: **{case['estado_actual']}**"
-        )
 
         with st.form("form_manage_case"):
             st.markdown("#### Estado y alcance")
@@ -1267,6 +1536,8 @@ elif page == "Gestionar caso":
 # =========================================================
 
 elif page == "Seguimiento":
+    st.markdown("### Seguimiento del caso")
+    mostrar_ayuda_pantalla(page)
     case_id = case_selector()
     if case_id:
         with db_connection() as conn:
@@ -1284,8 +1555,6 @@ elif page == "Seguimiento":
                 """,
                 (case_id,),
             ).fetchall()
-
-        st.info(f"{case['codigo_caso']} · Estado actual: **{case['estado_actual']}**")
 
         with st.form("form_followup"):
             c1, c2 = st.columns(2)
@@ -1450,6 +1719,8 @@ elif page == "Seguimiento":
 # =========================================================
 
 elif page == "Comunicaciones":
+    st.markdown("### Comunicaciones")
+    mostrar_ayuda_pantalla(page)
     case_id = case_selector()
     if case_id:
         with db_connection() as conn:
@@ -1630,6 +1901,8 @@ elif page == "Comunicaciones":
 # =========================================================
 
 elif page == "Aprobación y cierre":
+    st.markdown("### Aprobación y cierre")
+    mostrar_ayuda_pantalla(page)
     case_id = case_selector()
     if case_id:
         with db_connection() as conn:
@@ -1887,6 +2160,8 @@ elif page == "Aprobación y cierre":
 # =========================================================
 
 elif page == "Revisión":
+    st.markdown("### Revisión o apelación")
+    mostrar_ayuda_pantalla(page)
     case_id = case_selector()
     if case_id:
         with db_connection() as conn:
@@ -2004,6 +2279,8 @@ elif page == "Revisión":
 # =========================================================
 
 elif page == "Trazabilidad":
+    st.markdown("### Trazabilidad del expediente")
+    mostrar_ayuda_pantalla(page)
     case_id = case_selector()
     if case_id:
         with db_connection() as conn:

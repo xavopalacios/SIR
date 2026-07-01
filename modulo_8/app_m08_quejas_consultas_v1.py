@@ -376,6 +376,7 @@ def importar_survey123(uploaded_file, user_name):
                     "survey_objectid":_xtext(row.get("ObjectID")), "survey_creationdate":_xtext(row.get("CreationDate")),
                     "survey_editdate":_xtext(row.get("EditDate")), "survey_creator":_xtext(row.get("Creator")), "survey_editor":_xtext(row.get("Editor"))
                 }
+                values.update(datos_vinculacion_m01(conn, values.get("cedula", "")))
                 ex=conn.execute("SELECT * FROM casos WHERE survey_globalid=?",(gid,)).fetchone()
                 if ex:
                     if _changed(ex,values): _update(conn,"casos","id_caso",ex["id_caso"],values); s["casos_actualizados"]+=1
@@ -657,8 +658,276 @@ ensure_column("casos", "visto_bueno_supervisor", "TEXT")
 ensure_column("casos", "fecha_visto_bueno", "TEXT")
 ensure_column("casos", "observacion_visto_bueno", "TEXT")
 ensure_column("casos", "acp_participa_cierre_contratista", "TEXT")
+ensure_column("casos", "id_persona_m01", "TEXT")
+ensure_column("casos", "id_hogar_m01", "TEXT")
+ensure_column("casos", "pertenece_proyecto", "INTEGER NOT NULL DEFAULT 0")
+ensure_column("casos", "estado_vinculacion_m01", "TEXT")
+ensure_column("casos", "fecha_vinculacion_m01", "TEXT")
 with db_connection() as conn:
     ensure_import_schema(conn)
+
+
+
+# =========================================================
+# INTEGRACIÓN SIMULADA CON M01 · PERSONAS Y HOGARES
+# =========================================================
+
+def normalizar_cedula(value: Any) -> str:
+    """Normaliza la cédula para comparar sin guiones, espacios o puntos."""
+    return re.sub(r"[^0-9A-Za-z]", "", str(value or "")).upper()
+
+
+def initialize_m01_simulation() -> None:
+    """Crea una estructura mínima compatible con M01 sin alterar sus datos futuros."""
+    with db_connection() as conn:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS m01_hogares (
+                id_hogar TEXT PRIMARY KEY,
+                codigo_hogar_campo TEXT,
+                nombre_referencia_hogar TEXT,
+                id_lugar_poblado TEXT,
+                zona TEXT,
+                tipo_afectacion TEXT,
+                tipo_desplazamiento TEXT,
+                nivel_prioridad_social TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS m01_personas (
+                id_persona TEXT PRIMARY KEY,
+                id_hogar TEXT NOT NULL,
+                nombres TEXT,
+                apellidos TEXT,
+                documento_identidad TEXT,
+                documento_normalizado TEXT,
+                telefono TEXT,
+                sexo TEXT,
+                fecha_nacimiento TEXT,
+                parentesco TEXT,
+                jefe_hogar INTEGER NOT NULL DEFAULT 0,
+                vive_en_hogar INTEGER NOT NULL DEFAULT 1,
+                FOREIGN KEY (id_hogar) REFERENCES m01_hogares(id_hogar)
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_m01_persona_documento
+            ON m01_personas(documento_normalizado)
+            WHERE documento_normalizado IS NOT NULL AND documento_normalizado <> '';
+            """
+        )
+
+        total = conn.execute("SELECT COUNT(*) AS total FROM m01_hogares").fetchone()["total"]
+        if total == 0:
+            hogares = [
+                ("HOG-0001", "PA-RI-001", "Hogar Anicasio Carrión", "COM-0001", "Río Indio", "Físico", "Físico-económico", "Alta"),
+                ("HOG-0002", "PA-RI-002", "Hogar María González", "COM-0002", "Río Indio", "Económico", "Económico", "Media"),
+                ("HOG-0003", "PA-CH-003", "Hogar José Pérez", "COM-0003", "Cuenca Oeste", "Físico", "Físico", "Alta"),
+                ("HOG-0004", "PA-CH-004", "Hogar Elena Rodríguez", "COM-0004", "Cuenca Oeste", "Económico", "Económico", "Baja"),
+            ]
+            conn.executemany(
+                """
+                INSERT INTO m01_hogares (
+                    id_hogar, codigo_hogar_campo, nombre_referencia_hogar,
+                    id_lugar_poblado, zona, tipo_afectacion,
+                    tipo_desplazamiento, nivel_prioridad_social
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                hogares,
+            )
+
+            personas = [
+                ("PER-0001", "HOG-0001", "Anicasio", "Carrión", "3-88-124", normalizar_cedula("3-88-124"), "6000-0101", "Masculino", "1970-03-14", "Jefe de hogar", 1, 1),
+                ("PER-0002", "HOG-0002", "María", "González", "8-765-432", normalizar_cedula("8-765-432"), "6000-0202", "Femenino", "1982-07-20", "Jefa de hogar", 1, 1),
+                ("PER-0003", "HOG-0003", "José", "Pérez", "4-123-987", normalizar_cedula("4-123-987"), "6000-0303", "Masculino", "1976-11-02", "Jefe de hogar", 1, 1),
+                ("PER-0004", "HOG-0004", "Elena", "Rodríguez", "8-999-111", normalizar_cedula("8-999-111"), "6000-0404", "Femenino", "1990-01-15", "Jefa de hogar", 1, 1),
+                ("PER-0005", "HOG-0001", "Luis", "Carrión", "3-88-125", normalizar_cedula("3-88-125"), "6000-0102", "Masculino", "1995-09-09", "Hijo", 0, 1),
+            ]
+            conn.executemany(
+                """
+                INSERT INTO m01_personas (
+                    id_persona, id_hogar, nombres, apellidos,
+                    documento_identidad, documento_normalizado,
+                    telefono, sexo, fecha_nacimiento, parentesco,
+                    jefe_hogar, vive_en_hogar
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                personas,
+            )
+
+
+def buscar_persona_m01_por_cedula(
+    conn: sqlite3.Connection,
+    cedula: str,
+) -> Optional[sqlite3.Row]:
+    cedula_normalizada = normalizar_cedula(cedula)
+    if not cedula_normalizada:
+        return None
+    return conn.execute(
+        """
+        SELECT
+            p.id_persona,
+            p.id_hogar,
+            p.nombres,
+            p.apellidos,
+            p.documento_identidad,
+            h.codigo_hogar_campo,
+            h.nombre_referencia_hogar,
+            h.zona,
+            h.tipo_afectacion,
+            h.tipo_desplazamiento,
+            h.nivel_prioridad_social
+        FROM m01_personas p
+        JOIN m01_hogares h ON h.id_hogar = p.id_hogar
+        WHERE p.documento_normalizado = ?
+        """,
+        (cedula_normalizada,),
+    ).fetchone()
+
+
+def datos_vinculacion_m01(
+    conn: sqlite3.Connection,
+    cedula: str,
+) -> Dict[str, Any]:
+    persona = buscar_persona_m01_por_cedula(conn, cedula)
+    if persona:
+        return {
+            "id_persona_m01": persona["id_persona"],
+            "id_hogar_m01": persona["id_hogar"],
+            "pertenece_proyecto": 1,
+            "estado_vinculacion_m01": "Vinculado con persona y hogar de M01",
+            "fecha_vinculacion_m01": now_iso(),
+        }
+    return {
+        "id_persona_m01": None,
+        "id_hogar_m01": None,
+        "pertenece_proyecto": 0,
+        "estado_vinculacion_m01": (
+            "Persona externa al proyecto o cédula no encontrada en M01"
+            if normalize_text(cedula)
+            else "No evaluado: caso sin cédula"
+        ),
+        "fecha_vinculacion_m01": now_iso(),
+    }
+
+
+def vincular_caso_m01(
+    conn: sqlite3.Connection,
+    case_id: str,
+    cedula: str,
+) -> Dict[str, Any]:
+    relation = datos_vinculacion_m01(conn, cedula)
+    _update(conn, "casos", "id_caso", case_id, relation)
+    return relation
+
+
+def seed_sample_cases_if_empty() -> None:
+    """Crea casos de prueba solo cuando la tabla casos está vacía."""
+    with db_connection() as conn:
+        total = conn.execute("SELECT COUNT(*) AS total FROM casos").fetchone()["total"]
+        if total > 0:
+            return
+
+        samples = [
+            {
+                "codigo_caso": "CQ-2026-00001",
+                "cedula": "3-88-124",
+                "nombre": "Anicasio Carrión",
+                "clasificacion": "Queja",
+                "tema": "Afectación de cultivos",
+                "descripcion": "Daños reportados en cultivos durante actividades de campo del proyecto.",
+                "estado": "En atención",
+            },
+            {
+                "codigo_caso": "CQ-2026-00002",
+                "cedula": "8-765-432",
+                "nombre": "María González",
+                "clasificacion": "Consulta",
+                "tema": "Información sobre cronograma",
+                "descripcion": "Solicita información sobre próximas actividades del programa en su comunidad.",
+                "estado": "Registrada",
+            },
+            {
+                "codigo_caso": "CQ-2026-00003",
+                "cedula": "9-999-999",
+                "nombre": "Carlos Méndez",
+                "clasificacion": "Queja",
+                "tema": "Tránsito de vehículos",
+                "descripcion": "Reporta molestias por tránsito de vehículos fuera de la huella directa del proyecto.",
+                "estado": "En atención",
+            },
+            {
+                "codigo_caso": "CQ-2026-00004",
+                "cedula": "",
+                "nombre": "",
+                "clasificacion": "Consulta",
+                "tema": "Consulta anónima",
+                "descripcion": "Consulta anónima sobre acceso a información pública del programa.",
+                "estado": "Registrada",
+            },
+        ]
+
+        for sample in samples:
+            case_id = generate_id("CASO")
+            relation = datos_vinculacion_m01(conn, sample["cedula"])
+            now = now_iso()
+            conn.execute(
+                """
+                INSERT INTO casos (
+                    id_caso, codigo_caso, fecha_recepcion, hora_recepcion,
+                    fecha_registro, hora_registro, registrado_por,
+                    clasificacion, estado_actual, situacion_atencion,
+                    dentro_alcance, motivo_fuera_alcance,
+                    tipo_identificacion_solicitante, confidencial,
+                    nombre_solicitante, sexo, cedula, telefono, celular, correo,
+                    provincia_contacto, distrito_contacto, corregimiento_contacto,
+                    lugar_poblado_contacto, direccion_contacto,
+                    medio_recepcion, otro_medio_recepcion, recibido_por,
+                    responsable_origen, tema, tipo_queja, descripcion,
+                    presentado_anteriormente, referencia_caso_anterior,
+                    respuesta_inmediata, propuesta_solucion,
+                    provincia_hecho, distrito_hecho, corregimiento_hecho,
+                    lugar_poblado_hecho, direccion_hecho,
+                    id_persona_m01, id_hogar_m01, pertenece_proyecto,
+                    estado_vinculacion_m01, fecha_vinculacion_m01,
+                    fecha_creacion, fecha_ultima_actualizacion, actualizado_por
+                ) VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?
+                )
+                """,
+                (
+                    case_id, sample["codigo_caso"], "2026-06-10", "08:30",
+                    "2026-06-10", "08:30", "Usuario demostración",
+                    sample["clasificacion"], sample["estado"], "",
+                    1, "",
+                    "Anónimo" if not sample["cedula"] else "Identificado", 0,
+                    sample["nombre"], "", sample["cedula"], "", "", "",
+                    "COLÓN", "CHAGRES", "LA ENCANTADA",
+                    "EL TORNITO", "",
+                    "Personalmente", "", "Equipo social",
+                    "", sample["tema"], "", sample["descripcion"],
+                    0, "", "Se informó que el caso sería registrado y atendido.", "",
+                    "COLÓN", "CHAGRES", "LA ENCANTADA",
+                    "EL TORNITO", "",
+                    relation["id_persona_m01"], relation["id_hogar_m01"],
+                    relation["pertenece_proyecto"],
+                    relation["estado_vinculacion_m01"],
+                    relation["fecha_vinculacion_m01"],
+                    now, now, "Usuario demostración",
+                ),
+            )
+            register_state_change(
+                conn,
+                case_id,
+                None,
+                sample["estado"],
+                "Usuario demostración",
+                "Caso simulado para validar la integración con M01.",
+            )
+
+
+initialize_m01_simulation()
+seed_sample_cases_if_empty()
 
 
 # =========================================================
@@ -753,7 +1022,7 @@ PAGE_HELP = {
         "Asigna responsables, actualiza el estado y registra las instrucciones internas "
         "sin modificar la información original del caso."
     ),
-    "Atención y cierre": (
+    "Seguimiento": (
         "Registra cada actuación de manera independiente para conservar quién la realizó, "
         "qué hizo, cuándo la hizo y cuál fue el resultado."
     ),
@@ -763,6 +1032,14 @@ PAGE_HELP = {
     ),
     "Cierre anterior": (
         "Registra la recomendación, la decisión del supervisor y el cierre formal del caso."
+    ),
+    "Notificaciones": (
+        "Registra por separado las notificaciones de recepción, los avances, "
+        "las solicitudes de información y la comunicación de resultados."
+    ),
+    "Cierre": (
+        "Concluye el caso según el resultado de la atención, el visto bueno "
+        "del supervisor, la respuesta presentada y la firma correspondiente."
     ),
     "Revisiones": (
         "Gestiona solicitudes de revisión o apelación vinculadas al expediente original."
@@ -971,6 +1248,11 @@ def mostrar_resumen_caso(case: sqlite3.Row) -> None:
     clasificacion = case["clasificacion"] or "Sin clasificación"
     estado = case["estado_actual"] or "Sin estado"
     responsable = case["responsable_principal"] or "Sin responsable asignado"
+    vinculo = (
+        f"Proyecto · {case['id_persona_m01']} · {case['id_hogar_m01']}"
+        if case["pertenece_proyecto"]
+        else "Persona externa / sin coincidencia en M01"
+    )
     descripcion = (case["descripcion"] or "").strip()
     if len(descripcion) > 180:
         descripcion = descripcion[:177] + "..."
@@ -988,6 +1270,7 @@ def mostrar_resumen_caso(case: sqlite3.Row) -> None:
                     <span class="chip chip-accent">{clasificacion}</span>
                     <span class="chip chip-coral">{estado}</span>
                     <span class="chip">{responsable}</span>
+                    <span class="chip chip-accent">{vinculo}</span>
                 </div>
             </div>
         </div>
@@ -1016,7 +1299,9 @@ with st.sidebar:
             "Panel general",
             "Importación Survey123",
             "Casos",
-            "Atención y cierre",
+            "Seguimiento",
+            "Notificaciones",
+            "Cierre",
             "Revisiones",
             "Trazabilidad",
         ],
@@ -1082,6 +1367,8 @@ TABLE_EXPORT_ORDER = [
     "auditoria",
     "ubicaciones_survey123",
     "importaciones_survey123",
+    "m01_hogares",
+    "m01_personas",
 ]
 
 
@@ -1644,6 +1931,7 @@ def cases_history_df() -> pd.DataFrame:
             hora_registro,
             clasificacion,
             nombre_solicitante,
+            cedula,
             tema,
             medio_recepcion,
             provincia_hecho,
@@ -1651,6 +1939,10 @@ def cases_history_df() -> pd.DataFrame:
             lugar_poblado_hecho,
             estado_actual,
             responsable_principal,
+            id_persona_m01,
+            id_hogar_m01,
+            pertenece_proyecto,
+            estado_vinculacion_m01,
             fecha_cierre,
             fecha_ultima_actualizacion
         FROM casos
@@ -2009,10 +2301,12 @@ def save_new_case(payload: Dict[str, Any], files) -> str:
         year = int(payload["fecha_registro"][:4])
         case_code = generate_case_code(conn, year)
         now = now_iso()
+        relation = datos_vinculacion_m01(conn, payload.get("cedula", ""))
         data = {
             "id_caso": case_id,
             "codigo_caso": case_code,
             **payload,
+            **relation,
             "registrado_por": st.session_state.current_user,
             "estado_actual": "Pendiente de asignación",
             "situacion_atencion": "",
@@ -2058,6 +2352,10 @@ def update_existing_case(case_id: str, payload: Dict[str, Any], files) -> None:
     required_text(payload["descripcion"], "Descripción")
     required_text(payload["recibido_por"], "Recepción por")
     with db_connection() as conn:
+        payload = {
+            **payload,
+            **datos_vinculacion_m01(conn, payload.get("cedula", "")),
+        }
         update_case_fields(
             conn,
             case_id,
@@ -2078,7 +2376,9 @@ def render_cases_history():
     df = filter_dataframe_ui(cases_history_df(), "cases")
     columns = [
         "codigo_caso", "fecha_registro", "hora_registro", "clasificacion",
-        "nombre_solicitante", "tema", "estado_actual", "responsable_principal",
+        "nombre_solicitante", "cedula", "tema", "estado_actual",
+        "id_persona_m01", "id_hogar_m01", "pertenece_proyecto",
+        "estado_vinculacion_m01", "responsable_principal",
         "provincia_hecho", "distrito_hecho", "lugar_poblado_hecho", "fecha_cierre",
     ]
     selected = dataframe_selection(df, "cases", "id_caso", columns)
@@ -3504,12 +3804,20 @@ if page == "Panel general":
         pending = conn.execute(
             "SELECT COUNT(*) total FROM casos WHERE estado_actual = 'Pendiente de aprobación'"
         ).fetchone()["total"]
+        linked = conn.execute(
+            "SELECT COUNT(*) total FROM casos WHERE pertenece_proyecto = 1"
+        ).fetchone()["total"]
+        external = conn.execute(
+            "SELECT COUNT(*) total FROM casos WHERE pertenece_proyecto = 0"
+        ).fetchone()["total"]
 
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
     c1.metric("Casos registrados", total)
     c2.metric("Casos activos", active)
     c3.metric("Casos cerrados", closed)
     c4.metric("Pendientes de aprobación", pending)
+    c5.metric("Personas del proyecto", linked)
+    c6.metric("Personas externas", external)
 
     st.markdown("### Accesos principales")
     c1, c2, c3 = st.columns(3)
@@ -3608,23 +3916,82 @@ elif page == "Casos":
                     st.error(str(exc))
 
 
-elif page == "Atención y cierre":
-    st.markdown("### Atención y cierre")
-    st.markdown(
-        "<div class='screen-help'>💡 Registra la investigación, inspecciones, "
-        "trámites, comunicaciones de avance y el cierre. Todo permanece dentro "
-        "del mismo flujo del caso.</div>",
-        unsafe_allow_html=True,
-    )
+elif page == "Seguimiento":
+    st.markdown("### Seguimiento")
+    mostrar_ayuda_pantalla(page)
     mode = render_work_mode(
-        ["Histórico", "Registrar seguimiento", "Concluir o cerrar caso"],
-        "attention_mode",
+        ["Histórico", "Agregar nuevo", "Editar existente"],
+        "followup_mode_v7",
     )
 
     if mode == "Histórico":
-        render_attention_history()
-    elif mode == "Registrar seguimiento":
-        render_attention_form()
+        render_followups_history()
+    elif mode == "Agregar nuevo":
+        render_followup_form()
+    else:
+        df = followups_history_df()
+        if df.empty:
+            st.info("No hay seguimientos para editar.")
+        else:
+            labels = {
+                (
+                    f"{row['codigo_caso']} · {row['fecha_actuacion']} · "
+                    f"{row['tipo_actuacion']} · {str(row['descripcion'])[:70]}"
+                ): row["id_seguimiento"]
+                for _, row in df.iterrows()
+            }
+            selected = st.selectbox(
+                "Seleccione el seguimiento",
+                list(labels.keys()),
+            )
+            render_followup_form(labels[selected])
+
+
+elif page == "Notificaciones":
+    st.markdown("### Notificaciones")
+    mostrar_ayuda_pantalla(page)
+    st.caption(
+        "Esta etapa registra los contactos con la persona solicitante. "
+        "No sustituye el seguimiento técnico del caso."
+    )
+    mode = render_work_mode(
+        ["Histórico", "Agregar nueva", "Editar existente"],
+        "notification_mode_v7",
+    )
+
+    if mode == "Histórico":
+        render_communications_history()
+    elif mode == "Agregar nueva":
+        render_communication_form()
+    else:
+        df = communications_history_df()
+        if df.empty:
+            st.info("No hay notificaciones para editar.")
+        else:
+            labels = {
+                (
+                    f"{row['codigo_caso']} · {row['fecha']} · "
+                    f"{row['tipo_comunicacion']} · {str(row['descripcion'])[:70]}"
+                ): row["id_comunicacion"]
+                for _, row in df.iterrows()
+            }
+            selected = st.selectbox(
+                "Seleccione la notificación",
+                list(labels.keys()),
+            )
+            render_communication_form(labels[selected])
+
+
+elif page == "Cierre":
+    st.markdown("### Cierre")
+    mostrar_ayuda_pantalla(page)
+    mode = render_work_mode(
+        ["Histórico", "Concluir o cerrar caso"],
+        "closure_mode_v7",
+    )
+
+    if mode == "Histórico":
+        render_approvals_history()
     else:
         render_closure_flow()
 

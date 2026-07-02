@@ -28,6 +28,9 @@ DB_PATH = Path(__file__).with_name("sir_consultas_quejas.db")
 UPLOAD_DIR = Path(__file__).with_name("archivos_consultas_quejas")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
+# Los datos de demostración quedan desactivados por defecto.
+ENABLE_DEMO_DATA = False
+
 
 # =========================================================
 # CONFIGURACIÓN Y UTILIDADES
@@ -273,6 +276,18 @@ def _xtime(value):
 def _xbool(value):
     return int(_xtext(value).lower() in {"si", "sí", "yes", "true", "1", "x"})
 
+
+def _xcode(value: Any, width: int) -> str:
+    text = _xtext(value)
+    if not text:
+        return ""
+    if text.endswith(".0") and text[:-2].isdigit():
+        text = text[:-2]
+    if text == "63":
+        return text
+    return text.zfill(width) if text.isdigit() and len(text) <= width else text
+
+
 def _survey_status(value):
     text = _xtext(value).lower()
     if text in {"cerrada", "cerrado"}:
@@ -281,39 +296,433 @@ def _survey_status(value):
         return "En atención"
     return "Registrada"
 
+
+SURVEY123_EXPECTED_FIELDS = {
+    "Quejas_y_Consultas_Rio_Indi_0": [
+        "ObjectID", "GlobalID", "Fecha de registro", "Medio por el que se recibe",
+        "Otro medio de recepción", "Nombre del contacto", "Sexo del contacto",
+        "Cédula del contacto", "Provincia del contacto (cod.)",
+        "Distrito del contacto (cod.)", "Corregimiento del contacto (cod.)",
+        "Comunidad del contacto (cod.)", "Provincia del contacto",
+        "Distrito del contacto", "Corregimiento del contacto", "Comunidad del contacto",
+        "Dirección del contacto", "Recepción de Consulta o Queja por:",
+        "Contacto de la persona", "Teléfono o celular", "Teléfono del contacto",
+        "Celular del contacto", "Correo electrónico del contacto", "Clasificación",
+        "N° del formulario", "Tema de la consulta o queja", "Tipo de queja", "¿Cuál?",
+        "Responsable del origen de la queja", "Nombre del responsable del origen de la queja",
+        "Descripción consulta o queja", "¿Ha sido presentada anteriormente?",
+        "Respuesta inmediata a la queja", "Propuesta mejor solución queja",
+        "Equipo Supervisor", "Supervisor de Equipo de Gestión Socioambiental (PH)",
+        "Fecha de asignación", "Cantidad de responsables de la asignación",
+        "Responsable 1", "Equipo Responsable 1", "Responsable 2", "Equipo Responsable 2",
+        "Responsable 3", "Equipo Responsable 3", "seccionSupervisor",
+        "seccionResponsable1", "seccionResponsable2", "seccionResponsable3", "Estatus",
+        "Fecha de cierre", "Respuesta brindada", "Aceptación contacto",
+        "Comentarios de aceptación contacto", "Comentarios de rechazo contacto",
+        "CreationDate", "Creator", "EditDate", "Editor", "Satisfacción contacto",
+        "Se brindó una respuesta", "x", "y",
+    ],
+    "ubicacionQueja_1": [
+        "ObjectID", "GlobalID", "Provincia de la queja (cod.)",
+        "Distrito de la queja (cod.)", "Corregimiento de la queja (cod.)",
+        "Comunidad de la queja (cod.)", "Provincia de la queja", "Distrito de la queja",
+        "Corregimiento de la queja", "Comunidad de la queja", "Dirección de la queja",
+        "Referencia de la afectación", "Otra referencia de la afectación",
+        "Llegada al lugar de afectación", "Coordenadas geográficas del sitio",
+        "Coordenadas Norte UTM", "Coordenadas Este UTM", "numFormularioUQ",
+        "ParentGlobalID", "CreationDate", "Creator", "EditDate", "Editor", "x", "y",
+    ],
+    "seguimiento_2": [
+        "ObjectID", "GlobalID", "Fecha", "Descripción y seguimiento de la",
+        "clasificacionS", "numFormularioS", "ParentGlobalID", "CreationDate",
+        "Creator", "EditDate", "Editor",
+    ],
+}
+
+
+def _jsonable(value: Any) -> Any:
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, (date, datetime, pd.Timestamp)):
+        return value.isoformat()
+    if hasattr(value, "item"):
+        try:
+            return value.item()
+        except Exception:
+            pass
+    return value
+
+
+def _row_json(row: pd.Series) -> str:
+    return json.dumps(
+        {str(key): _jsonable(value) for key, value in row.to_dict().items()},
+        ensure_ascii=False,
+        default=json_safe,
+    )
+
+
+def _source_filename(uploaded_file: Any, default: str = "survey123.xlsx") -> str:
+    return Path(getattr(uploaded_file, "name", default)).name
+
+
+def _next_control_code(conn: sqlite3.Connection, table: str, column: str, prefix: str) -> str:
+    rows = conn.execute(
+        f'SELECT "{column}" AS code FROM "{table}" '
+        f'WHERE "{column}" LIKE ? ORDER BY rowid',
+        (f"{prefix}%",),
+    ).fetchall()
+    maximum = 0
+    for row in rows:
+        code = str(row["code"] or "")
+        match = re.search(r"(\d+)$", code)
+        if match:
+            maximum = max(maximum, int(match.group(1)))
+    return f"{prefix}{maximum + 1:06d}"
+
+
+def _backfill_control_codes(
+    conn: sqlite3.Connection,
+    table: str,
+    pk: str,
+    column: str,
+    prefix: str,
+) -> None:
+    rows = conn.execute(
+        f'SELECT "{pk}" AS pk FROM "{table}" '
+        f'WHERE "{column}" IS NULL OR TRIM("{column}") = "" ORDER BY rowid'
+    ).fetchall()
+    for row in rows:
+        code = _next_control_code(conn, table, column, prefix)
+        conn.execute(
+            f'UPDATE "{table}" SET "{column}" = ? WHERE "{pk}" = ?',
+            (code, row["pk"]),
+        )
+
+
+def _assign_control_code(
+    conn: sqlite3.Connection,
+    table: str,
+    pk: str,
+    pk_value: str,
+    column: str,
+    prefix: str,
+) -> str:
+    row = conn.execute(
+        f'SELECT "{column}" AS code FROM "{table}" WHERE "{pk}" = ?',
+        (pk_value,),
+    ).fetchone()
+    if row and normalize_text(row["code"]):
+        return row["code"]
+    code = _next_control_code(conn, table, column, prefix)
+    conn.execute(
+        f'UPDATE "{table}" SET "{column}" = ? WHERE "{pk}" = ?',
+        (code, pk_value),
+    )
+    return code
+
+
+def _upsert_survey_reference(
+    conn: sqlite3.Connection,
+    tipo_registro: str,
+    id_caso: str,
+    id_registro_relacionado: Optional[str],
+    survey_objectid: str,
+    survey_globalid: str,
+    survey_parentglobalid: str,
+    numero_formulario: str,
+    archivo_origen: str,
+) -> None:
+    if not any([survey_objectid, survey_globalid, survey_parentglobalid, numero_formulario]):
+        return
+    existing = None
+    if survey_globalid:
+        existing = conn.execute(
+            """
+            SELECT id_referencia FROM referencias_survey123
+            WHERE tipo_registro = ? AND survey_globalid = ?
+            """,
+            (tipo_registro, survey_globalid),
+        ).fetchone()
+    values = {
+        "tipo_registro": tipo_registro,
+        "id_caso": id_caso,
+        "id_registro_relacionado": id_registro_relacionado,
+        "survey_objectid": survey_objectid,
+        "survey_globalid": survey_globalid,
+        "survey_parentglobalid": survey_parentglobalid,
+        "numero_formulario": numero_formulario,
+        "archivo_origen": archivo_origen,
+        "fecha_importacion": now_iso(),
+    }
+    if existing:
+        _update(conn, "referencias_survey123", "id_referencia", existing["id_referencia"], values)
+    else:
+        columns = ["id_referencia"] + list(values.keys())
+        conn.execute(
+            f"INSERT INTO referencias_survey123 ({', '.join(columns)}) "
+            f"VALUES ({', '.join(['?'] * len(columns))})",
+            [generate_id("REFS123")] + list(values.values()),
+        )
+
+
+def _save_pending_survey_record(
+    conn: sqlite3.Connection,
+    tipo_registro: str,
+    row: pd.Series,
+    objectid: str,
+    globalid: str,
+    parentglobalid: str,
+    form_number: str,
+    source_file: str,
+    reason: str,
+) -> None:
+    existing = None
+    if globalid:
+        existing = conn.execute(
+            """
+            SELECT id_pendiente FROM registros_survey_pendientes
+            WHERE tipo_registro = ? AND survey_globalid = ?
+            ORDER BY fecha_importacion DESC LIMIT 1
+            """,
+            (tipo_registro, globalid),
+        ).fetchone()
+    values = {
+        "tipo_registro": tipo_registro,
+        "survey_objectid": objectid,
+        "survey_globalid": globalid,
+        "survey_parentglobalid": parentglobalid,
+        "numero_formulario": form_number,
+        "datos_originales": _row_json(row),
+        "archivo_origen": source_file,
+        "motivo": reason,
+        "estado": "Pendiente",
+        "fecha_importacion": now_iso(),
+        "id_caso_resuelto": None,
+        "fecha_resolucion": None,
+    }
+    if existing:
+        _update(
+            conn, "registros_survey_pendientes", "id_pendiente",
+            existing["id_pendiente"], values,
+        )
+    else:
+        columns = ["id_pendiente"] + list(values.keys())
+        conn.execute(
+            f"INSERT INTO registros_survey_pendientes ({', '.join(columns)}) "
+            f"VALUES ({', '.join(['?'] * len(columns))})",
+            [generate_id("PENDS123")] + list(values.values()),
+        )
+
+
+def survey_structure_report(uploaded_file: Any) -> pd.DataFrame:
+    """Compara las hojas y encabezados recibidos con la estructura esperada."""
+    uploaded_file.seek(0)
+    xls = pd.ExcelFile(uploaded_file)
+    records = []
+    for sheet_name, expected in SURVEY123_EXPECTED_FIELDS.items():
+        if sheet_name not in xls.sheet_names:
+            records.append({
+                "hoja": sheet_name,
+                "estado": "Hoja faltante",
+                "campos_esperados": len(expected),
+                "campos_detectados": 0,
+                "faltantes": ", ".join(expected),
+                "adicionales": "",
+            })
+            continue
+        detected = pd.read_excel(xls, sheet_name=sheet_name, nrows=0).columns.astype(str).tolist()
+        missing = [field for field in expected if field not in detected]
+        extra = [field for field in detected if field not in expected]
+        records.append({
+            "hoja": sheet_name,
+            "estado": "Completa" if not missing else "Revisar",
+            "campos_esperados": len(expected),
+            "campos_detectados": len(detected),
+            "faltantes": ", ".join(missing),
+            "adicionales": ", ".join(extra),
+        })
+    uploaded_file.seek(0)
+    return pd.DataFrame(records)
+
+
 def ensure_import_schema(conn):
     def add_column(table, name, definition):
         cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
         if name not in cols:
-            conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
-    for name in ["survey_globalid", "survey_objectid", "survey_creationdate", "survey_editdate", "survey_creator", "survey_editor"]:
-        add_column("casos", name, "TEXT")
-    for name in ["survey_globalid", "survey_parentglobalid", "survey_objectid", "survey_creationdate", "survey_editdate", "survey_creator", "survey_editor"]:
-        add_column("seguimientos", name, "TEXT")
+            conn.execute(f'ALTER TABLE "{table}" ADD COLUMN "{name}" {definition}')
+
+    # Campos internos, campos exactos de Survey123 y metadatos del caso.
+    case_columns = {
+        "id_control_m8": "TEXT",
+        "provincia_contacto_codigo": "TEXT",
+        "distrito_contacto_codigo": "TEXT",
+        "corregimiento_contacto_codigo": "TEXT",
+        "lugar_poblado_contacto_codigo": "TEXT",
+        "contacto_persona": "TEXT",
+        "telefono_o_celular": "TEXT",
+        "tipo_queja_otro": "TEXT",
+        "responsable_origen_catalogo": "TEXT",
+        "nombre_responsable_origen": "TEXT",
+        "equipo_supervisor": "TEXT",
+        "cantidad_responsables_asignacion": "INTEGER",
+        "equipo_responsable_1": "TEXT",
+        "equipo_responsable_2": "TEXT",
+        "equipo_responsable_3": "TEXT",
+        "seccion_supervisor": "TEXT",
+        "seccion_responsable_1": "TEXT",
+        "seccion_responsable_2": "TEXT",
+        "seccion_responsable_3": "TEXT",
+        "comentarios_aceptacion_contacto": "TEXT",
+        "comentarios_rechazo_contacto": "TEXT",
+        "se_brindo_respuesta": "TEXT",
+        "hora_cierre": "TEXT",
+        "autoriza_divulgacion_datos": "TEXT",
+        "fuente_registro": "TEXT",
+        "archivo_origen": "TEXT",
+        "survey_globalid": "TEXT",
+        "survey_objectid": "TEXT",
+        "survey_creationdate": "TEXT",
+        "survey_editdate": "TEXT",
+        "survey_creator": "TEXT",
+        "survey_editor": "TEXT",
+        "survey_datos_originales": "TEXT",
+    }
+    for name, definition in case_columns.items():
+        add_column("casos", name, definition)
+
+    followup_columns = {
+        "id_control_seguimiento": "TEXT",
+        "clasificacion_survey": "TEXT",
+        "numero_formulario_survey": "TEXT",
+        "archivo_origen": "TEXT",
+        "survey_globalid": "TEXT",
+        "survey_parentglobalid": "TEXT",
+        "survey_objectid": "TEXT",
+        "survey_creationdate": "TEXT",
+        "survey_editdate": "TEXT",
+        "survey_creator": "TEXT",
+        "survey_editor": "TEXT",
+        "survey_datos_originales": "TEXT",
+    }
+    for name, definition in followup_columns.items():
+        add_column("seguimientos", name, definition)
+
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS ubicaciones_survey123 (
-            id_ubicacion TEXT PRIMARY KEY, id_caso TEXT NOT NULL,
-            survey_globalid TEXT NOT NULL UNIQUE, survey_parentglobalid TEXT,
-            survey_objectid TEXT, numero_formulario TEXT, provincia TEXT, distrito TEXT,
-            corregimiento TEXT, comunidad TEXT, direccion TEXT, referencia_afectacion TEXT,
-            otra_referencia TEXT, llegada_lugar TEXT, coordenadas_geograficas TEXT,
-            coordenada_norte_utm REAL, coordenada_este_utm REAL, latitud REAL, longitud REAL,
-            survey_creationdate TEXT, survey_editdate TEXT, survey_creator TEXT, survey_editor TEXT,
-            fecha_importacion TEXT NOT NULL, FOREIGN KEY(id_caso) REFERENCES casos(id_caso)
+            id_ubicacion TEXT PRIMARY KEY,
+            id_caso TEXT NOT NULL,
+            id_control_ubicacion TEXT,
+            survey_globalid TEXT,
+            survey_parentglobalid TEXT,
+            survey_objectid TEXT,
+            numero_formulario TEXT,
+            provincia_codigo TEXT,
+            distrito_codigo TEXT,
+            corregimiento_codigo TEXT,
+            comunidad_codigo TEXT,
+            provincia TEXT,
+            distrito TEXT,
+            corregimiento TEXT,
+            comunidad TEXT,
+            direccion TEXT,
+            referencia_afectacion TEXT,
+            otra_referencia TEXT,
+            llegada_lugar TEXT,
+            coordenadas_geograficas TEXT,
+            coordenada_norte_utm REAL,
+            coordenada_este_utm REAL,
+            latitud REAL,
+            longitud REAL,
+            survey_creationdate TEXT,
+            survey_editdate TEXT,
+            survey_creator TEXT,
+            survey_editor TEXT,
+            survey_datos_originales TEXT,
+            archivo_origen TEXT,
+            fecha_importacion TEXT NOT NULL,
+            FOREIGN KEY(id_caso) REFERENCES casos(id_caso)
         );
         CREATE TABLE IF NOT EXISTS importaciones_survey123 (
-            id_importacion TEXT PRIMARY KEY, nombre_archivo TEXT NOT NULL, fecha_importacion TEXT NOT NULL,
-            usuario TEXT NOT NULL, casos_nuevos INTEGER DEFAULT 0, casos_actualizados INTEGER DEFAULT 0,
+            id_importacion TEXT PRIMARY KEY, nombre_archivo TEXT NOT NULL,
+            fecha_importacion TEXT NOT NULL, usuario TEXT NOT NULL,
+            casos_nuevos INTEGER DEFAULT 0, casos_actualizados INTEGER DEFAULT 0,
             casos_sin_cambios INTEGER DEFAULT 0, ubicaciones_nuevas INTEGER DEFAULT 0,
             ubicaciones_actualizadas INTEGER DEFAULT 0, ubicaciones_sin_cambios INTEGER DEFAULT 0,
             seguimientos_nuevos INTEGER DEFAULT 0, seguimientos_actualizados INTEGER DEFAULT 0,
-            seguimientos_sin_cambios INTEGER DEFAULT 0, errores INTEGER DEFAULT 0, detalle_errores TEXT
+            seguimientos_sin_cambios INTEGER DEFAULT 0, errores INTEGER DEFAULT 0,
+            detalle_errores TEXT
         );
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_casos_survey_gid ON casos(survey_globalid)
-            WHERE survey_globalid IS NOT NULL AND survey_globalid <> '';
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_seg_survey_gid ON seguimientos(survey_globalid)
-            WHERE survey_globalid IS NOT NULL AND survey_globalid <> '';
+        CREATE TABLE IF NOT EXISTS referencias_survey123 (
+            id_referencia TEXT PRIMARY KEY,
+            tipo_registro TEXT NOT NULL,
+            id_caso TEXT NOT NULL,
+            id_registro_relacionado TEXT,
+            survey_objectid TEXT,
+            survey_globalid TEXT,
+            survey_parentglobalid TEXT,
+            numero_formulario TEXT,
+            archivo_origen TEXT,
+            fecha_importacion TEXT NOT NULL,
+            FOREIGN KEY(id_caso) REFERENCES casos(id_caso)
+        );
+        CREATE TABLE IF NOT EXISTS registros_survey_pendientes (
+            id_pendiente TEXT PRIMARY KEY,
+            tipo_registro TEXT NOT NULL,
+            survey_objectid TEXT,
+            survey_globalid TEXT,
+            survey_parentglobalid TEXT,
+            numero_formulario TEXT,
+            datos_originales TEXT NOT NULL,
+            archivo_origen TEXT,
+            motivo TEXT,
+            estado TEXT NOT NULL DEFAULT 'Pendiente',
+            fecha_importacion TEXT NOT NULL,
+            id_caso_resuelto TEXT,
+            fecha_resolucion TEXT
+        );
     """)
+
+    add_column("importaciones_survey123", "pendientes_vinculacion", "INTEGER DEFAULT 0")
+
+    location_columns = {
+        "id_control_ubicacion": "TEXT",
+        "provincia_codigo": "TEXT",
+        "distrito_codigo": "TEXT",
+        "corregimiento_codigo": "TEXT",
+        "comunidad_codigo": "TEXT",
+        "survey_datos_originales": "TEXT",
+        "archivo_origen": "TEXT",
+    }
+    for name, definition in location_columns.items():
+        add_column("ubicaciones_survey123", name, definition)
+
+    # Los GlobalID se conservan para intercambio futuro, pero no funcionan como ID interno.
+    conn.executescript("""
+        CREATE INDEX IF NOT EXISTS idx_casos_survey_gid ON casos(survey_globalid);
+        CREATE INDEX IF NOT EXISTS idx_seg_survey_gid ON seguimientos(survey_globalid);
+        CREATE INDEX IF NOT EXISTS idx_ubi_survey_gid ON ubicaciones_survey123(survey_globalid);
+        CREATE INDEX IF NOT EXISTS idx_ref_survey_gid ON referencias_survey123(tipo_registro, survey_globalid);
+        CREATE INDEX IF NOT EXISTS idx_pend_survey_gid ON registros_survey_pendientes(tipo_registro, survey_globalid);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_casos_control_m8 ON casos(id_control_m8)
+            WHERE id_control_m8 IS NOT NULL AND id_control_m8 <> '';
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_seg_control_m8 ON seguimientos(id_control_seguimiento)
+            WHERE id_control_seguimiento IS NOT NULL AND id_control_seguimiento <> '';
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_ubi_control_m8 ON ubicaciones_survey123(id_control_ubicacion)
+            WHERE id_control_ubicacion IS NOT NULL AND id_control_ubicacion <> '';
+    """)
+
+    _backfill_control_codes(conn, "casos", "id_caso", "id_control_m8", "M8-C-")
+    _backfill_control_codes(
+        conn, "seguimientos", "id_seguimiento", "id_control_seguimiento", "M8-S-"
+    )
+    _backfill_control_codes(
+        conn, "ubicaciones_survey123", "id_ubicacion", "id_control_ubicacion", "M8-U-"
+    )
 
 def _changed(existing, values):
     return any(("" if existing[k] is None else str(existing[k])) != ("" if v is None else str(v)) for k,v in values.items())
@@ -323,110 +732,442 @@ def _update(conn, table, pk, pk_value, values):
     conn.execute(f'UPDATE "{table}" SET {assignments} WHERE "{pk}"=?', list(values.values())+[pk_value])
 
 def _parent_case(conn, parent_gid, form_number):
-    row = conn.execute("SELECT * FROM casos WHERE survey_globalid=?", (parent_gid,)).fetchone() if parent_gid else None
-    if row: return row
-    return conn.execute("SELECT * FROM casos WHERE codigo_caso=?", (form_number,)).fetchone() if form_number else None
+    if parent_gid:
+        row = conn.execute(
+            "SELECT * FROM casos WHERE survey_globalid = ?", (parent_gid,)
+        ).fetchone()
+        if row:
+            return row
+        ref = conn.execute(
+            """
+            SELECT c.*
+            FROM referencias_survey123 r
+            JOIN casos c ON c.id_caso = r.id_caso
+            WHERE r.survey_globalid = ?
+            ORDER BY r.fecha_importacion DESC LIMIT 1
+            """,
+            (parent_gid,),
+        ).fetchone()
+        if ref:
+            return ref
+    if form_number:
+        return conn.execute(
+            "SELECT * FROM casos WHERE codigo_caso = ?", (form_number,)
+        ).fetchone()
+    return None
+
+
+def _existing_source_record(
+    conn: sqlite3.Connection,
+    table: str,
+    globalid: str,
+    objectid: str,
+    form_column: str,
+    form_number: str,
+):
+    if globalid:
+        row = conn.execute(
+            f'SELECT * FROM "{table}" WHERE survey_globalid = ?', (globalid,)
+        ).fetchone()
+        if row:
+            return row
+    if objectid and form_number:
+        row = conn.execute(
+            f'SELECT * FROM "{table}" WHERE survey_objectid = ? AND "{form_column}" = ?',
+            (objectid, form_number),
+        ).fetchone()
+        if row:
+            return row
+    return None
+
 
 def importar_survey123(uploaded_file, user_name):
-    required={"Quejas_y_Consultas_Rio_Indi_0","ubicacionQueja_1","seguimiento_2"}
-    xls=pd.ExcelFile(uploaded_file)
-    missing=required-set(xls.sheet_names)
-    if missing: raise ValueError("Faltan hojas: "+", ".join(sorted(missing)))
-    casos_df=pd.read_excel(xls, sheet_name="Quejas_y_Consultas_Rio_Indi_0")
-    ubi_df=pd.read_excel(xls, sheet_name="ubicacionQueja_1")
-    seg_df=pd.read_excel(xls, sheet_name="seguimiento_2")
-    s={k:0 for k in ["casos_nuevos","casos_actualizados","casos_sin_cambios","ubicaciones_nuevas","ubicaciones_actualizadas","ubicaciones_sin_cambios","seguimientos_nuevos","seguimientos_actualizados","seguimientos_sin_cambios","errores"]}
-    errores=[]
+    required = set(SURVEY123_EXPECTED_FIELDS)
+    uploaded_file.seek(0)
+    xls = pd.ExcelFile(uploaded_file)
+    missing = required - set(xls.sheet_names)
+    if missing:
+        raise ValueError("Faltan hojas: " + ", ".join(sorted(missing)))
+
+    casos_df = pd.read_excel(xls, sheet_name="Quejas_y_Consultas_Rio_Indi_0", dtype=object)
+    ubi_df = pd.read_excel(xls, sheet_name="ubicacionQueja_1", dtype=object)
+    seg_df = pd.read_excel(xls, sheet_name="seguimiento_2", dtype=object)
+    source_file = _source_filename(uploaded_file)
+    counters = {key: 0 for key in [
+        "casos_nuevos", "casos_actualizados", "casos_sin_cambios",
+        "ubicaciones_nuevas", "ubicaciones_actualizadas", "ubicaciones_sin_cambios",
+        "seguimientos_nuevos", "seguimientos_actualizados", "seguimientos_sin_cambios",
+        "pendientes_vinculacion", "errores",
+    ]}
+    errores = []
+
     with db_connection() as conn:
         ensure_import_schema(conn)
-        for i,row in casos_df.iterrows():
+
+        for index, row in casos_df.iterrows():
             try:
-                gid=_xtext(row.get("GlobalID")); form=_xtext(row.get("N° del formulario"))
-                if not gid: raise ValueError("GlobalID vacío")
-                f_reg=_xdate(row.get("Fecha de registro")) or date.today().isoformat()
-                name=_xtext(row.get("Nombre del contacto"))
-                clas="Queja" if "queja" in _xtext(row.get("Clasificación")).lower() else "Consulta"
-                values={
-                    "codigo_caso":form or generate_case_code(conn,int(f_reg[:4])), "fecha_recepcion":f_reg,
-                    "hora_recepcion":_xtime(row.get("Fecha de registro")), "fecha_registro":f_reg,
-                    "registrado_por":_xtext(row.get("Creator")) or user_name, "clasificacion":clas,
-                    "estado_actual":_survey_status(row.get("Estatus")), "situacion_atencion":"",
-                    "dentro_alcance":1, "motivo_fuera_alcance":"",
-                    "tipo_identificacion_solicitante":"Identificado", "confidencial":0,
-                    "nombre_solicitante":name, "sexo":_xtext(row.get("Sexo del contacto")),
-                    "cedula":_xtext(row.get("Cédula del contacto")), "telefono":_xtext(row.get("Teléfono del contacto")),
-                    "celular":_xtext(row.get("Celular del contacto")), "correo":_xtext(row.get("Correo electrónico del contacto")),
-                    "provincia_contacto":_xtext(row.get("Provincia del contacto")), "distrito_contacto":_xtext(row.get("Distrito del contacto")),
-                    "corregimiento_contacto":_xtext(row.get("Corregimiento del contacto")), "lugar_poblado_contacto":_xtext(row.get("Comunidad del contacto")),
-                    "direccion_contacto":_xtext(row.get("Dirección del contacto")), "medio_recepcion":_xtext(row.get("Medio por el que se recibe")) or "Otro",
-                    "otro_medio_recepcion":_xtext(row.get("Otro medio de recepción")), "recibido_por":_xtext(row.get("Recepción de Consulta o Queja por:")) or user_name,
-                    "tema":_xtext(row.get("Tema de la consulta o queja")), "tipo_queja":_xtext(row.get("Tipo de queja")),
-                    "responsable_origen":_xtext(row.get("Nombre del responsable del origen de la queja")) or _xtext(row.get("Responsable del origen de la queja")),
-                    "descripcion":_xtext(row.get("Descripción consulta o queja")) or "Sin descripción",
-                    "presentado_anteriormente":_xbool(row.get("¿Ha sido presentada anteriormente?")), "referencia_caso_anterior":"",
-                    "respuesta_inmediata":_xtext(row.get("Respuesta inmediata a la queja")), "propuesta_solucion":_xtext(row.get("Propuesta mejor solución queja")),
-                    "supervisor":_xtext(row.get("Supervisor de Equipo de Gestión Socioambiental (PH)")) or _xtext(row.get("Equipo Supervisor")),
-                    "responsable_principal":_xtext(row.get("Responsable 1")), "responsable_apoyo_1":_xtext(row.get("Responsable 2")),
-                    "responsable_apoyo_2":_xtext(row.get("Responsable 3")), "fecha_asignacion":_xdate(row.get("Fecha de asignación")),
-                    "asignado_por":_xtext(row.get("Editor")) or user_name, "motivo_asignacion":"",
-                    "respuesta_final":_xtext(row.get("Respuesta brindada")), "acepta_respuesta":_xtext(row.get("Aceptación contacto")),
-                    "nivel_satisfaccion":_xtext(row.get("Satisfacción contacto")), "comentario_insatisfaccion":_xtext(row.get("Comentarios de rechazo contacto")),
-                    "comentarios_finales":_xtext(row.get("Comentarios de aceptación contacto")), "fecha_cierre":_xdate(row.get("Fecha de cierre")),
-                    "cerrado_por":_xtext(row.get("Editor")), "motivo_cierre":"", "fecha_creacion":now_iso(),
-                    "fecha_ultima_actualizacion":now_iso(), "actualizado_por":user_name, "survey_globalid":gid,
-                    "survey_objectid":_xtext(row.get("ObjectID")), "survey_creationdate":_xtext(row.get("CreationDate")),
-                    "survey_editdate":_xtext(row.get("EditDate")), "survey_creator":_xtext(row.get("Creator")), "survey_editor":_xtext(row.get("Editor"))
+                gid = _xtext(row.get("GlobalID"))
+                objectid = _xtext(row.get("ObjectID"))
+                form_number = _xtext(row.get("N° del formulario"))
+                fecha_registro = _xdate(row.get("Fecha de registro")) or date.today().isoformat()
+                hora_registro = _xtime(row.get("Fecha de registro")) or "08:00"
+                clasificacion = (
+                    "Queja" if "queja" in _xtext(row.get("Clasificación")).lower()
+                    else "Consulta"
+                )
+                nombre = _xtext(row.get("Nombre del contacto"))
+                cedula = _xtext(row.get("Cédula del contacto"))
+                responsable_catalogo = _xtext(row.get("Responsable del origen de la queja"))
+                nombre_responsable = _xtext(row.get("Nombre del responsable del origen de la queja"))
+                existing = None
+                matched_by_globalid = False
+                if gid:
+                    existing = conn.execute(
+                        "SELECT * FROM casos WHERE survey_globalid = ?", (gid,)
+                    ).fetchone()
+                    matched_by_globalid = existing is not None
+                if not existing and form_number:
+                    existing = conn.execute(
+                        "SELECT * FROM casos WHERE codigo_caso = ?", (form_number,)
+                    ).fetchone()
+                additional_survey_reference = bool(
+                    existing
+                    and gid
+                    and _xtext(existing["survey_globalid"])
+                    and gid != _xtext(existing["survey_globalid"])
+                    and not matched_by_globalid
+                )
+
+                values = {
+                    "codigo_caso": form_number or (
+                        existing["codigo_caso"] if existing else generate_case_code(conn, int(fecha_registro[:4]))
+                    ),
+                    "fecha_recepcion": fecha_registro,
+                    "hora_recepcion": hora_registro,
+                    "fecha_registro": fecha_registro,
+                    "hora_registro": hora_registro,
+                    "registrado_por": _xtext(row.get("Creator")) or user_name,
+                    "clasificacion": clasificacion,
+                    "estado_actual": _survey_status(row.get("Estatus")),
+                    "situacion_atencion": "",
+                    "dentro_alcance": 1,
+                    "motivo_fuera_alcance": "",
+                    "tipo_identificacion_solicitante": "Identificado",
+                    "nombre_solicitante": nombre,
+                    "sexo": _xtext(row.get("Sexo del contacto")),
+                    "cedula": cedula,
+                    "telefono": _xtext(row.get("Teléfono del contacto")),
+                    "celular": _xtext(row.get("Celular del contacto")),
+                    "correo": _xtext(row.get("Correo electrónico del contacto")),
+                    "provincia_contacto_codigo": _xcode(row.get("Provincia del contacto (cod.)"), 2),
+                    "distrito_contacto_codigo": _xcode(row.get("Distrito del contacto (cod.)"), 4),
+                    "corregimiento_contacto_codigo": _xcode(row.get("Corregimiento del contacto (cod.)"), 6),
+                    "lugar_poblado_contacto_codigo": _xcode(row.get("Comunidad del contacto (cod.)"), 9),
+                    "provincia_contacto": _xtext(row.get("Provincia del contacto")),
+                    "distrito_contacto": _xtext(row.get("Distrito del contacto")),
+                    "corregimiento_contacto": _xtext(row.get("Corregimiento del contacto")),
+                    "lugar_poblado_contacto": _xtext(row.get("Comunidad del contacto")),
+                    "direccion_contacto": _xtext(row.get("Dirección del contacto")),
+                    "medio_recepcion": _xtext(row.get("Medio por el que se recibe")) or "Otro",
+                    "otro_medio_recepcion": _xtext(row.get("Otro medio de recepción")),
+                    "recibido_por": _xtext(row.get("Recepción de Consulta o Queja por:")) or user_name,
+                    "contacto_persona": _xtext(row.get("Contacto de la persona")),
+                    "telefono_o_celular": _xtext(row.get("Teléfono o celular")),
+                    "tema": _xtext(row.get("Tema de la consulta o queja")),
+                    "tipo_queja": _xtext(row.get("Tipo de queja")),
+                    "tipo_queja_otro": _xtext(row.get("¿Cuál?")),
+                    "responsable_origen_catalogo": responsable_catalogo,
+                    "nombre_responsable_origen": nombre_responsable,
+                    "responsable_origen": nombre_responsable or responsable_catalogo,
+                    "descripcion": _xtext(row.get("Descripción consulta o queja")) or "Sin descripción",
+                    "presentado_anteriormente": _xbool(row.get("¿Ha sido presentada anteriormente?")),
+                    "referencia_caso_anterior": "",
+                    "respuesta_inmediata": _xtext(row.get("Respuesta inmediata a la queja")),
+                    "propuesta_solucion": _xtext(row.get("Propuesta mejor solución queja")),
+                    "equipo_supervisor": _xtext(row.get("Equipo Supervisor")),
+                    "supervisor": _xtext(row.get("Supervisor de Equipo de Gestión Socioambiental (PH)")),
+                    "fecha_asignacion": _xdate(row.get("Fecha de asignación")),
+                    "cantidad_responsables_asignacion": int(row.get("Cantidad de responsables de la asignación"))
+                        if not pd.isna(row.get("Cantidad de responsables de la asignación")) else None,
+                    "responsable_principal": _xtext(row.get("Responsable 1")),
+                    "equipo_responsable_1": _xtext(row.get("Equipo Responsable 1")),
+                    "responsable_apoyo_1": _xtext(row.get("Responsable 2")),
+                    "equipo_responsable_2": _xtext(row.get("Equipo Responsable 2")),
+                    "responsable_apoyo_2": _xtext(row.get("Responsable 3")),
+                    "equipo_responsable_3": _xtext(row.get("Equipo Responsable 3")),
+                    "seccion_supervisor": _xtext(row.get("seccionSupervisor")),
+                    "seccion_responsable_1": _xtext(row.get("seccionResponsable1")),
+                    "seccion_responsable_2": _xtext(row.get("seccionResponsable2")),
+                    "seccion_responsable_3": _xtext(row.get("seccionResponsable3")),
+                    "asignado_por": _xtext(row.get("Editor")) or user_name,
+                    "motivo_asignacion": "",
+                    "respuesta_final": _xtext(row.get("Respuesta brindada")),
+                    "acepta_respuesta": _xtext(row.get("Aceptación contacto")),
+                    "comentarios_aceptacion_contacto": _xtext(row.get("Comentarios de aceptación contacto")),
+                    "comentarios_rechazo_contacto": _xtext(row.get("Comentarios de rechazo contacto")),
+                    "comentarios_finales": _xtext(row.get("Comentarios de aceptación contacto")),
+                    "comentario_insatisfaccion": _xtext(row.get("Comentarios de rechazo contacto")),
+                    "nivel_satisfaccion": _xtext(row.get("Satisfacción contacto")),
+                    "se_brindo_respuesta": _xtext(row.get("Se brindó una respuesta")),
+                    "fecha_cierre": _xdate(row.get("Fecha de cierre")),
+                    "cerrado_por": _xtext(row.get("Editor")),
+                    "motivo_cierre": "",
+                    "longitud": None if pd.isna(row.get("x")) else row.get("x"),
+                    "latitud": None if pd.isna(row.get("y")) else row.get("y"),
+                    "fuente_registro": "Survey123",
+                    "archivo_origen": source_file,
+                    "survey_objectid": objectid,
+                    "survey_creationdate": _xtext(row.get("CreationDate")),
+                    "survey_editdate": _xtext(row.get("EditDate")),
+                    "survey_creator": _xtext(row.get("Creator")),
+                    "survey_editor": _xtext(row.get("Editor")),
+                    "survey_datos_originales": _row_json(row),
+                    **datos_vinculacion_m01(conn, cedula),
                 }
-                values.update(datos_vinculacion_m01(conn, values.get("cedula", "")))
-                ex=conn.execute("SELECT * FROM casos WHERE survey_globalid=?",(gid,)).fetchone()
-                if ex:
-                    if _changed(ex,values): _update(conn,"casos","id_caso",ex["id_caso"],values); s["casos_actualizados"]+=1
-                    else: s["casos_sin_cambios"]+=1
+                # El primer GlobalID queda en la ficha; todos se preservan en referencias_survey123.
+                if gid and (not existing or not _xtext(existing["survey_globalid"])):
+                    values["survey_globalid"] = gid
+
+                if existing:
+                    update_values = dict(values)
+                    update_values.pop("codigo_caso", None)
+                    if additional_survey_reference:
+                        # Otro GlobalID puede representar la misma ficha. Se conserva como
+                        # referencia, sin reemplazar los metadatos principales del expediente.
+                        for source_field in (
+                            "survey_objectid", "survey_creationdate", "survey_editdate",
+                            "survey_creator", "survey_editor", "survey_datos_originales",
+                            "archivo_origen",
+                        ):
+                            update_values.pop(source_field, None)
+                    if (
+                        existing["id_persona_m01"] == update_values.get("id_persona_m01")
+                        and existing["id_hogar_m01"] == update_values.get("id_hogar_m01")
+                    ):
+                        update_values["fecha_vinculacion_m01"] = existing["fecha_vinculacion_m01"]
+                    if _changed(existing, update_values):
+                        update_values["fecha_ultima_actualizacion"] = now_iso()
+                        update_values["actualizado_por"] = user_name
+                        _update(conn, "casos", "id_caso", existing["id_caso"], update_values)
+                        counters["casos_actualizados"] += 1
+                    else:
+                        counters["casos_sin_cambios"] += 1
+                    case_id = existing["id_caso"]
                 else:
-                    values["id_caso"]=generate_id("CASO")
-                    cols=",".join(f'"{k}"' for k in values); qs=",".join("?" for _ in values)
-                    conn.execute(f"INSERT INTO casos ({cols}) VALUES ({qs})",tuple(values.values()))
-                    register_state_change(conn,values["id_caso"],None,values["estado_actual"],user_name,"Importación Survey123")
-                    s["casos_nuevos"]+=1
-            except Exception as e: s["errores"]+=1; errores.append(f"Caso fila {i+2}: {e}")
-        for i,row in ubi_df.iterrows():
+                    case_id = generate_id("CASO")
+                    now = now_iso()
+                    values.update({
+                        "id_caso": case_id,
+                        "confidencial": 0,
+                        "fecha_creacion": now,
+                        "fecha_ultima_actualizacion": now,
+                        "actualizado_por": user_name,
+                    })
+                    columns = list(values.keys())
+                    conn.execute(
+                        f"INSERT INTO casos ({', '.join(columns)}) "
+                        f"VALUES ({', '.join(['?'] * len(columns))})",
+                        list(values.values()),
+                    )
+                    _assign_control_code(conn, "casos", "id_caso", case_id, "id_control_m8", "M8-C-")
+                    register_state_change(
+                        conn, case_id, None, values["estado_actual"], user_name, "Importación Survey123"
+                    )
+                    counters["casos_nuevos"] += 1
+
+                _upsert_survey_reference(
+                    conn, "caso", case_id, case_id, objectid, gid, "", form_number, source_file
+                )
+            except Exception as exc:
+                counters["errores"] += 1
+                errores.append(f"Caso fila {index + 2}: {exc}")
+
+        for index, row in ubi_df.iterrows():
             try:
-                gid=_xtext(row.get("GlobalID")); pgid=_xtext(row.get("ParentGlobalID")); form=_xtext(row.get("numFormularioUQ"))
-                if not gid: raise ValueError("GlobalID vacío")
-                case=_parent_case(conn,pgid,form)
-                if not case: raise ValueError("No se encontró el caso padre")
-                values={"id_caso":case["id_caso"],"survey_globalid":gid,"survey_parentglobalid":pgid,"survey_objectid":_xtext(row.get("ObjectID")),"numero_formulario":form,
-                        "provincia":_xtext(row.get("Provincia de la queja")),"distrito":_xtext(row.get("Distrito de la queja")),"corregimiento":_xtext(row.get("Corregimiento de la queja")),"comunidad":_xtext(row.get("Comunidad de la queja")),"direccion":_xtext(row.get("Dirección de la queja")),
-                        "referencia_afectacion":_xtext(row.get("Referencia de la afectación")),"otra_referencia":_xtext(row.get("Otra referencia de la afectación")),"llegada_lugar":_xtext(row.get("Llegada al lugar de afectación")),"coordenadas_geograficas":_xtext(row.get("Coordenadas geográficas del sitio")),
-                        "coordenada_norte_utm":None if pd.isna(row.get("Coordenadas Norte UTM")) else row.get("Coordenadas Norte UTM"),"coordenada_este_utm":None if pd.isna(row.get("Coordenadas Este UTM")) else row.get("Coordenadas Este UTM"),"latitud":None if pd.isna(row.get("y")) else row.get("y"),"longitud":None if pd.isna(row.get("x")) else row.get("x"),
-                        "survey_creationdate":_xtext(row.get("CreationDate")),"survey_editdate":_xtext(row.get("EditDate")),"survey_creator":_xtext(row.get("Creator")),"survey_editor":_xtext(row.get("Editor")),"fecha_importacion":now_iso()}
-                ex=conn.execute("SELECT * FROM ubicaciones_survey123 WHERE survey_globalid=?",(gid,)).fetchone()
-                if ex:
-                    if _changed(ex,values): _update(conn,"ubicaciones_survey123","id_ubicacion",ex["id_ubicacion"],values); s["ubicaciones_actualizadas"]+=1
-                    else: s["ubicaciones_sin_cambios"]+=1
+                gid = _xtext(row.get("GlobalID"))
+                parent_gid = _xtext(row.get("ParentGlobalID"))
+                objectid = _xtext(row.get("ObjectID"))
+                form_number = _xtext(row.get("numFormularioUQ"))
+                case = _parent_case(conn, parent_gid, form_number)
+                if not case:
+                    _save_pending_survey_record(
+                        conn, "ubicacion", row, objectid, gid, parent_gid,
+                        form_number, source_file,
+                        "Caso padre no incluido o todavía no importado",
+                    )
+                    counters["pendientes_vinculacion"] += 1
+                    continue
+                values = {
+                    "id_caso": case["id_caso"],
+                    "survey_globalid": gid or None,
+                    "survey_parentglobalid": parent_gid or None,
+                    "survey_objectid": objectid,
+                    "numero_formulario": form_number,
+                    "provincia_codigo": _xcode(row.get("Provincia de la queja (cod.)"), 2),
+                    "distrito_codigo": _xcode(row.get("Distrito de la queja (cod.)"), 4),
+                    "corregimiento_codigo": _xcode(row.get("Corregimiento de la queja (cod.)"), 6),
+                    "comunidad_codigo": _xcode(row.get("Comunidad de la queja (cod.)"), 9),
+                    "provincia": _xtext(row.get("Provincia de la queja")),
+                    "distrito": _xtext(row.get("Distrito de la queja")),
+                    "corregimiento": _xtext(row.get("Corregimiento de la queja")),
+                    "comunidad": _xtext(row.get("Comunidad de la queja")),
+                    "direccion": _xtext(row.get("Dirección de la queja")),
+                    "referencia_afectacion": _xtext(row.get("Referencia de la afectación")),
+                    "otra_referencia": _xtext(row.get("Otra referencia de la afectación")),
+                    "llegada_lugar": _xtext(row.get("Llegada al lugar de afectación")),
+                    "coordenadas_geograficas": _xtext(row.get("Coordenadas geográficas del sitio")),
+                    "coordenada_norte_utm": None if pd.isna(row.get("Coordenadas Norte UTM")) else row.get("Coordenadas Norte UTM"),
+                    "coordenada_este_utm": None if pd.isna(row.get("Coordenadas Este UTM")) else row.get("Coordenadas Este UTM"),
+                    "latitud": None if pd.isna(row.get("y")) else row.get("y"),
+                    "longitud": None if pd.isna(row.get("x")) else row.get("x"),
+                    "survey_creationdate": _xtext(row.get("CreationDate")),
+                    "survey_editdate": _xtext(row.get("EditDate")),
+                    "survey_creator": _xtext(row.get("Creator")),
+                    "survey_editor": _xtext(row.get("Editor")),
+                    "survey_datos_originales": _row_json(row),
+                    "archivo_origen": source_file,
+                    "fecha_importacion": now_iso(),
+                }
+                existing = _existing_source_record(
+                    conn, "ubicaciones_survey123", gid, objectid, "numero_formulario", form_number
+                )
+                if existing:
+                    values["fecha_importacion"] = existing["fecha_importacion"]
+                    if _changed(existing, values):
+                        _update(conn, "ubicaciones_survey123", "id_ubicacion", existing["id_ubicacion"], values)
+                        counters["ubicaciones_actualizadas"] += 1
+                    else:
+                        counters["ubicaciones_sin_cambios"] += 1
+                    location_id = existing["id_ubicacion"]
                 else:
-                    values["id_ubicacion"]=generate_id("UBI"); cols=",".join(f'"{k}"' for k in values); qs=",".join("?" for _ in values)
-                    conn.execute(f"INSERT INTO ubicaciones_survey123 ({cols}) VALUES ({qs})",tuple(values.values())); s["ubicaciones_nuevas"]+=1
-                _update(conn,"casos","id_caso",case["id_caso"],{"provincia_hecho":values["provincia"],"distrito_hecho":values["distrito"],"corregimiento_hecho":values["corregimiento"],"lugar_poblado_hecho":values["comunidad"],"direccion_hecho":values["direccion"],"latitud":values["latitud"],"longitud":values["longitud"]})
-            except Exception as e: s["errores"]+=1; errores.append(f"Ubicación fila {i+2}: {e}")
-        for i,row in seg_df.iterrows():
+                    location_id = generate_id("UBI")
+                    values["id_ubicacion"] = location_id
+                    columns = list(values.keys())
+                    conn.execute(
+                        f"INSERT INTO ubicaciones_survey123 ({', '.join(columns)}) "
+                        f"VALUES ({', '.join(['?'] * len(columns))})",
+                        list(values.values()),
+                    )
+                    _assign_control_code(
+                        conn, "ubicaciones_survey123", "id_ubicacion", location_id,
+                        "id_control_ubicacion", "M8-U-"
+                    )
+                    counters["ubicaciones_nuevas"] += 1
+
+                _update(conn, "casos", "id_caso", case["id_caso"], {
+                    "provincia_hecho": values["provincia"],
+                    "distrito_hecho": values["distrito"],
+                    "corregimiento_hecho": values["corregimiento"],
+                    "lugar_poblado_hecho": values["comunidad"],
+                    "direccion_hecho": values["direccion"],
+                    "latitud": values["latitud"],
+                    "longitud": values["longitud"],
+                })
+                _upsert_survey_reference(
+                    conn, "ubicacion", case["id_caso"], location_id,
+                    objectid, gid, parent_gid, form_number, source_file
+                )
+            except Exception as exc:
+                counters["errores"] += 1
+                errores.append(f"Ubicación fila {index + 2}: {exc}")
+
+        for index, row in seg_df.iterrows():
             try:
-                gid=_xtext(row.get("GlobalID")); pgid=_xtext(row.get("ParentGlobalID")); form=_xtext(row.get("numFormularioS"))
-                if not gid: raise ValueError("GlobalID vacío")
-                case=_parent_case(conn,pgid,form)
-                if not case: raise ValueError("No se encontró el caso padre")
-                values={"id_caso":case["id_caso"],"fecha_actuacion":_xdate(row.get("Fecha")) or case["fecha_registro"],"hora_actuacion":None,"tipo_actuacion":"Seguimiento importado","descripcion":_xtext(row.get("Descripción y seguimiento de la")) or "Sin descripción","resultado":"","responsable_ejecutor":_xtext(row.get("Creator")) or user_name,"usuario_registro":user_name,"estado_anterior":case["estado_actual"],"estado_posterior":case["estado_actual"],"proxima_accion":"","fecha_compromiso":None,"estado_actividad":"Completada","visible_solicitante":1,"fecha_registro_sistema":now_iso(),"survey_globalid":gid,"survey_parentglobalid":pgid,"survey_objectid":_xtext(row.get("ObjectID")),"survey_creationdate":_xtext(row.get("CreationDate")),"survey_editdate":_xtext(row.get("EditDate")),"survey_creator":_xtext(row.get("Creator")),"survey_editor":_xtext(row.get("Editor"))}
-                ex=conn.execute("SELECT * FROM seguimientos WHERE survey_globalid=?",(gid,)).fetchone()
-                if ex:
-                    if _changed(ex,values): _update(conn,"seguimientos","id_seguimiento",ex["id_seguimiento"],values); s["seguimientos_actualizados"]+=1
-                    else: s["seguimientos_sin_cambios"]+=1
+                gid = _xtext(row.get("GlobalID"))
+                parent_gid = _xtext(row.get("ParentGlobalID"))
+                objectid = _xtext(row.get("ObjectID"))
+                form_number = _xtext(row.get("numFormularioS"))
+                case = _parent_case(conn, parent_gid, form_number)
+                if not case:
+                    _save_pending_survey_record(
+                        conn, "seguimiento", row, objectid, gid, parent_gid,
+                        form_number, source_file,
+                        "Caso padre no incluido o todavía no importado",
+                    )
+                    counters["pendientes_vinculacion"] += 1
+                    continue
+                values = {
+                    "id_caso": case["id_caso"],
+                    "fecha_actuacion": _xdate(row.get("Fecha")) or case["fecha_registro"],
+                    "hora_actuacion": _xtime(row.get("Fecha")),
+                    "tipo_actuacion": "Seguimiento importado",
+                    "descripcion": _xtext(row.get("Descripción y seguimiento de la")) or "Sin descripción",
+                    "resultado": "",
+                    "responsable_ejecutor": _xtext(row.get("Creator")) or user_name,
+                    "usuario_registro": user_name,
+                    "estado_anterior": case["estado_actual"],
+                    "estado_posterior": case["estado_actual"],
+                    "proxima_accion": "",
+                    "fecha_compromiso": None,
+                    "estado_actividad": "Completada",
+                    "visible_solicitante": 1,
+                    "fecha_registro_sistema": now_iso(),
+                    "clasificacion_survey": _xtext(row.get("clasificacionS")),
+                    "numero_formulario_survey": form_number,
+                    "survey_globalid": gid or None,
+                    "survey_parentglobalid": parent_gid or None,
+                    "survey_objectid": objectid,
+                    "survey_creationdate": _xtext(row.get("CreationDate")),
+                    "survey_editdate": _xtext(row.get("EditDate")),
+                    "survey_creator": _xtext(row.get("Creator")),
+                    "survey_editor": _xtext(row.get("Editor")),
+                    "survey_datos_originales": _row_json(row),
+                    "archivo_origen": source_file,
+                }
+                existing = _existing_source_record(
+                    conn, "seguimientos", gid, objectid, "numero_formulario_survey", form_number
+                )
+                if existing:
+                    values["fecha_registro_sistema"] = existing["fecha_registro_sistema"]
+                    if _changed(existing, values):
+                        _update(conn, "seguimientos", "id_seguimiento", existing["id_seguimiento"], values)
+                        counters["seguimientos_actualizados"] += 1
+                    else:
+                        counters["seguimientos_sin_cambios"] += 1
+                    followup_id = existing["id_seguimiento"]
                 else:
-                    values["id_seguimiento"]=generate_id("SEG"); cols=",".join(f'"{k}"' for k in values); qs=",".join("?" for _ in values)
-                    conn.execute(f"INSERT INTO seguimientos ({cols}) VALUES ({qs})",tuple(values.values())); s["seguimientos_nuevos"]+=1
-            except Exception as e: s["errores"]+=1; errores.append(f"Seguimiento fila {i+2}: {e}")
-        conn.execute("INSERT INTO importaciones_survey123 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(generate_id("IMP"),getattr(uploaded_file,"name","survey123.xlsx"),now_iso(),user_name,s["casos_nuevos"],s["casos_actualizados"],s["casos_sin_cambios"],s["ubicaciones_nuevas"],s["ubicaciones_actualizadas"],s["ubicaciones_sin_cambios"],s["seguimientos_nuevos"],s["seguimientos_actualizados"],s["seguimientos_sin_cambios"],s["errores"],json.dumps(errores,ensure_ascii=False)))
-    s["detalle_errores"]=errores
-    return s
+                    followup_id = generate_id("SEG")
+                    values["id_seguimiento"] = followup_id
+                    columns = list(values.keys())
+                    conn.execute(
+                        f"INSERT INTO seguimientos ({', '.join(columns)}) "
+                        f"VALUES ({', '.join(['?'] * len(columns))})",
+                        list(values.values()),
+                    )
+                    _assign_control_code(
+                        conn, "seguimientos", "id_seguimiento", followup_id,
+                        "id_control_seguimiento", "M8-S-"
+                    )
+                    counters["seguimientos_nuevos"] += 1
+                _upsert_survey_reference(
+                    conn, "seguimiento", case["id_caso"], followup_id,
+                    objectid, gid, parent_gid, form_number, source_file
+                )
+            except Exception as exc:
+                counters["errores"] += 1
+                errores.append(f"Seguimiento fila {index + 2}: {exc}")
+
+        conn.execute(
+            """
+            INSERT INTO importaciones_survey123 (
+                id_importacion, nombre_archivo, fecha_importacion, usuario,
+                casos_nuevos, casos_actualizados, casos_sin_cambios,
+                ubicaciones_nuevas, ubicaciones_actualizadas, ubicaciones_sin_cambios,
+                seguimientos_nuevos, seguimientos_actualizados, seguimientos_sin_cambios,
+                pendientes_vinculacion, errores, detalle_errores
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                generate_id("IMP"), source_file, now_iso(), user_name,
+                counters["casos_nuevos"], counters["casos_actualizados"], counters["casos_sin_cambios"],
+                counters["ubicaciones_nuevas"], counters["ubicaciones_actualizadas"], counters["ubicaciones_sin_cambios"],
+                counters["seguimientos_nuevos"], counters["seguimientos_actualizados"], counters["seguimientos_sin_cambios"],
+                counters["pendientes_vinculacion"], counters["errores"], json.dumps(errores, ensure_ascii=False),
+            ),
+        )
+    counters["detalle_errores"] = errores
+    return counters
+
 
 # =========================================================
 # BASE DE DATOS
@@ -717,7 +1458,7 @@ def initialize_m01_simulation() -> None:
         )
 
         total = conn.execute("SELECT COUNT(*) AS total FROM m01_hogares").fetchone()["total"]
-        if total == 0:
+        if ENABLE_DEMO_DATA and total == 0:
             hogares = [
                 ("HOG-0001", "PA-RI-001", "Hogar Anicasio Carrión", "COM-0001", "Río Indio", "Físico", "Físico-económico", "Alta"),
                 ("HOG-0002", "PA-RI-002", "Hogar María González", "COM-0002", "Río Indio", "Económico", "Económico", "Media"),
@@ -928,7 +1669,8 @@ def seed_sample_cases_if_empty() -> None:
 
 
 initialize_m01_simulation()
-seed_sample_cases_if_empty()
+if ENABLE_DEMO_DATA:
+    seed_sample_cases_if_empty()
 
 
 # =========================================================
@@ -1366,6 +2108,8 @@ TABLE_EXPORT_ORDER = [
     "auditoria",
     "ubicaciones_survey123",
     "importaciones_survey123",
+    "referencias_survey123",
+    "registros_survey_pendientes",
     "m01_hogares",
     "m01_personas",
 ]
@@ -1394,7 +2138,7 @@ def get_case_options() -> Dict[str, str]:
     with db_connection() as conn:
         rows = conn.execute(
             """
-            SELECT id_caso, codigo_caso, clasificacion, estado_actual,
+            SELECT id_caso, id_control_m8, codigo_caso, clasificacion, estado_actual,
                    COALESCE(nombre_solicitante, '') AS nombre_solicitante
             FROM casos
             ORDER BY fecha_registro DESC, codigo_caso DESC
@@ -1565,29 +2309,46 @@ def format_time_12h(value: Any) -> str:
     return text if pd.isna(parsed) else parsed.strftime("%I:%M %p")
 
 
-def time_select_12h(container, label: str, current_value: Optional[str], key: str) -> str:
-    options = [f"{hour:02d}:{minute:02d}" for hour in range(24) for minute in range(0, 60, 5)]
-    current = str(current_value or datetime.now().strftime("%H:%M"))[:5]
-    if current not in options:
+def parse_time_to_24h(value: Any, default: str = "08:00") -> str:
+    if value in (None, ""):
+        return default
+    text = str(value).strip().upper().replace("A. M.", "AM").replace("P. M.", "PM")
+    for fmt in ("%H:%M", "%H:%M:%S", "%I:%M %p", "%I:%M:%S %p"):
         try:
-            parsed = datetime.strptime(current, "%H:%M")
-            rounded = int(round(parsed.minute / 5.0) * 5)
-            if rounded == 60:
-                parsed = parsed.replace(minute=0) + pd.Timedelta(hours=1)
-            else:
-                parsed = parsed.replace(minute=rounded)
-            current = parsed.strftime("%H:%M")
-        except Exception:
-            current = "08:00"
-    selected = container.selectbox(
-        label,
-        options,
-        index=options.index(current),
-        format_func=format_time_12h,
-        key=key,
-        help="Formato de 12 horas con indicador AM o PM.",
+            return datetime.strptime(text, fmt).strftime("%H:%M")
+        except ValueError:
+            continue
+    parsed = pd.to_datetime(text, errors="coerce")
+    return default if pd.isna(parsed) else parsed.strftime("%H:%M")
+
+
+def time_select_12h(container, label: str, current_value: Optional[str], key: str) -> str:
+    """Captura hora y minuto exactos en formato de 12 horas y almacena HH:MM."""
+    current_24 = parse_time_to_24h(current_value, datetime.now().strftime("%H:%M"))
+    parsed = datetime.strptime(current_24, "%H:%M")
+    hour_12 = parsed.hour % 12 or 12
+    period = "AM" if parsed.hour < 12 else "PM"
+
+    container.markdown(f"**{label}**")
+    c_hour, c_minute, c_period = container.columns([1, 1, 1])
+    selected_hour = int(c_hour.number_input(
+        "Hora", min_value=1, max_value=12, value=hour_12, step=1,
+        key=f"{key}_hour",
+    ))
+    selected_minute = int(c_minute.number_input(
+        "Minutos", min_value=0, max_value=59, value=parsed.minute, step=1,
+        key=f"{key}_minute",
+    ))
+    selected_period = c_period.selectbox(
+        "AM / PM", ["AM", "PM"], index=0 if period == "AM" else 1,
+        key=f"{key}_period",
     )
-    return selected
+    hour_24 = selected_hour % 12
+    if selected_period == "PM":
+        hour_24 += 12
+    stored = f"{hour_24:02d}:{selected_minute:02d}"
+    container.caption(f"Hora registrada: {format_time_12h(stored)}")
+    return stored
 
 
 def get_case_bundle(case_id: str):
@@ -1643,7 +2404,7 @@ def build_cases_word(case_ids: List[str]) -> bytes:
             header,
             0,
             [
-                f"Caso: {case['codigo_caso']}",
+                f"ID M8: {case['id_control_m8']} · Caso: {case['codigo_caso']}",
                 (
                     "Fecha de registro: "
                     f"{format_date_es(case['fecha_registro'])} "
@@ -1715,7 +2476,10 @@ def build_cases_word(case_ids: List[str]) -> bytes:
         add_word_field(table, 0, ["Fecha", "Descripción"])
         for followup in followups:
             cells = table.add_row().cells
-            cells[0].text = format_date_es(followup["fecha_actuacion"])
+            cells[0].text = (
+                f"{format_date_es(followup['fecha_actuacion'])} "
+                f"{format_time_12h(followup['hora_actuacion'])}"
+            ).strip()
             cells[1].text = followup["descripcion"] or ""
 
         document.add_heading(f"Cierre de la {case['clasificacion'].lower()}", level=2)
@@ -1725,7 +2489,10 @@ def build_cases_word(case_ids: List[str]) -> bytes:
             ("Nivel de satisfacción", case["nivel_satisfaccion"]),
             ("Comentarios finales", case["comentarios_finales"]),
             ("Firma", "____________________________"),
-            ("Fecha", format_date_es(case["fecha_cierre"])),
+            (
+                "Fecha",
+                f"{format_date_es(case['fecha_cierre'])} {format_time_12h(case['hora_cierre'])}".strip(),
+            ),
         ]
         table = document.add_table(rows=len(closing), cols=2)
         table.style = "Table Grid"
@@ -1803,7 +2570,10 @@ def build_cases_pdf(case_ids: List[str]) -> bytes:
         story.append(Spacer(1, 5))
 
         header_data = [[
-            pdf_paragraph(f"<b>Caso:</b> {case['codigo_caso']}", cell_style),
+            pdf_paragraph(
+                f"<b>ID M8:</b> {case['id_control_m8']} · <b>Caso:</b> {case['codigo_caso']}",
+                cell_style,
+            ),
             pdf_paragraph(
                 f"<b>Fecha de registro:</b> {format_date_es(case['fecha_registro'])} "
                 f"{format_time_12h(case['hora_registro'] or case['hora_recepcion'])}",
@@ -1877,7 +2647,10 @@ def build_cases_pdf(case_ids: List[str]) -> bytes:
         ]]
         for item in followups:
             followup_rows.append([
-                pdf_paragraph(format_date_es(item["fecha_actuacion"]), cell_style),
+                pdf_paragraph(
+                    f"{format_date_es(item['fecha_actuacion'])} {format_time_12h(item['hora_actuacion'])}".strip(),
+                    cell_style,
+                ),
                 pdf_paragraph(item["descripcion"], cell_style),
             ])
         if len(followup_rows) == 1:
@@ -1901,7 +2674,10 @@ def build_cases_pdf(case_ids: List[str]) -> bytes:
             ("Satisfacción", case["nivel_satisfaccion"]),
             ("Comentarios finales", case["comentarios_finales"]),
             ("Firma", "____________________________"),
-            ("Fecha", format_date_es(case["fecha_cierre"])),
+            (
+                "Fecha",
+                f"{format_date_es(case['fecha_cierre'])} {format_time_12h(case['hora_cierre'])}".strip(),
+            ),
         ])
 
         if position < len(case_ids) - 1:
@@ -1965,6 +2741,7 @@ def cases_history_df() -> pd.DataFrame:
         """
         SELECT
             id_caso,
+            id_control_m8,
             codigo_caso,
             fecha_registro,
             hora_registro,
@@ -1995,6 +2772,7 @@ def followups_history_df() -> pd.DataFrame:
         """
         SELECT
             s.id_seguimiento,
+            s.id_control_seguimiento,
             c.id_caso,
             c.codigo_caso,
             c.clasificacion,
@@ -2347,12 +3125,17 @@ def save_new_case(payload: Dict[str, Any], files) -> str:
             "fecha_creacion": now,
             "fecha_ultima_actualizacion": now,
             "actualizado_por": st.session_state.current_user,
+            "fuente_registro": "Manual",
+            "archivo_origen": "",
         }
         fields = ", ".join(data.keys())
         placeholders = ", ".join(["?"] * len(data))
         conn.execute(
             f"INSERT INTO casos ({fields}) VALUES ({placeholders})",
             tuple(data.values()),
+        )
+        _assign_control_code(
+            conn, "casos", "id_caso", case_id, "id_control_m8", "M8-C-"
         )
         register_state_change(
             conn,
@@ -2407,7 +3190,7 @@ def update_existing_case(case_id: str, payload: Dict[str, Any], files) -> None:
 def render_cases_history():
     df = filter_dataframe_ui(cases_history_df(), "cases")
     columns = [
-        "codigo_caso", "fecha_registro", "hora_registro", "clasificacion",
+        "id_control_m8", "codigo_caso", "fecha_registro", "hora_registro", "clasificacion",
         "nombre_solicitante", "cedula", "tema", "estado_actual",
         "id_persona_m01", "id_hogar_m01", "pertenece_proyecto",
         "estado_vinculacion_m01", "responsable_principal",
@@ -2420,7 +3203,7 @@ def render_cases_history():
 def render_followups_history():
     df = filter_dataframe_ui(followups_history_df(), "followups")
     columns = [
-        "codigo_caso", "fecha_actuacion", "tipo_actuacion", "descripcion",
+        "id_control_seguimiento", "codigo_caso", "fecha_actuacion", "hora_actuacion", "tipo_actuacion", "descripcion",
         "resultado", "responsable_ejecutor", "estado_anterior",
         "estado_posterior", "proxima_accion", "fecha_compromiso",
         "estado_actividad",
@@ -2499,9 +3282,15 @@ def render_followup_form(edit_id: Optional[str] = None):
             "Fecha de la actuación",
             value=date.fromisoformat(values["fecha_actuacion"]) if values.get("fecha_actuacion") else date.today(),
         )
+        action_time = time_select_12h(
+            c2,
+            "Hora de la actuación",
+            values.get("hora_actuacion"),
+            key=f"followup_time_{edit_id or 'new'}",
+        )
         action_type_values = FOLLOWUP_TYPES
         action_type_current = values.get("tipo_actuacion") or FOLLOWUP_TYPES[0]
-        action_type = c2.selectbox(
+        action_type = st.selectbox(
             "Tipo de actuación",
             action_type_values,
             index=action_type_values.index(action_type_current) if action_type_current in action_type_values else 0,
@@ -2562,7 +3351,7 @@ def render_followup_form(edit_id: Optional[str] = None):
             values_to_save = {
                 "id_caso": case_id,
                 "fecha_actuacion": action_date.isoformat(),
-                "hora_actuacion": None,
+                "hora_actuacion": action_time,
                 "tipo_actuacion": action_type,
                 "descripcion": description,
                 "resultado": result,
@@ -2606,6 +3395,10 @@ def render_followup_form(edit_id: Optional[str] = None):
                         VALUES ({', '.join(['?'] * len(columns))})
                         """,
                         insert_values,
+                    )
+                    _assign_control_code(
+                        conn, "seguimientos", "id_seguimiento", followup_id,
+                        "id_control_seguimiento", "M8-S-"
                     )
                     audit_change(
                         conn,
@@ -2998,7 +3791,7 @@ def render_approval_form(case_id: str):
                 "Firma de conformidad",
                 value=bool(case["firma_conformidad"]),
             )
-            refusal = c3.checkbox(
+            refusal = c2.checkbox(
                 "Negativa a firmar",
                 value=bool(case["negativa_firma"]),
             )
@@ -3385,7 +4178,10 @@ def render_attention_form():
     with st.form(f"attention_form_{case_id}"):
         c1, c2 = st.columns(2)
         action_date = c1.date_input("Fecha de la actuación", value=date.today())
-        action_type = c2.selectbox("Tipo de actuación", FOLLOWUP_TYPES)
+        action_time = time_select_12h(
+            c2, "Hora de la actuación", None, key=f"attention_time_{case_id}"
+        )
+        action_type = st.selectbox("Tipo de actuación", FOLLOWUP_TYPES)
         executor = st.text_input(
             "Responsable de atender",
             value=case["responsable_principal"] or "",
@@ -3469,13 +4265,17 @@ def render_attention_form():
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
-                        followup_id, case_id, action_date.isoformat(), None,
+                        followup_id, case_id, action_date.isoformat(), action_time,
                         action_type, description, result, executor,
                         st.session_state.current_user, case["estado_actual"],
                         "En atención", next_action,
                         commitment_date.isoformat() if commitment_date else None,
                         "Completada", int(informed), now_iso(),
                     ),
+                )
+                _assign_control_code(
+                    conn, "seguimientos", "id_seguimiento", followup_id,
+                    "id_control_seguimiento", "M8-S-"
                 )
 
                 if case["estado_actual"] != "En atención":
@@ -3672,17 +4472,24 @@ def render_closure_flow():
             value=case["comentarios_finales"] or "",
         )
 
-        c1, c2, c3 = st.columns(3)
+        c1, c2 = st.columns(2)
         closure_date = c1.date_input(
             "Fecha de cierre",
             value=date.fromisoformat(case["fecha_cierre"])
             if case["fecha_cierre"] else date.today(),
         )
-        signed = c2.checkbox(
+        closure_time = time_select_12h(
+            c2,
+            "Hora de cierre",
+            case["hora_cierre"] if "hora_cierre" in case.keys() else None,
+            key=f"closure_time_{case_id}",
+        )
+        c1, c2 = st.columns(2)
+        signed = c1.checkbox(
             "Firma de conformidad",
             value=bool(case["firma_conformidad"]),
         )
-        refusal = c3.checkbox(
+        refusal = c2.checkbox(
             "La persona se negó a firmar",
             value=bool(case["negativa_firma"]),
         )
@@ -3758,8 +4565,10 @@ def render_closure_flow():
                 "nivel_satisfaccion": satisfaction,
                 "comentario_insatisfaccion": dissatisfaction,
                 "confidencial": int(confidential_close == "No"),
+                "autoriza_divulgacion_datos": confidential_close,
                 "comentarios_finales": final_comments,
                 "fecha_cierre": closure_date.isoformat(),
+                "hora_cierre": closure_time,
                 "cerrado_por": st.session_state.current_user,
                 "motivo_cierre": closure_reason,
                 "firma_conformidad": int(signed),
@@ -3799,7 +4608,7 @@ def render_closure_flow():
                     """,
                     (
                         communication_id, case_id, "Comunicación de cierre",
-                        closure_date.isoformat(), None, "Personalmente",
+                        closure_date.isoformat(), closure_time, "Personalmente",
                         case["nombre_solicitante"] or "Solicitante",
                         st.session_state.current_user,
                         "Recibido" if accepted else "Otro",
@@ -3846,17 +4655,26 @@ def _excel_value(row: pd.Series, columns: Dict[str, str], *aliases: str, default
 
 
 def plantilla_carga_cliente_excel() -> bytes:
+    # No se solicitan GlobalID, ParentGlobalID ni IDs técnicos al usuario.
     casos_columns = [
         "codigo_caso", "fecha_registro", "hora_registro", "clasificacion",
-        "nombre_solicitante", "sexo", "cedula", "telefono", "celular", "correo",
+        "nombre_solicitante", "sexo", "cedula", "contacto_persona",
+        "telefono_o_celular", "telefono", "celular", "correo",
+        "provincia_contacto_codigo", "distrito_contacto_codigo",
+        "corregimiento_contacto_codigo", "lugar_poblado_contacto_codigo",
         "provincia_contacto", "distrito_contacto", "corregimiento_contacto",
         "lugar_poblado_contacto", "direccion_contacto", "medio_recepcion",
-        "otro_medio_recepcion", "recibido_por", "responsable_origen", "tema",
-        "tipo_queja", "descripcion", "presentado_anteriormente",
-        "referencia_caso_anterior", "respuesta_inmediata", "propuesta_solucion",
-        "provincia_hecho", "distrito_hecho", "corregimiento_hecho",
-        "lugar_poblado_hecho", "direccion_hecho", "origen_gestion",
-        "cargo_registra", "respecto_a", "respecto_otro"
+        "otro_medio_recepcion", "recibido_por", "responsable_origen_catalogo",
+        "nombre_responsable_origen", "tema", "tipo_queja", "tipo_queja_otro",
+        "descripcion", "presentado_anteriormente", "referencia_caso_anterior",
+        "respuesta_inmediata", "propuesta_solucion", "equipo_supervisor",
+        "supervisor", "fecha_asignacion", "cantidad_responsables_asignacion",
+        "responsable_principal", "equipo_responsable_1", "responsable_apoyo_1",
+        "equipo_responsable_2", "responsable_apoyo_2", "equipo_responsable_3",
+        "seccion_supervisor", "seccion_responsable_1", "seccion_responsable_2",
+        "seccion_responsable_3", "provincia_hecho", "distrito_hecho",
+        "corregimiento_hecho", "lugar_poblado_hecho", "direccion_hecho",
+        "origen_gestion", "cargo_registra", "respecto_a", "respecto_otro"
     ]
     seguimiento_columns = [
         "codigo_caso", "fecha_actuacion", "hora_actuacion", "tipo_actuacion",
@@ -3906,9 +4724,15 @@ def importar_excel_cliente(uploaded_file, user_name: str) -> Dict[str, Any]:
                     "nombre_solicitante": nombre,
                     "sexo": normalize_text(_excel_value(row, cols, "sexo")),
                     "cedula": cedula,
+                    "contacto_persona": normalize_text(_excel_value(row, cols, "contacto_persona", "contacto de la persona")),
+                    "telefono_o_celular": normalize_text(_excel_value(row, cols, "telefono_o_celular", "telefono o celular")),
                     "telefono": normalize_text(_excel_value(row, cols, "telefono")),
                     "celular": normalize_text(_excel_value(row, cols, "celular")),
                     "correo": normalize_text(_excel_value(row, cols, "correo", "correo electronico")),
+                    "provincia_contacto_codigo": normalize_text(_excel_value(row, cols, "provincia_contacto_codigo", "provincia del contacto cod")),
+                    "distrito_contacto_codigo": normalize_text(_excel_value(row, cols, "distrito_contacto_codigo", "distrito del contacto cod")),
+                    "corregimiento_contacto_codigo": normalize_text(_excel_value(row, cols, "corregimiento_contacto_codigo", "corregimiento del contacto cod")),
+                    "lugar_poblado_contacto_codigo": normalize_text(_excel_value(row, cols, "lugar_poblado_contacto_codigo", "comunidad del contacto cod")),
                     "provincia_contacto": normalize_text(_excel_value(row, cols, "provincia_contacto", "provincia del contacto")),
                     "distrito_contacto": normalize_text(_excel_value(row, cols, "distrito_contacto", "distrito del contacto")),
                     "corregimiento_contacto": normalize_text(_excel_value(row, cols, "corregimiento_contacto", "corregimiento del contacto")),
@@ -3917,14 +4741,31 @@ def importar_excel_cliente(uploaded_file, user_name: str) -> Dict[str, Any]:
                     "medio_recepcion": normalize_text(_excel_value(row, cols, "medio_recepcion", "medio por el que se recibio", default="Otro")) or "Otro",
                     "otro_medio_recepcion": normalize_text(_excel_value(row, cols, "otro_medio_recepcion")),
                     "recibido_por": normalize_text(_excel_value(row, cols, "recibido_por", "recepcion por", default=user_name)) or user_name,
-                    "responsable_origen": normalize_text(_excel_value(row, cols, "responsable_origen", "responsable del origen")),
+                    "responsable_origen_catalogo": normalize_text(_excel_value(row, cols, "responsable_origen_catalogo", "responsable del origen de la queja")),
+                    "nombre_responsable_origen": normalize_text(_excel_value(row, cols, "nombre_responsable_origen", "nombre del responsable del origen de la queja")),
+                    "responsable_origen": normalize_text(_excel_value(row, cols, "nombre_responsable_origen", "responsable_origen", "responsable del origen")),
                     "tema": normalize_text(_excel_value(row, cols, "tema")),
                     "tipo_queja": normalize_text(_excel_value(row, cols, "tipo_queja", "tipo de queja")) if clasificacion == "Queja" else "",
+                    "tipo_queja_otro": normalize_text(_excel_value(row, cols, "tipo_queja_otro", "cual")) if clasificacion == "Queja" else "",
                     "descripcion": descripcion,
                     "presentado_anteriormente": _xbool(_excel_value(row, cols, "presentado_anteriormente", "ha sido presentada anteriormente")),
                     "referencia_caso_anterior": normalize_text(_excel_value(row, cols, "referencia_caso_anterior")),
                     "respuesta_inmediata": normalize_text(_excel_value(row, cols, "respuesta_inmediata")),
                     "propuesta_solucion": normalize_text(_excel_value(row, cols, "propuesta_solucion", "propuesta de solucion")),
+                    "equipo_supervisor": normalize_text(_excel_value(row, cols, "equipo_supervisor")),
+                    "supervisor": normalize_text(_excel_value(row, cols, "supervisor")),
+                    "fecha_asignacion": _xdate(_excel_value(row, cols, "fecha_asignacion")),
+                    "cantidad_responsables_asignacion": int(_excel_value(row, cols, "cantidad_responsables_asignacion", default=0) or 0),
+                    "responsable_principal": normalize_text(_excel_value(row, cols, "responsable_principal")),
+                    "equipo_responsable_1": normalize_text(_excel_value(row, cols, "equipo_responsable_1")),
+                    "responsable_apoyo_1": normalize_text(_excel_value(row, cols, "responsable_apoyo_1")),
+                    "equipo_responsable_2": normalize_text(_excel_value(row, cols, "equipo_responsable_2")),
+                    "responsable_apoyo_2": normalize_text(_excel_value(row, cols, "responsable_apoyo_2")),
+                    "equipo_responsable_3": normalize_text(_excel_value(row, cols, "equipo_responsable_3")),
+                    "seccion_supervisor": normalize_text(_excel_value(row, cols, "seccion_supervisor")),
+                    "seccion_responsable_1": normalize_text(_excel_value(row, cols, "seccion_responsable_1")),
+                    "seccion_responsable_2": normalize_text(_excel_value(row, cols, "seccion_responsable_2")),
+                    "seccion_responsable_3": normalize_text(_excel_value(row, cols, "seccion_responsable_3")),
                     "provincia_hecho": normalize_text(_excel_value(row, cols, "provincia_hecho", "provincia del caso")),
                     "distrito_hecho": normalize_text(_excel_value(row, cols, "distrito_hecho", "distrito del caso")),
                     "corregimiento_hecho": normalize_text(_excel_value(row, cols, "corregimiento_hecho", "corregimiento del caso")),
@@ -3934,6 +4775,9 @@ def importar_excel_cliente(uploaded_file, user_name: str) -> Dict[str, Any]:
                     "cargo_registra": normalize_text(_excel_value(row, cols, "cargo_registra")),
                     "respecto_a": normalize_text(_excel_value(row, cols, "respecto_a")),
                     "respecto_otro": normalize_text(_excel_value(row, cols, "respecto_otro")),
+                    "fuente_registro": "Excel del cliente",
+                    "archivo_origen": _source_filename(uploaded_file, "excel_cliente.xlsx"),
+                    "survey_datos_originales": _row_json(row),
                     **relation,
                 }
                 if existing:
@@ -3952,6 +4796,9 @@ def importar_excel_cliente(uploaded_file, user_name: str) -> Dict[str, Any]:
                     })
                     fields = ", ".join(data.keys())
                     conn.execute(f"INSERT INTO casos ({fields}) VALUES ({', '.join(['?'] * len(data))})", tuple(data.values()))
+                    _assign_control_code(
+                        conn, "casos", "id_caso", case_id, "id_control_m8", "M8-C-"
+                    )
                     register_state_change(conn, case_id, None, "Pendiente de asignación", user_name, "Carga masiva del cliente")
                     audit_change(conn, case_id, "CREACIÓN MASIVA CLIENTE", user_name, new_data=data, details="Creación desde Excel del cliente.")
                     result["casos_nuevos"] += 1
@@ -3993,6 +4840,10 @@ def importar_excel_cliente(uploaded_file, user_name: str) -> Dict[str, Any]:
                             normalize_text(_excel_value(row, fcols, "estado_actividad", default="Completada")) or "Completada",
                             _xbool(_excel_value(row, fcols, "visible_solicitante")), now_iso(),
                         ),
+                    )
+                    _assign_control_code(
+                        conn, "seguimientos", "id_seguimiento", followup_id,
+                        "id_control_seguimiento", "M8-S-"
                     )
                     if posterior != case["estado_actual"]:
                         update_case_fields(conn, case["id_caso"], {"estado_actual": posterior}, user_name, "CAMBIO DE ESTADO POR CARGA MASIVA", descripcion)
@@ -4067,6 +4918,13 @@ elif page == "Carga de información":
                 uploaded_file.seek(0)
                 preview = pd.ExcelFile(uploaded_file)
                 st.write("Hojas detectadas:", ", ".join(preview.sheet_names))
+                structure = survey_structure_report(uploaded_file)
+                st.markdown("#### Validación de estructura")
+                st.dataframe(structure, use_container_width=True, hide_index=True)
+                st.caption(
+                    "Los IDs de control M8 se generan automáticamente. GlobalID y ParentGlobalID "
+                    "se conservan únicamente como referencias de intercambio con Survey123."
+                )
                 if st.button("Importar o actualizar Survey123", type="primary", use_container_width=True):
                     uploaded_file.seek(0)
                     result = importar_survey123(uploaded_file, st.session_state.current_user)
@@ -4097,6 +4955,15 @@ elif page == "Carga de información":
                 st.rerun()
             except Exception as exc:
                 st.error(f"No fue posible procesar el archivo: {exc}")
+
+    pending = read_table_df("registros_survey_pendientes")
+    if not pending.empty:
+        st.markdown("#### Registros relacionados pendientes de vinculación")
+        st.caption(
+            "Estos registros se conservaron completos, pero el caso padre no venía incluido "
+            "en el archivo cargado. Podrán vincularse cuando se reciba el expediente principal."
+        )
+        st.dataframe(pending, use_container_width=True, hide_index=True)
 
     history = read_table_df("importaciones_survey123")
     if not history.empty:

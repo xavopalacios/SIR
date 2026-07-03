@@ -1469,6 +1469,293 @@ with db_connection() as conn:
     )
 
 
+
+# =========================================================
+# USUARIOS, ASIGNACIONES Y CONTROL DE ACCESO
+# =========================================================
+
+def initialize_assignment_schema() -> None:
+    """Crea el catálogo temporal de usuarios y el historial no destructivo de asignaciones."""
+    ensure_column("casos", "id_usuario_responsable", "TEXT")
+    ensure_column("casos", "fecha_maxima_resolucion", "TEXT")
+
+    with db_connection() as conn:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS usuarios_sistema (
+                id_usuario TEXT PRIMARY KEY,
+                nombre_completo TEXT NOT NULL UNIQUE,
+                cargo TEXT,
+                unidad TEXT,
+                correo TEXT,
+                estado_usuario TEXT NOT NULL DEFAULT 'Activo',
+                puede_recibir_casos INTEGER NOT NULL DEFAULT 1,
+                puede_asignar INTEGER NOT NULL DEFAULT 1,
+                fecha_creacion TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS asignaciones_casos (
+                id_asignacion TEXT PRIMARY KEY,
+                id_caso TEXT NOT NULL,
+                id_usuario_asignado TEXT NOT NULL,
+                usuario_asignado_nombre TEXT NOT NULL,
+                fecha_maxima_resolucion TEXT NOT NULL,
+                asignado_por_id TEXT,
+                asignado_por_nombre TEXT NOT NULL,
+                fecha_hora_asignacion TEXT NOT NULL,
+                observacion_asignacion TEXT,
+                estado_asignacion TEXT NOT NULL DEFAULT 'Activa',
+                fecha_fin_asignacion TEXT,
+                FOREIGN KEY (id_caso) REFERENCES casos(id_caso),
+                FOREIGN KEY (id_usuario_asignado) REFERENCES usuarios_sistema(id_usuario)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_asignaciones_caso
+                ON asignaciones_casos(id_caso);
+            CREATE INDEX IF NOT EXISTS idx_asignaciones_usuario
+                ON asignaciones_casos(id_usuario_asignado, estado_asignacion);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_asignacion_activa_por_caso
+                ON asignaciones_casos(id_caso)
+                WHERE estado_asignacion = 'Activa';
+            """
+        )
+
+        demo_users = [
+            ("USR-001", "Ana Rodríguez", "Gestora social", "Gestión Social", "ana.rodriguez@sir.local"),
+            ("USR-002", "Carlos Méndez", "Especialista socioambiental", "Gestión Socioambiental", "carlos.mendez@sir.local"),
+            ("USR-003", "Elena Martínez", "Analista de seguimiento", "Seguimiento de Casos", "elena.martinez@sir.local"),
+            ("USR-004", "José González", "Supervisor PH-SM", "Supervisión", "jose.gonzalez@sir.local"),
+        ]
+        for user_id, name, role, unit, email in demo_users:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO usuarios_sistema (
+                    id_usuario, nombre_completo, cargo, unidad, correo,
+                    estado_usuario, puede_recibir_casos, puede_asignar, fecha_creacion
+                ) VALUES (?, ?, ?, ?, ?, 'Activo', 1, 1, ?)
+                """,
+                (user_id, name, role, unit, email, now_iso()),
+            )
+
+        # Migra asignaciones históricas únicamente cuando el nombre coincide con el catálogo.
+        existing_cases = conn.execute(
+            """
+            SELECT id_caso, responsable_principal, fecha_asignacion,
+                   fecha_maxima_resolucion, asignado_por
+            FROM casos
+            WHERE COALESCE(TRIM(responsable_principal), '') <> ''
+            """
+        ).fetchall()
+        for case in existing_cases:
+            active = conn.execute(
+                """
+                SELECT 1 FROM asignaciones_casos
+                WHERE id_caso = ? AND estado_asignacion = 'Activa'
+                """,
+                (case["id_caso"],),
+            ).fetchone()
+            if active:
+                continue
+            user = conn.execute(
+                """
+                SELECT * FROM usuarios_sistema
+                WHERE LOWER(TRIM(nombre_completo)) = LOWER(TRIM(?))
+                  AND estado_usuario = 'Activo'
+                """,
+                (case["responsable_principal"],),
+            ).fetchone()
+            if not user:
+                continue
+            assigned_at = case["fecha_asignacion"] or now_iso()
+            if len(str(assigned_at)) <= 10:
+                assigned_at = f"{assigned_at} 08:00:00"
+            max_date = case["fecha_maxima_resolucion"] or date.today().isoformat()
+            conn.execute(
+                """
+                INSERT INTO asignaciones_casos (
+                    id_asignacion, id_caso, id_usuario_asignado,
+                    usuario_asignado_nombre, fecha_maxima_resolucion,
+                    asignado_por_id, asignado_por_nombre,
+                    fecha_hora_asignacion, observacion_asignacion,
+                    estado_asignacion
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Activa')
+                """,
+                (
+                    generate_id("ASG"), case["id_caso"], user["id_usuario"],
+                    user["nombre_completo"], max_date, None,
+                    case["asignado_por"] or "Migración de datos",
+                    assigned_at, "Asignación migrada desde el registro existente.",
+                ),
+            )
+            conn.execute(
+                """
+                UPDATE casos
+                SET id_usuario_responsable = ?, fecha_maxima_resolucion = ?
+                WHERE id_caso = ?
+                """,
+                (user["id_usuario"], max_date, case["id_caso"]),
+            )
+
+
+def active_users() -> List[Dict[str, Any]]:
+    with db_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM usuarios_sistema
+            WHERE estado_usuario = 'Activo'
+            ORDER BY nombre_completo
+            """
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def current_user_id() -> str:
+    return str(st.session_state.get("current_user_id") or "")
+
+
+def current_user_name() -> str:
+    return str(st.session_state.get("current_user") or "")
+
+
+def get_active_assignment(case_id: str) -> Optional[sqlite3.Row]:
+    with db_connection() as conn:
+        return conn.execute(
+            """
+            SELECT a.*, u.cargo, u.unidad
+            FROM asignaciones_casos a
+            LEFT JOIN usuarios_sistema u ON u.id_usuario = a.id_usuario_asignado
+            WHERE a.id_caso = ? AND a.estado_asignacion = 'Activa'
+            ORDER BY a.fecha_hora_asignacion DESC
+            LIMIT 1
+            """,
+            (case_id,),
+        ).fetchone()
+
+
+def user_can_modify_case(case_id: str) -> bool:
+    """Permite modificar solamente cuando la asignación activa corresponde al usuario."""
+    assignment = get_active_assignment(case_id)
+    if assignment:
+        return assignment["id_usuario_asignado"] == current_user_id()
+    # Compatibilidad con registros previos a la tabla de asignaciones.
+    with db_connection() as conn:
+        case = get_case(conn, case_id)
+    return bool(
+        case
+        and normalize_text(case["responsable_principal"]).casefold()
+        == normalize_text(current_user_name()).casefold()
+    )
+
+
+def require_case_permission(case_id: str, action: str = "modificar") -> None:
+    if not user_can_modify_case(case_id):
+        raise PermissionError(
+            f"No puedes {action} este caso porque no está asignado a tu usuario activo."
+        )
+
+
+def assign_case_to_user(
+    case_id: str,
+    user_id: str,
+    maximum_resolution_date: date,
+    observation: str,
+) -> None:
+    users = {user["id_usuario"]: user for user in active_users()}
+    if user_id not in users:
+        raise ValueError("El usuario seleccionado no está activo en el catálogo.")
+    if maximum_resolution_date < date.today():
+        raise ValueError("La fecha máxima de resolución no puede estar en el pasado.")
+
+    target_user = users[user_id]
+    with db_connection() as conn:
+        case = get_case(conn, case_id)
+        if not case:
+            raise ValueError("El caso seleccionado no existe.")
+
+        previous_assignment = conn.execute(
+            """
+            SELECT * FROM asignaciones_casos
+            WHERE id_caso = ? AND estado_asignacion = 'Activa'
+            ORDER BY fecha_hora_asignacion DESC LIMIT 1
+            """,
+            (case_id,),
+        ).fetchone()
+        if previous_assignment:
+            conn.execute(
+                """
+                UPDATE asignaciones_casos
+                SET estado_asignacion = 'Reemplazada', fecha_fin_asignacion = ?
+                WHERE id_asignacion = ?
+                """,
+                (now_iso(), previous_assignment["id_asignacion"]),
+            )
+
+        assignment_id = generate_id("ASG")
+        conn.execute(
+            """
+            INSERT INTO asignaciones_casos (
+                id_asignacion, id_caso, id_usuario_asignado,
+                usuario_asignado_nombre, fecha_maxima_resolucion,
+                asignado_por_id, asignado_por_nombre,
+                fecha_hora_asignacion, observacion_asignacion,
+                estado_asignacion
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Activa')
+            """,
+            (
+                assignment_id, case_id, user_id, target_user["nombre_completo"],
+                maximum_resolution_date.isoformat(), current_user_id(),
+                current_user_name(), now_iso(), normalize_text(observation),
+            ),
+        )
+
+        previous_state = case["estado_actual"]
+        new_state = (
+            "Asignada"
+            if previous_state in ("Recibida", "Registrada", "Pendiente de asignación", "")
+            else previous_state
+        )
+        update_case_fields(
+            conn,
+            case_id,
+            {
+                "id_usuario_responsable": user_id,
+                "responsable_principal": target_user["nombre_completo"],
+                "fecha_asignacion": date.today().isoformat(),
+                "fecha_maxima_resolucion": maximum_resolution_date.isoformat(),
+                "asignado_por": current_user_name(),
+                "motivo_asignacion": normalize_text(observation),
+                "estado_actual": new_state,
+            },
+            current_user_name(),
+            "ASIGNACIÓN DE CASO",
+            normalize_text(observation) or f"Asignado a {target_user['nombre_completo']}.",
+        )
+        if previous_state != new_state:
+            register_state_change(
+                conn,
+                case_id,
+                previous_state,
+                new_state,
+                current_user_name(),
+                f"Caso asignado a {target_user['nombre_completo']}.",
+            )
+        audit_change(
+            conn,
+            case_id,
+            "HISTORIAL DE ASIGNACIÓN",
+            current_user_name(),
+            previous_data=dict(previous_assignment) if previous_assignment else {},
+            new_data={
+                "id_asignacion": assignment_id,
+                "usuario": target_user["nombre_completo"],
+                "fecha_maxima_resolucion": maximum_resolution_date.isoformat(),
+            },
+            details=normalize_text(observation),
+        )
+
+
+initialize_assignment_schema()
+
 # =========================================================
 # INTEGRACIÓN SIMULADA CON M01 · PERSONAS Y HOGARES
 # =========================================================
@@ -2016,8 +2303,9 @@ PAGE_HELP = {
         "Carga exclusivamente el archivo exportado desde Survey123. Los identificadores "
         "internos se generan automáticamente y las referencias de intercambio se conservan."
     ),
-    "Registro de casos": (
-        "Consulta los casos registrados, agrega un caso manualmente o actualiza su ficha."
+    "Casos": (
+        "Consulta todos los casos importados desde Survey123, revisa su información, "
+        "asigna responsables y edita únicamente los casos que te corresponden."
     ),
     "Seguimiento": (
         "Registra actuaciones, resultados, compromisos e información comunicada a la persona "
@@ -2273,8 +2561,10 @@ mostrar_encabezado()
 # SESIÓN Y NAVEGACIÓN
 # =========================================================
 
+if "current_user_id" not in st.session_state:
+    st.session_state.current_user_id = "USR-001"
 if "current_user" not in st.session_state:
-    st.session_state.current_user = "Usuario SIR"
+    st.session_state.current_user = "Ana Rodríguez"
 
 with st.sidebar:
     st.title("Módulo 8 · Casos")
@@ -2284,7 +2574,7 @@ with st.sidebar:
         [
             "Panel general",
             "Carga de información",
-            "Registro de casos",
+            "Casos",
             "Seguimiento",
             "Cierre",
             "Histórico",
@@ -2294,15 +2584,33 @@ with st.sidebar:
 
     st.markdown("---")
     st.subheader("Sesión")
-    st.session_state.current_user = st.text_input(
-        "Usuario activo",
-        value=st.session_state.current_user,
-        help="Este nombre se utilizará en la auditoría y en los registros de actividad.",
+    user_catalog = active_users()
+    user_labels = {
+        f"{user['nombre_completo']} · {user.get('cargo') or 'Sin cargo'}": user
+        for user in user_catalog
+    }
+    current_label = next(
+        (
+            label for label, user in user_labels.items()
+            if user["id_usuario"] == st.session_state.current_user_id
+        ),
+        next(iter(user_labels), ""),
     )
+    selected_user_label = st.selectbox(
+        "Usuario activo",
+        list(user_labels.keys()),
+        index=list(user_labels.keys()).index(current_label) if current_label else 0,
+        help="Los permisos de seguimiento, edición y cierre se validan con este usuario.",
+    )
+    if selected_user_label:
+        selected_user = user_labels[selected_user_label]
+        st.session_state.current_user_id = selected_user["id_usuario"]
+        st.session_state.current_user = selected_user["nombre_completo"]
+        st.caption(f"{selected_user.get('unidad') or ''}")
 
     st.markdown("---")
     st.caption(f"Base de datos: {DB_PATH.name}")
-    st.caption("Los identificadores y registros técnicos se conservan automáticamente.")
+    st.caption("Todos pueden consultar; solo el usuario asignado puede modificar el caso.")
 
 
 def case_selector(label: str = "Seleccione un caso") -> Optional[str]:
@@ -2353,6 +2661,8 @@ TABLE_EXPORT_ORDER = [
     "importaciones_survey123",
     "referencias_survey123",
     "registros_survey_pendientes",
+    "usuarios_sistema",
+    "asignaciones_casos",
     "m01_hogares",
     "m01_personas",
 ]
@@ -3495,73 +3805,29 @@ def case_form(defaults: Optional[sqlite3.Row] = None, form_key: str = "case_form
         )
 
         st.markdown("#### Asignación interna")
+        st.info(
+            "La asignación se administra desde la pestaña **Asignar caso**. "
+            "Estos datos se muestran como referencia y no se modifican desde la ficha."
+        )
+        active_assignment = get_active_assignment(values.get("id_caso") or "") if values.get("id_caso") else None
         c1, c2, c3 = st.columns(3)
-        equipo_supervisor_options = _options_with_current(
-            EQUIPOS_PH, values.get("equipo_supervisor")
+        c1.metric("Responsable actual", values.get("responsable_principal") or "Sin asignar")
+        c2.metric("Fecha de asignación", values.get("fecha_asignacion") or "Sin fecha")
+        c3.metric("Fecha máxima", values.get("fecha_maxima_resolucion") or "Sin fecha")
+
+        equipo_supervisor = values.get("equipo_supervisor") or ""
+        supervisor = values.get("supervisor") or ""
+        fecha_asignacion = (
+            date.fromisoformat(values["fecha_asignacion"])
+            if values.get("fecha_asignacion") else None
         )
-        equipo_supervisor = c1.selectbox(
-            "Equipo supervisor",
-            equipo_supervisor_options,
-            index=_option_index(
-                equipo_supervisor_options, values.get("equipo_supervisor") or ""
-            ),
-        )
-        supervisor = c2.text_input(
-            "Supervisor",
-            value=values.get("supervisor") or "",
-            help="El catálogo nominal de supervisores proviene de un archivo externo y se mantiene como texto hasta recibirlo.",
-        )
-        fecha_asignacion = c3.date_input(
-            "Fecha de asignación",
-            value=date.fromisoformat(values["fecha_asignacion"])
-            if values.get("fecha_asignacion") else None,
-        )
-        cantidad_current = int(values.get("cantidad_responsables_asignacion") or 1)
-        cantidad_responsables = st.selectbox(
-            "Cantidad de responsables de la asignación",
-            CANTIDAD_RESPONSABLES_OPTIONS,
-            index=CANTIDAD_RESPONSABLES_OPTIONS.index(cantidad_current)
-            if cantidad_current in CANTIDAD_RESPONSABLES_OPTIONS else 0,
-        )
-        c1, c2 = st.columns(2)
-        responsable_1 = c1.text_input(
-            "Responsable 1",
-            value=values.get("responsable_principal") or "",
-        )
-        equipo_1_options = _options_with_current(
-            EQUIPOS_PH, values.get("equipo_responsable_1")
-        )
-        equipo_1 = c2.selectbox(
-            "Equipo responsable 1",
-            equipo_1_options,
-            index=_option_index(equipo_1_options, values.get("equipo_responsable_1") or ""),
-        )
-        c1, c2 = st.columns(2)
-        responsable_2 = c1.text_input(
-            "Responsable 2",
-            value=values.get("responsable_apoyo_1") or "",
-        )
-        equipo_2_options = _options_with_current(
-            EQUIPOS_PH, values.get("equipo_responsable_2")
-        )
-        equipo_2 = c2.selectbox(
-            "Equipo responsable 2",
-            equipo_2_options,
-            index=_option_index(equipo_2_options, values.get("equipo_responsable_2") or ""),
-        )
-        c1, c2 = st.columns(2)
-        responsable_3 = c1.text_input(
-            "Responsable 3",
-            value=values.get("responsable_apoyo_2") or "",
-        )
-        equipo_3_options = _options_with_current(
-            EQUIPOS_PH, values.get("equipo_responsable_3")
-        )
-        equipo_3 = c2.selectbox(
-            "Equipo responsable 3",
-            equipo_3_options,
-            index=_option_index(equipo_3_options, values.get("equipo_responsable_3") or ""),
-        )
+        cantidad_responsables = int(values.get("cantidad_responsables_asignacion") or 1)
+        responsable_1 = values.get("responsable_principal") or ""
+        responsable_2 = values.get("responsable_apoyo_1") or ""
+        responsable_3 = values.get("responsable_apoyo_2") or ""
+        equipo_1 = values.get("equipo_responsable_1") or ""
+        equipo_2 = values.get("equipo_responsable_2") or ""
+        equipo_3 = values.get("equipo_responsable_3") or ""
 
         files = st.file_uploader(
             "Adjuntos o evidencias del caso",
@@ -3746,6 +4012,19 @@ def save_new_case(payload: Dict[str, Any], files) -> str:
 
 
 def update_existing_case(case_id: str, payload: Dict[str, Any], files) -> None:
+    require_case_permission(case_id, "editar")
+    with db_connection() as permission_conn:
+        current_case_for_assignment = get_case(permission_conn, case_id)
+    protected_assignment_fields = [
+        "id_usuario_responsable", "responsable_principal", "responsable_apoyo_1",
+        "responsable_apoyo_2", "fecha_asignacion", "fecha_maxima_resolucion",
+        "asignado_por", "motivo_asignacion", "cantidad_responsables_asignacion",
+        "equipo_responsable_1", "equipo_responsable_2", "equipo_responsable_3",
+    ]
+    if current_case_for_assignment:
+        for field in protected_assignment_fields:
+            if field in current_case_for_assignment.keys():
+                payload[field] = current_case_for_assignment[field]
     required_text(payload["descripcion"], "Descripción")
     required_text(payload["recibido_por"], "Recepción por")
     if payload.get("presentado_anteriormente"):
@@ -3856,6 +4135,9 @@ def render_followup_form(edit_id: Optional[str] = None):
                 "SELECT * FROM seguimientos WHERE id_seguimiento = ?",
                 (edit_id,),
             ).fetchone()
+        if existing and not user_can_modify_case(existing["id_caso"]):
+            st.error("No puedes editar este seguimiento porque el caso no está asignado a tu usuario.")
+            return
 
     case_id = existing["id_caso"] if existing else select_case_id(
         "Caso asociado", f"followup_case_{edit_id or 'new'}"
@@ -4808,7 +5090,7 @@ def render_attention_history():
 
 
 def render_attention_form():
-    case_id = select_case_id("Seleccione el caso", "attention_case")
+    case_id = select_case_id("Seleccione el caso", "attention_case", only_assigned_to_current=True, exclude_closed=True)
     if not case_id:
         return
     with db_connection() as conn:
@@ -4986,7 +5268,7 @@ def render_attention_form():
             st.error(str(exc))
 
 def render_closure_flow():
-    case_id = select_case_id("Seleccione el caso", "closure_case_v11")
+    case_id = select_case_id("Seleccione el caso", "closure_case_v12", only_assigned_to_current=True, exclude_closed=True)
     if not case_id:
         return
 
@@ -5397,6 +5679,440 @@ def render_closure_flow():
         except Exception as exc:
             st.error(str(exc))
 
+
+# =========================================================
+# V12 · CONSULTA GLOBAL, FILTROS POR CATÁLOGO Y ASIGNACIÓN
+# =========================================================
+
+def _catalog_union(base: List[str], values: Iterable[Any]) -> List[str]:
+    result: List[str] = []
+    for value in [*base, *[normalize_text(str(v)) for v in values]]:
+        if value and value not in result:
+            result.append(value)
+    return result
+
+
+def cases_history_df() -> pd.DataFrame:
+    return read_query_df(
+        """
+        SELECT
+            c.id_caso,
+            c.id_control_m8,
+            c.codigo_caso,
+            c.survey_globalid AS globalid_caso,
+            c.fecha_registro,
+            c.hora_registro,
+            c.clasificacion,
+            COALESCE(NULLIF(c.tipo_caso, ''), c.tipo_queja) AS tipo_caso,
+            c.nombre_solicitante,
+            c.cedula,
+            c.tema,
+            c.descripcion,
+            c.medio_recepcion,
+            c.provincia_hecho,
+            COALESCE(NULLIF(c.distrito_hecho, ''), c.distrito_contacto) AS distrito_caso,
+            c.corregimiento_hecho,
+            c.lugar_poblado_hecho,
+            COALESCE(NULLIF(h.zona, ''), NULLIF(c.provincia_hecho, ''),
+                     NULLIF(c.provincia_contacto, ''), 'Sin zona/área') AS zona_area,
+            c.estado_actual,
+            COALESCE(a.usuario_asignado_nombre, NULLIF(c.responsable_principal, ''), 'Sin asignar') AS responsable_actual,
+            COALESCE(a.id_usuario_asignado, c.id_usuario_responsable) AS id_usuario_responsable_actual,
+            COALESCE(a.fecha_maxima_resolucion, c.fecha_maxima_resolucion) AS fecha_maxima_resolucion,
+            c.id_persona_m01,
+            c.id_hogar_m01,
+            c.pertenece_proyecto,
+            c.estado_vinculacion_m01,
+            c.fecha_cierre,
+            c.fecha_ultima_actualizacion
+        FROM casos c
+        LEFT JOIN m01_hogares h ON h.id_hogar = c.id_hogar_m01
+        LEFT JOIN asignaciones_casos a
+          ON a.id_caso = c.id_caso AND a.estado_asignacion = 'Activa'
+        ORDER BY c.fecha_registro DESC, c.codigo_caso DESC
+        """
+    )
+
+
+def followups_history_df() -> pd.DataFrame:
+    return read_query_df(
+        """
+        SELECT
+            s.id_seguimiento,
+            s.id_control_seguimiento,
+            s.survey_globalid AS globalid_seguimiento,
+            s.survey_parentglobalid AS global_parent_seguimiento,
+            c.survey_globalid AS globalid_caso,
+            c.id_caso,
+            c.codigo_caso,
+            c.clasificacion,
+            c.tema,
+            c.estado_actual,
+            COALESCE(NULLIF(c.distrito_hecho, ''), c.distrito_contacto) AS distrito_caso,
+            COALESCE(NULLIF(h.zona, ''), NULLIF(c.provincia_hecho, ''),
+                     NULLIF(c.provincia_contacto, ''), 'Sin zona/área') AS zona_area,
+            COALESCE(a.usuario_asignado_nombre, NULLIF(c.responsable_principal, ''), 'Sin asignar') AS responsable_actual,
+            COALESCE(a.id_usuario_asignado, c.id_usuario_responsable) AS id_usuario_responsable_actual,
+            s.fecha_actuacion,
+            s.hora_actuacion,
+            s.tipo_actuacion,
+            s.descripcion,
+            s.resultado,
+            s.responsable_ejecutor,
+            s.estado_anterior,
+            s.estado_posterior,
+            s.proxima_accion,
+            s.fecha_compromiso,
+            s.estado_actividad,
+            s.informo_solicitante,
+            s.tipo_informacion_solicitante,
+            s.medio_informacion_solicitante,
+            s.resultado_contacto_solicitante,
+            s.contenido_comunicado,
+            s.usuario_registro,
+            s.fecha_registro_sistema
+        FROM seguimientos s
+        JOIN casos c ON c.id_caso = s.id_caso
+        LEFT JOIN m01_hogares h ON h.id_hogar = c.id_hogar_m01
+        LEFT JOIN asignaciones_casos a
+          ON a.id_caso = c.id_caso AND a.estado_asignacion = 'Activa'
+        ORDER BY s.fecha_actuacion DESC, s.fecha_registro_sistema DESC
+        """
+    )
+
+
+def approvals_history_df() -> pd.DataFrame:
+    return read_query_df(
+        """
+        SELECT
+            c.id_caso,
+            c.id_control_m8,
+            c.codigo_caso,
+            c.survey_globalid AS globalid_caso,
+            c.clasificacion,
+            c.tema,
+            c.estado_actual,
+            COALESCE(NULLIF(c.distrito_hecho, ''), c.distrito_contacto) AS distrito_caso,
+            COALESCE(NULLIF(h.zona, ''), NULLIF(c.provincia_hecho, ''),
+                     NULLIF(c.provincia_contacto, ''), 'Sin zona/área') AS zona_area,
+            COALESCE(a.usuario_asignado_nombre, NULLIF(c.responsable_principal, ''), 'Sin asignar') AS responsable_actual,
+            COALESCE(a.id_usuario_asignado, c.id_usuario_responsable) AS id_usuario_responsable_actual,
+            c.recomendacion_cierre,
+            c.fecha_recomendacion_cierre,
+            c.recomendada_por,
+            c.visto_bueno_supervisor,
+            c.fecha_visto_bueno,
+            c.observacion_visto_bueno,
+            c.decision_supervisor,
+            c.fecha_decision_supervisor,
+            c.resultado_atencion,
+            c.se_brindo_respuesta,
+            c.respuesta_final,
+            c.acepta_respuesta,
+            c.nivel_satisfaccion,
+            c.autoriza_divulgacion_datos,
+            c.fecha_cierre,
+            c.hora_cierre,
+            c.cerrado_por,
+            c.motivo_cierre
+        FROM casos c
+        LEFT JOIN m01_hogares h ON h.id_hogar = c.id_hogar_m01
+        LEFT JOIN asignaciones_casos a
+          ON a.id_caso = c.id_caso AND a.estado_asignacion = 'Activa'
+        WHERE c.recomendacion_cierre IS NOT NULL
+           OR c.visto_bueno_supervisor IS NOT NULL
+           OR c.fecha_cierre IS NOT NULL
+        ORDER BY COALESCE(c.fecha_cierre, c.fecha_visto_bueno, c.fecha_recomendacion_cierre) DESC
+        """
+    )
+
+
+def assignment_history_df() -> pd.DataFrame:
+    return read_query_df(
+        """
+        SELECT
+            a.id_asignacion,
+            c.id_caso,
+            c.id_control_m8,
+            c.codigo_caso,
+            c.survey_globalid AS globalid_caso,
+            c.clasificacion,
+            c.tema,
+            COALESCE(NULLIF(h.zona, ''), NULLIF(c.provincia_hecho, ''),
+                     NULLIF(c.provincia_contacto, ''), 'Sin zona/área') AS zona_area,
+            COALESCE(NULLIF(c.distrito_hecho, ''), c.distrito_contacto) AS distrito_caso,
+            c.estado_actual,
+            a.id_usuario_asignado,
+            a.usuario_asignado_nombre AS responsable_actual,
+            a.fecha_maxima_resolucion,
+            a.asignado_por_nombre,
+            a.fecha_hora_asignacion,
+            a.observacion_asignacion,
+            a.estado_asignacion,
+            a.fecha_fin_asignacion
+        FROM asignaciones_casos a
+        JOIN casos c ON c.id_caso = a.id_caso
+        LEFT JOIN m01_hogares h ON h.id_hogar = c.id_hogar_m01
+        ORDER BY a.fecha_hora_asignacion DESC
+        """
+    )
+
+
+def filter_dataframe_ui(
+    df: pd.DataFrame,
+    key: str,
+    include_search: bool = True,
+) -> pd.DataFrame:
+    """Aplica filtros visibles mediante catálogos; el texto libre es complementario."""
+    if df.empty:
+        return df
+
+    filtered = df.copy()
+    with st.expander("Filtros", expanded=True):
+        row1 = st.columns(3)
+        row2 = st.columns(3)
+
+        filter_specs = [
+            ("clasificacion", "Clasificación", CLASIFICACION_OPTIONS, row1[0]),
+            ("zona_area", "Zona / área", [], row1[1]),
+            ("distrito_caso", "Distrito", [item[1] for item in DISTRITOS], row1[2]),
+            ("estado_actual", "Estado", CASE_STATES, row2[0]),
+            ("tema", "Tema", TEMAS_CASO, row2[1]),
+            ("responsable_actual", "Usuario responsable", [u["nombre_completo"] for u in active_users()] + ["Sin asignar"], row2[2]),
+        ]
+        for column, label, catalog, container in filter_specs:
+            if column not in filtered.columns:
+                continue
+            present_values = filtered[column].dropna().astype(str).map(str.strip).tolist()
+            options = _catalog_union(catalog, present_values)
+            selected = container.multiselect(
+                label,
+                options,
+                key=f"filter_{key}_{column}",
+            )
+            if selected:
+                filtered = filtered[filtered[column].astype(str).isin(selected)]
+
+        if include_search:
+            search = st.text_input(
+                "Búsqueda complementaria",
+                key=f"search_{key}",
+                placeholder="Código, GlobalID, cédula, nombre o texto del caso...",
+            )
+            if search:
+                mask = filtered.astype(str).apply(
+                    lambda col: col.str.contains(search, case=False, na=False)
+                ).any(axis=1)
+                filtered = filtered[mask]
+
+    return filtered.reset_index(drop=True)
+
+
+def get_case_options(
+    only_assigned_to_current: bool = False,
+    exclude_closed: bool = False,
+) -> Dict[str, str]:
+    df = cases_history_df()
+    if only_assigned_to_current:
+        df = df[
+            (df["id_usuario_responsable_actual"].astype(str) == current_user_id())
+            | (df["responsable_actual"].astype(str).str.casefold() == current_user_name().casefold())
+        ]
+    if exclude_closed:
+        df = df[~df["estado_actual"].isin(["Cerrada", "Fuera de alcance"])]
+    return {
+        (
+            f"{row['codigo_caso']} · {row['clasificacion']} · {row['estado_actual']} · "
+            f"{row['tema'] or 'Sin tema'} · {row['responsable_actual']}"
+        ): row["id_caso"]
+        for _, row in df.iterrows()
+    }
+
+
+def select_case_id(
+    label: str,
+    key: str,
+    only_assigned_to_current: bool = False,
+    exclude_closed: bool = False,
+) -> Optional[str]:
+    df = cases_history_df()
+    if only_assigned_to_current:
+        df = df[
+            (df["id_usuario_responsable_actual"].astype(str) == current_user_id())
+            | (df["responsable_actual"].astype(str).str.casefold() == current_user_name().casefold())
+        ]
+    if exclude_closed:
+        df = df[~df["estado_actual"].isin(["Cerrada", "Fuera de alcance"])]
+
+    df = filter_dataframe_ui(df, f"{key}_selector")
+    if df.empty:
+        if only_assigned_to_current:
+            st.warning("No hay casos asignados a tu usuario que coincidan con los filtros.")
+        else:
+            st.warning("No hay casos que coincidan con los filtros.")
+        return None
+
+    labels = {
+        (
+            f"{row['codigo_caso']} · {row['clasificacion']} · {row['estado_actual']} · "
+            f"{row['tema'] or 'Sin tema'}"
+        ): row["id_caso"]
+        for _, row in df.iterrows()
+    }
+    selected = st.selectbox(label, list(labels.keys()), key=key)
+    case_id = labels[selected]
+    with db_connection() as conn:
+        case = get_case(conn, case_id)
+    if case:
+        mostrar_resumen_caso(case)
+    return case_id
+
+
+def render_cases_history(key: str = "cases"):
+    df = filter_dataframe_ui(cases_history_df(), key)
+    columns = [
+        "id_control_m8", "codigo_caso", "globalid_caso", "fecha_registro",
+        "hora_registro", "clasificacion", "tipo_caso", "tema",
+        "nombre_solicitante", "cedula", "zona_area", "distrito_caso",
+        "estado_actual", "responsable_actual", "fecha_maxima_resolucion",
+        "id_persona_m01", "id_hogar_m01", "pertenece_proyecto", "fecha_cierre",
+    ]
+    selected = dataframe_selection(df, key, "id_caso", columns)
+    if len(selected) == 1:
+        with db_connection() as conn:
+            full_case = get_case(conn, selected[0])
+        if full_case:
+            with st.expander("Detalle completo del caso seleccionado", expanded=False):
+                detail = pd.DataFrame(
+                    [{"campo": field, "valor": full_case[field]} for field in full_case.keys()]
+                )
+                st.dataframe(detail, use_container_width=True, hide_index=True)
+    render_export_buttons(df, selected, key, "Casos")
+
+
+def render_followups_history(key: str = "followups"):
+    df = filter_dataframe_ui(followups_history_df(), key)
+    columns = [
+        "id_control_seguimiento", "globalid_seguimiento",
+        "global_parent_seguimiento", "globalid_caso", "codigo_caso",
+        "clasificacion", "tema", "zona_area", "distrito_caso",
+        "estado_actual", "responsable_actual", "fecha_actuacion",
+        "hora_actuacion", "tipo_actuacion", "descripcion", "resultado",
+        "responsable_ejecutor", "estado_posterior", "fecha_compromiso",
+    ]
+    selected_records = dataframe_selection(df, key, "id_seguimiento", columns)
+    case_ids = selected_case_ids_from_related(df, selected_records, "id_seguimiento")
+    render_export_buttons(df, case_ids, key, "Seguimientos")
+
+
+def render_approvals_history(key: str = "closures"):
+    df = filter_dataframe_ui(approvals_history_df(), key)
+    columns = [
+        "id_control_m8", "codigo_caso", "globalid_caso", "clasificacion",
+        "tema", "zona_area", "distrito_caso", "estado_actual",
+        "responsable_actual", "fecha_recomendacion_cierre",
+        "visto_bueno_supervisor", "fecha_visto_bueno", "acepta_respuesta",
+        "nivel_satisfaccion", "fecha_cierre", "hora_cierre", "cerrado_por",
+    ]
+    selected = dataframe_selection(df, key, "id_caso", columns)
+    render_export_buttons(df, selected, key, "Cierres")
+
+
+def render_assignment_form() -> None:
+    st.markdown("#### Asignar o reasignar caso")
+    st.caption(
+        "Todos los casos son visibles. La asignación activa determina quién puede editar, "
+        "registrar seguimiento y cerrar el expediente."
+    )
+    df = filter_dataframe_ui(cases_history_df(), "assignment_cases")
+    if df.empty:
+        st.info("No hay casos que coincidan con los filtros.")
+        return
+
+    labels = {
+        (
+            f"{row['codigo_caso']} · {row['clasificacion']} · "
+            f"{row['tema'] or 'Sin tema'} · {row['responsable_actual']}"
+        ): row["id_caso"]
+        for _, row in df.iterrows()
+    }
+    selected_label = st.selectbox("Código del caso", list(labels.keys()), key="assignment_case")
+    case_id = labels[selected_label]
+    selected_row = df[df["id_caso"] == case_id].iloc[0]
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Fecha de registro", str(selected_row.get("fecha_registro") or ""))
+    c2.metric("Clasificación", str(selected_row.get("clasificacion") or ""))
+    c3.metric("Estado", str(selected_row.get("estado_actual") or ""))
+    st.text_input("Tema", value=str(selected_row.get("tema") or ""), disabled=True)
+    st.text_area(
+        "Detalle del caso",
+        value=str(selected_row.get("descripcion") or ""),
+        height=150,
+        disabled=True,
+    )
+    st.text_input(
+        "GlobalID del caso",
+        value=str(selected_row.get("globalid_caso") or ""),
+        disabled=True,
+    )
+
+    users = [user for user in active_users() if user.get("puede_recibir_casos")]
+    user_labels = {
+        f"{user['nombre_completo']} · {user.get('cargo') or 'Sin cargo'}": user["id_usuario"]
+        for user in users
+    }
+    current_responsible = str(selected_row.get("responsable_actual") or "")
+    default_label = next(
+        (label for label in user_labels if label.startswith(current_responsible + " ·")),
+        next(iter(user_labels), ""),
+    )
+
+    with st.form("assignment_form_v12"):
+        c1, c2 = st.columns(2)
+        selected_user_label = c1.selectbox(
+            "Usuario responsable",
+            list(user_labels.keys()),
+            index=list(user_labels.keys()).index(default_label) if default_label else 0,
+        )
+        max_resolution = c2.date_input(
+            "Fecha máxima de resolución",
+            value=(
+                date.fromisoformat(str(selected_row["fecha_maxima_resolucion"]))
+                if selected_row.get("fecha_maxima_resolucion")
+                else date.today()
+            ),
+            min_value=date.today(),
+        )
+        observation = st.text_area(
+            "Observación o instrucción de asignación",
+            height=110,
+            placeholder="Indique prioridad, coordinación requerida o información útil para la atención.",
+        )
+        save_assignment = st.form_submit_button(
+            "Guardar asignación",
+            type="primary",
+            use_container_width=True,
+        )
+
+    if save_assignment:
+        try:
+            assign_case_to_user(
+                case_id,
+                user_labels[selected_user_label],
+                max_resolution,
+                observation,
+            )
+            st.success("Asignación guardada y permisos actualizados correctamente.")
+            st.rerun()
+        except Exception as exc:
+            st.error(str(exc))
+
+    st.markdown("#### Historial de asignaciones")
+    history = assignment_history_df()
+    history = history[history["id_caso"] == case_id]
+    st.dataframe(history, use_container_width=True, hide_index=True)
+
 # =========================================================
 # PANTALLAS
 # =========================================================
@@ -5411,18 +6127,33 @@ if page == "Panel general":
         closed = conn.execute(
             "SELECT COUNT(*) total FROM casos WHERE estado_actual = 'Cerrada'"
         ).fetchone()["total"]
-        linked = conn.execute(
-            "SELECT COUNT(*) total FROM casos WHERE pertenece_proyecto = 1"
-        ).fetchone()["total"]
-        external = conn.execute(
-            "SELECT COUNT(*) total FROM casos WHERE pertenece_proyecto = 0"
-        ).fetchone()["total"]
-        overdue_ack = conn.execute(
+        unassigned = conn.execute(
             """
-            SELECT COUNT(*) total FROM casos
-            WHERE fecha_acuse IS NULL
-              AND estado_actual NOT IN ('Cerrada', 'Fuera de alcance')
-              AND julianday('now') - julianday(fecha_registro) > 7
+            SELECT COUNT(*) total FROM casos c
+            WHERE NOT EXISTS (
+                SELECT 1 FROM asignaciones_casos a
+                WHERE a.id_caso = c.id_caso AND a.estado_asignacion = 'Activa'
+            )
+            """
+        ).fetchone()["total"]
+        my_active = conn.execute(
+            """
+            SELECT COUNT(*) total
+            FROM asignaciones_casos a
+            JOIN casos c ON c.id_caso = a.id_caso
+            WHERE a.id_usuario_asignado = ? AND a.estado_asignacion = 'Activa'
+              AND c.estado_actual NOT IN ('Cerrada', 'Fuera de alcance')
+            """,
+            (current_user_id(),),
+        ).fetchone()["total"]
+        overdue = conn.execute(
+            """
+            SELECT COUNT(*) total
+            FROM asignaciones_casos a
+            JOIN casos c ON c.id_caso = a.id_caso
+            WHERE a.estado_asignacion = 'Activa'
+              AND date(a.fecha_maxima_resolucion) < date('now')
+              AND c.estado_actual NOT IN ('Cerrada', 'Fuera de alcance')
             """
         ).fetchone()["total"]
 
@@ -5430,14 +6161,19 @@ if page == "Panel general":
     c1.metric("Casos registrados", total)
     c2.metric("Casos activos", active)
     c3.metric("Casos cerrados", closed)
-    c4.metric("Vinculados con M01", linked)
-    c5.metric("Personas externas a M01", external)
-    c6.metric("Sin acuse oportuno", overdue_ack)
+    c4.metric("Sin asignar", unassigned)
+    c5.metric("Asignados a mí", my_active)
+    c6.metric("Fuera de fecha máxima", overdue)
 
     st.markdown("### Casos recientes")
-    recent = cases_history_df().head(30)
+    recent = filter_dataframe_ui(cases_history_df(), "panel_cases").head(30)
+    panel_columns = [
+        "id_control_m8", "codigo_caso", "globalid_caso", "fecha_registro",
+        "clasificacion", "tema", "zona_area", "distrito_caso",
+        "estado_actual", "responsable_actual", "fecha_maxima_resolucion",
+    ]
     st.dataframe(
-        recent.drop(columns=["id_caso"], errors="ignore"),
+        recent[[column for column in panel_columns if column in recent.columns]],
         use_container_width=True,
         hide_index=True,
     )
@@ -5455,7 +6191,7 @@ elif page == "Carga de información":
     uploaded_file = st.file_uploader(
         "Cargar archivo Excel exportado desde Survey123",
         type=["xlsx"],
-        key="survey_import_v11",
+        key="survey_import_v12",
     )
     if uploaded_file:
         try:
@@ -5475,9 +6211,7 @@ elif page == "Carga de información":
                 use_container_width=True,
             ):
                 uploaded_file.seek(0)
-                result = importar_survey123(
-                    uploaded_file, st.session_state.current_user
-                )
+                result = importar_survey123(uploaded_file, current_user_name())
                 st.success("Importación Survey123 finalizada.")
                 st.json(result)
                 st.rerun()
@@ -5487,9 +6221,6 @@ elif page == "Carga de información":
     pending = read_table_df("registros_survey_pendientes")
     if not pending.empty:
         st.markdown("#### Registros relacionados pendientes de vinculación")
-        st.caption(
-            "Se conservaron completos porque su caso padre no estaba incluido en el archivo."
-        )
         st.dataframe(pending, use_container_width=True, hide_index=True)
 
     history = read_table_df("importaciones_survey123")
@@ -5497,35 +6228,32 @@ elif page == "Carga de información":
         st.markdown("#### Historial de importaciones Survey123")
         st.dataframe(history, use_container_width=True, hide_index=True)
 
-elif page == "Registro de casos":
-    st.markdown("### Registro de casos")
-    mostrar_ayuda_pantalla("Registro de casos")
+elif page == "Casos":
+    st.markdown("### Casos")
+    mostrar_ayuda_pantalla("Casos")
     st.caption(
-        "La cédula permite vincular el caso con una persona y un hogar de M01 cuando existe "
-        "coincidencia. Si no existe, el caso se registra normalmente como persona externa."
+        "Los casos se crean únicamente mediante Survey123. Todos los usuarios pueden consultar "
+        "la información; la edición queda limitada al responsable asignado."
     )
-    tab_registered, tab_new, tab_edit = st.tabs(
-        ["Casos registrados", "Agregar nuevo caso", "Editar caso"]
+    tab_registered, tab_assignment, tab_edit = st.tabs(
+        ["Casos registrados", "Asignar caso", "Editar caso asignado"]
     )
     with tab_registered:
-        render_cases_history()
-    with tab_new:
-        submitted, payload, files = case_form(form_key="new_case_v11")
-        if submitted:
-            try:
-                code_created = save_new_case(payload, files)
-                st.success(f"Caso registrado correctamente: {code_created}")
-                st.rerun()
-            except Exception as exc:
-                st.error(str(exc))
+        render_cases_history("cases_main")
+    with tab_assignment:
+        render_assignment_form()
     with tab_edit:
-        case_id = select_case_id("Seleccione el caso a editar", "edit_case_v11")
+        case_id = select_case_id(
+            "Seleccione uno de sus casos asignados",
+            "edit_case_v12",
+            only_assigned_to_current=True,
+        )
         if case_id:
             with db_connection() as conn:
                 selected_case = get_case(conn, case_id)
             submitted, payload, files = case_form(
                 defaults=selected_case,
-                form_key=f"edit_case_v11_{case_id}",
+                form_key=f"edit_case_v12_{case_id}",
             )
             if submitted:
                 try:
@@ -5538,20 +6266,31 @@ elif page == "Registro de casos":
 elif page == "Seguimiento":
     st.markdown("### Seguimiento de casos")
     mostrar_ayuda_pantalla("Seguimiento")
+    st.info(
+        f"Usuario activo: **{current_user_name()}**. Solo puede registrar o editar "
+        "seguimientos de casos con asignación activa a su nombre."
+    )
     mode = render_work_mode(
         ["Agregar seguimiento", "Editar seguimiento"],
-        "followup_mode_v11",
+        "followup_mode_v12",
     )
     if mode == "Agregar seguimiento":
         render_attention_form()
     else:
         df = followups_history_df()
+        df = df[
+            (df["id_usuario_responsable_actual"].astype(str) == current_user_id())
+            | (df["responsable_actual"].astype(str).str.casefold() == current_user_name().casefold())
+        ]
+        df = filter_dataframe_ui(df, "followup_edit")
         if df.empty:
-            st.info("No hay seguimientos para editar.")
+            st.info("No hay seguimientos editables para los casos asignados a tu usuario.")
         else:
             labels = {
-                f"{row['codigo_caso']} · {row['fecha_actuacion']} · "
-                f"{row['tipo_actuacion']} · {str(row['descripcion'])[:70]}": row["id_seguimiento"]
+                (
+                    f"{row['codigo_caso']} · {row['fecha_actuacion']} · "
+                    f"{row['tipo_actuacion']} · {str(row['descripcion'])[:70]}"
+                ): row["id_seguimiento"]
                 for _, row in df.iterrows()
             }
             selected = st.selectbox("Seleccione el seguimiento", list(labels.keys()))
@@ -5560,20 +6299,34 @@ elif page == "Seguimiento":
 elif page == "Cierre":
     st.markdown("### Cierre de casos")
     mostrar_ayuda_pantalla("Cierre")
+    st.info(
+        f"Usuario activo: **{current_user_name()}**. Solo puede preparar o completar "
+        "el cierre de casos con asignación activa a su nombre."
+    )
     render_closure_flow()
 
 elif page == "Histórico":
     st.markdown("### Histórico final del módulo")
     mostrar_ayuda_pantalla("Histórico")
-    tab_cases, tab_followups, tab_closures, tab_trace = st.tabs(
-        ["Casos", "Seguimientos", "Cierres", "Trazabilidad"]
+    tab_cases, tab_followups, tab_closures, tab_assignments, tab_trace = st.tabs(
+        ["Casos", "Seguimientos", "Cierres", "Asignaciones", "Trazabilidad"]
     )
     with tab_cases:
-        render_cases_history()
+        render_cases_history("history_cases")
     with tab_followups:
-        render_followups_history()
+        render_followups_history("history_followups")
     with tab_closures:
-        render_approvals_history()
+        render_approvals_history("history_closures")
+    with tab_assignments:
+        assignments = filter_dataframe_ui(assignment_history_df(), "history_assignments")
+        st.dataframe(assignments, use_container_width=True, hide_index=True)
+        st.download_button(
+            "Descargar asignaciones en Excel",
+            data=export_dataframe_excel(assignments, "Asignaciones"),
+            file_name="historico_asignaciones.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
     with tab_trace:
         render_traceability()
 

@@ -4,7 +4,7 @@ import re
 import sqlite3
 import uuid
 from contextlib import contextmanager
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional, List
 from io import BytesIO
@@ -30,6 +30,8 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 # Los datos de demostración quedan desactivados por defecto.
 ENABLE_DEMO_DATA = False
+# Temporal para la demostración: garantiza al menos un caso activo por usuario de ejemplo.
+ENABLE_DEMO_ASSIGNMENTS = True
 
 
 # =========================================================
@@ -75,6 +77,88 @@ def json_safe(value: Any) -> Any:
 
 def generate_id(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:12].upper()}"
+
+
+def safe_date_value(value: Any, fallback: Optional[date] = None) -> date:
+    """Convierte fechas de SQLite/Excel sin fallar ante NULL, NaN, NaT o texto inválido."""
+    fallback = fallback or date.today()
+    if value is None:
+        return fallback
+    try:
+        if pd.isna(value):
+            return fallback
+    except (TypeError, ValueError):
+        pass
+    parsed = pd.to_datetime(value, errors="coerce")
+    if pd.isna(parsed):
+        return fallback
+    return parsed.date()
+
+
+def queue_action_confirmation(
+    message: str,
+    *,
+    title: str = "Operación completada",
+    reset_keys: Optional[List[str]] = None,
+    reset_prefixes: Optional[List[str]] = None,
+) -> None:
+    """Programa una confirmación modal y el reinicio seguro de widgets en el próximo rerun."""
+    st.session_state["_m8_pending_notification"] = {
+        "title": title,
+        "message": message,
+    }
+    st.session_state["_m8_pending_reset_keys"] = list(reset_keys or [])
+    st.session_state["_m8_pending_reset_prefixes"] = list(reset_prefixes or [])
+
+
+def apply_pending_widget_resets() -> None:
+    """Limpia selecciones y formularios antes de volver a construir los widgets."""
+    keys = st.session_state.pop("_m8_pending_reset_keys", [])
+    prefixes = st.session_state.pop("_m8_pending_reset_prefixes", [])
+    for key in list(keys):
+        st.session_state.pop(key, None)
+    if prefixes:
+        for existing_key in list(st.session_state.keys()):
+            if any(str(existing_key).startswith(prefix) for prefix in prefixes):
+                st.session_state.pop(existing_key, None)
+
+
+def render_pending_notification() -> None:
+    """Muestra una confirmación superpuesta que exige pulsar Aceptar."""
+    notification = st.session_state.get("_m8_pending_notification")
+    if not notification:
+        return
+
+    title = str(notification.get("title") or "Operación completada")
+    message = str(notification.get("message") or "La operación se completó correctamente.")
+    dialog_factory = getattr(st, "dialog", None) or getattr(st, "experimental_dialog", None)
+
+    if dialog_factory:
+        @dialog_factory(title)
+        def _confirmation_dialog():
+            st.success(message)
+            st.caption("El formulario fue reiniciado para evitar registros duplicados.")
+            if st.button(
+                "Aceptar",
+                type="primary",
+                use_container_width=True,
+                key="_m8_accept_notification",
+            ):
+                st.session_state.pop("_m8_pending_notification", None)
+                st.rerun()
+
+        _confirmation_dialog()
+        return
+
+    # Compatibilidad con versiones antiguas de Streamlit sin st.dialog.
+    st.warning(f"{title}: {message}")
+    if st.button(
+        "Aceptar notificación",
+        type="primary",
+        key="_m8_accept_notification_fallback",
+    ):
+        st.session_state.pop("_m8_pending_notification", None)
+        st.rerun()
 
 
 def generate_case_code(conn: sqlite3.Connection, year: int) -> str:
@@ -1754,7 +1838,115 @@ def assign_case_to_user(
         )
 
 
+def seed_demo_assignments_for_preview() -> None:
+    """Asigna un caso sin responsable a cada usuario de ejemplo, sin reemplazar asignaciones reales."""
+    if not ENABLE_DEMO_ASSIGNMENTS:
+        return
+
+    demo_user_ids = ("USR-001", "USR-002", "USR-003", "USR-004")
+    with db_connection() as conn:
+        users = conn.execute(
+            f"""
+            SELECT id_usuario, nombre_completo
+            FROM usuarios_sistema
+            WHERE id_usuario IN ({','.join('?' for _ in demo_user_ids)})
+              AND estado_usuario = 'Activo'
+            ORDER BY id_usuario
+            """,
+            demo_user_ids,
+        ).fetchall()
+
+        for user in users:
+            already_has_case = conn.execute(
+                """
+                SELECT 1
+                FROM asignaciones_casos
+                WHERE id_usuario_asignado = ?
+                LIMIT 1
+                """,
+                (user["id_usuario"],),
+            ).fetchone()
+            if already_has_case:
+                continue
+
+            case = conn.execute(
+                """
+                SELECT c.*
+                FROM casos c
+                WHERE c.estado_actual NOT IN ('Cerrada', 'Fuera de alcance')
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM asignaciones_casos a
+                      WHERE a.id_caso = c.id_caso
+                        AND a.estado_asignacion = 'Activa'
+                  )
+                ORDER BY c.fecha_registro, c.codigo_caso
+                LIMIT 1
+                """
+            ).fetchone()
+            if not case:
+                break
+
+            assigned_at = now_iso()
+            maximum_date = (date.today() + timedelta(days=15)).isoformat()
+            assignment_id = generate_id("ASG")
+            conn.execute(
+                """
+                INSERT INTO asignaciones_casos (
+                    id_asignacion, id_caso, id_usuario_asignado,
+                    usuario_asignado_nombre, fecha_maxima_resolucion,
+                    asignado_por_id, asignado_por_nombre, fecha_hora_asignacion,
+                    observacion_asignacion, estado_asignacion
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Activa')
+                """,
+                (
+                    assignment_id, case["id_caso"], user["id_usuario"],
+                    user["nombre_completo"], maximum_date, "SISTEMA",
+                    "Configuración inicial de demostración", assigned_at,
+                    "Asignación temporal para validar permisos y flujos por usuario.",
+                ),
+            )
+            previous_state = case["estado_actual"] or "Registrada"
+            new_state = (
+                "Asignada"
+                if previous_state in ("Recibida", "Registrada", "Pendiente de asignación", "")
+                else previous_state
+            )
+            conn.execute(
+                """
+                UPDATE casos
+                SET id_usuario_responsable = ?, responsable_principal = ?,
+                    fecha_asignacion = ?, fecha_maxima_resolucion = ?,
+                    asignado_por = ?, motivo_asignacion = ?, estado_actual = ?,
+                    fecha_ultima_actualizacion = ?, actualizado_por = ?
+                WHERE id_caso = ?
+                """,
+                (
+                    user["id_usuario"], user["nombre_completo"],
+                    date.today().isoformat(), maximum_date,
+                    "Configuración inicial de demostración",
+                    "Asignación temporal para pruebas de permisos.", new_state,
+                    assigned_at, "SISTEMA", case["id_caso"],
+                ),
+            )
+            if previous_state != new_state:
+                conn.execute(
+                    """
+                    INSERT INTO historial_estados (
+                        id_historial, id_caso, estado_anterior, estado_nuevo,
+                        fecha_cambio, usuario_cambio, motivo, id_seguimiento_origen
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
+                    """,
+                    (
+                        generate_id("EST"), case["id_caso"], previous_state, new_state,
+                        assigned_at, "SISTEMA",
+                        f"Asignación inicial a {user['nombre_completo']} para pruebas.",
+                    ),
+                )
+
+
 initialize_assignment_schema()
+seed_demo_assignments_for_preview()
 
 # =========================================================
 # INTEGRACIÓN SIMULADA CON M01 · PERSONAS Y HOGARES
@@ -2565,6 +2757,9 @@ if "current_user_id" not in st.session_state:
     st.session_state.current_user_id = "USR-001"
 if "current_user" not in st.session_state:
     st.session_state.current_user = "Ana Rodríguez"
+
+apply_pending_widget_resets()
+render_pending_notification()
 
 with st.sidebar:
     st.title("Módulo 8 · Casos")
@@ -4390,7 +4585,11 @@ def render_followup_form(edit_id: Optional[str] = None):
                                 str(target), now_iso(), st.session_state.current_user,
                             ),
                         )
-            st.success("Seguimiento guardado correctamente.")
+            queue_action_confirmation(
+                "El seguimiento se guardó correctamente.",
+                reset_keys=["followup_edit_record_v13", "attention_case_v13"],
+                reset_prefixes=["followup_form_", "followup_files_"],
+            )
             st.rerun()
         except Exception as exc:
             st.error(str(exc))
@@ -5090,7 +5289,7 @@ def render_attention_history():
 
 
 def render_attention_form():
-    case_id = select_case_id("Seleccione el caso", "attention_case", only_assigned_to_current=True, exclude_closed=True)
+    case_id = select_case_id("Seleccione el caso", "attention_case_v13", only_assigned_to_current=True, exclude_closed=True)
     if not case_id:
         return
     with db_connection() as conn:
@@ -5262,13 +5461,17 @@ def render_attention_form():
                                 str(target), now_iso(), st.session_state.current_user,
                             ),
                         )
-            st.success("Seguimiento guardado correctamente.")
+            queue_action_confirmation(
+                "El seguimiento se guardó correctamente.",
+                reset_keys=["attention_case_v13", "followup_edit_record_v13"],
+                reset_prefixes=["attention_time_", "attention_files_", "attention_form_"],
+            )
             st.rerun()
         except Exception as exc:
             st.error(str(exc))
 
 def render_closure_flow():
-    case_id = select_case_id("Seleccione el caso", "closure_case_v12", only_assigned_to_current=True, exclude_closed=True)
+    case_id = select_case_id("Seleccione el caso", "closure_case_v13", only_assigned_to_current=True, exclude_closed=True)
     if not case_id:
         return
 
@@ -5315,8 +5518,7 @@ def render_closure_flow():
         c1, c2 = st.columns(2)
         recommendation_date = c1.date_input(
             "Fecha de la propuesta de cierre",
-            value=date.fromisoformat(case["fecha_recomendacion_cierre"])
-            if case.get("fecha_recomendacion_cierre") else date.today(),
+            value=safe_date_value(case.get("fecha_recomendacion_cierre"), date.today()),
         )
         recommended_by = c2.text_input(
             "Responsable que propone el cierre",
@@ -5342,7 +5544,7 @@ def render_closure_flow():
         )
         supervisor_date = c2.date_input(
             "Fecha de la decisión del supervisor",
-            value=date.fromisoformat(case["fecha_decision_supervisor"])
+            value=safe_date_value(case.get("fecha_decision_supervisor"), date.today())
             if case.get("fecha_decision_supervisor") else None,
         )
         supervisor_observation = st.text_area(
@@ -5408,10 +5610,16 @@ def render_closure_flow():
                     st.session_state.current_user,
                     supervisor_observation or recommendation,
                 )
-            if supervisor_decision == "Devuelto para seguimiento":
-                st.warning("El caso fue devuelto a Seguimiento con las observaciones registradas.")
-            else:
-                st.success("Respuesta y visto bueno guardados correctamente.")
+            message = (
+                "El caso fue devuelto a Seguimiento con las observaciones registradas."
+                if supervisor_decision == "Devuelto para seguimiento"
+                else "La respuesta y el visto bueno se guardaron correctamente."
+            )
+            queue_action_confirmation(
+                message,
+                reset_keys=["closure_case_v13"],
+                reset_prefixes=["closure_preparation_", "communication_close_time_", "closure_time_"],
+            )
             st.rerun()
         except Exception as exc:
             st.error(str(exc))
@@ -5436,8 +5644,7 @@ def render_closure_flow():
         c1, c2 = st.columns(2)
         communication_date = c1.date_input(
             "Fecha de comunicación del resultado",
-            value=date.fromisoformat(case["fecha_comunicacion_cierre"])
-            if case.get("fecha_comunicacion_cierre") else date.today(),
+            value=safe_date_value(case.get("fecha_comunicacion_cierre"), date.today()),
         )
         communication_time = time_select_12h(
             c2,
@@ -5515,8 +5722,7 @@ def render_closure_flow():
         c1, c2 = st.columns(2)
         closure_date = c1.date_input(
             "Fecha de cierre",
-            value=date.fromisoformat(case["fecha_cierre"])
-            if case.get("fecha_cierre") else date.today(),
+            value=safe_date_value(case.get("fecha_cierre"), date.today()),
         )
         closure_time = time_select_12h(
             c2,
@@ -5674,14 +5880,18 @@ def render_closure_flow():
                 "Documento de cierre",
                 st.session_state.current_user,
             )
-            st.success("Caso cerrado correctamente.")
+            queue_action_confirmation(
+                "El caso se cerró correctamente y el formulario quedó reiniciado.",
+                reset_keys=["closure_case_v13"],
+                reset_prefixes=["closure_final_", "closure_final_files_", "communication_close_time_", "closure_time_"],
+            )
             st.rerun()
         except Exception as exc:
             st.error(str(exc))
 
 
 # =========================================================
-# V12 · CONSULTA GLOBAL, FILTROS POR CATÁLOGO Y ASIGNACIÓN
+# V13 · CONSULTA GLOBAL, FILTROS POR CATÁLOGO Y ASIGNACIÓN
 # =========================================================
 
 def _catalog_union(base: List[str], values: Iterable[Any]) -> List[str]:
@@ -5869,6 +6079,17 @@ def filter_dataframe_ui(
 
     filtered = df.copy()
     with st.expander("Filtros", expanded=True):
+        if st.button(
+            "Limpiar filtros",
+            key=f"clear_filters_{key}",
+            help="Restablece todos los filtros de esta pantalla.",
+        ):
+            st.session_state["_m8_pending_reset_prefixes"] = [
+                f"filter_{key}_",
+                f"search_{key}",
+            ]
+            st.rerun()
+
         row1 = st.columns(3)
         row2 = st.columns(3)
 
@@ -5938,8 +6159,11 @@ def select_case_id(
     df = cases_history_df()
     if only_assigned_to_current:
         df = df[
-            (df["id_usuario_responsable_actual"].astype(str) == current_user_id())
-            | (df["responsable_actual"].astype(str).str.casefold() == current_user_name().casefold())
+            (df["id_usuario_responsable_actual"].fillna("").astype(str) == current_user_id())
+            | (
+                df["responsable_actual"].fillna("").astype(str).str.casefold()
+                == current_user_name().casefold()
+            )
         ]
     if exclude_closed:
         df = df[~df["estado_actual"].isin(["Cerrada", "Fuera de alcance"])]
@@ -5947,7 +6171,10 @@ def select_case_id(
     df = filter_dataframe_ui(df, f"{key}_selector")
     if df.empty:
         if only_assigned_to_current:
-            st.warning("No hay casos asignados a tu usuario que coincidan con los filtros.")
+            st.warning(
+                "No hay casos asignados a tu usuario que coincidan con los filtros. "
+                "Verifica el usuario activo o limpia los filtros."
+            )
         else:
             st.warning("No hay casos que coincidan con los filtros.")
         return None
@@ -5959,7 +6186,11 @@ def select_case_id(
         ): row["id_caso"]
         for _, row in df.iterrows()
     }
-    selected = st.selectbox(label, list(labels.keys()), key=key)
+    placeholder = "— Seleccione un caso —"
+    selected = st.selectbox(label, [placeholder, *list(labels.keys())], key=key)
+    if selected == placeholder:
+        return None
+
     case_id = labels[selected]
     with db_connection() as conn:
         case = get_case(conn, case_id)
@@ -6019,24 +6250,42 @@ def render_approvals_history(key: str = "closures"):
 
 
 def render_assignment_form() -> None:
-    st.markdown("#### Asignar o reasignar caso")
+    st.markdown("#### Asignar caso")
     st.caption(
-        "Todos los casos son visibles. La asignación activa determina quién puede editar, "
-        "registrar seguimiento y cerrar el expediente."
+        "El selector muestra únicamente casos sin asignación activa. "
+        "La reasignación se realiza desde Editar caso asignado."
     )
-    df = filter_dataframe_ui(cases_history_df(), "assignment_cases")
+
+    df = cases_history_df()
+    with db_connection() as conn:
+        active_assignment_rows = conn.execute(
+            "SELECT id_caso FROM asignaciones_casos WHERE estado_asignacion = 'Activa'"
+        ).fetchall()
+    assigned_case_ids = {row["id_caso"] for row in active_assignment_rows}
+    df = df[
+        ~df["id_caso"].isin(assigned_case_ids)
+        & ~df["estado_actual"].isin(["Cerrada", "Fuera de alcance"])
+    ].copy()
     if df.empty:
-        st.info("No hay casos que coincidan con los filtros.")
+        st.info("No hay casos pendientes de asignación.")
         return
 
     labels = {
         (
             f"{row['codigo_caso']} · {row['clasificacion']} · "
-            f"{row['tema'] or 'Sin tema'} · {row['responsable_actual']}"
+            f"{row['tema'] or 'Sin tema'}"
         ): row["id_caso"]
         for _, row in df.iterrows()
     }
-    selected_label = st.selectbox("Código del caso", list(labels.keys()), key="assignment_case")
+    placeholder = "— Seleccione un caso sin asignar —"
+    selected_label = st.selectbox(
+        "Código del caso",
+        [placeholder, *list(labels.keys())],
+        key="assignment_case_v13",
+    )
+    if selected_label == placeholder:
+        return
+
     case_id = labels[selected_label]
     selected_row = df[df["id_caso"] == case_id].iloc[0]
 
@@ -6044,43 +6293,46 @@ def render_assignment_form() -> None:
     c1.metric("Fecha de registro", str(selected_row.get("fecha_registro") or ""))
     c2.metric("Clasificación", str(selected_row.get("clasificacion") or ""))
     c3.metric("Estado", str(selected_row.get("estado_actual") or ""))
-    st.text_input("Tema", value=str(selected_row.get("tema") or ""), disabled=True)
+    st.text_input(
+        "Tema",
+        value=str(selected_row.get("tema") or ""),
+        disabled=True,
+        key=f"assignment_topic_{case_id}",
+    )
     st.text_area(
         "Detalle del caso",
         value=str(selected_row.get("descripcion") or ""),
         height=150,
         disabled=True,
+        key=f"assignment_detail_{case_id}",
     )
     st.text_input(
         "GlobalID del caso",
         value=str(selected_row.get("globalid_caso") or ""),
         disabled=True,
+        key=f"assignment_globalid_{case_id}",
     )
 
     users = [user for user in active_users() if user.get("puede_recibir_casos")]
+    if not users:
+        st.error("No hay usuarios activos habilitados para recibir casos.")
+        return
     user_labels = {
         f"{user['nombre_completo']} · {user.get('cargo') or 'Sin cargo'}": user["id_usuario"]
         for user in users
     }
-    current_responsible = str(selected_row.get("responsable_actual") or "")
-    default_label = next(
-        (label for label in user_labels if label.startswith(current_responsible + " ·")),
-        next(iter(user_labels), ""),
-    )
 
-    with st.form("assignment_form_v12"):
+    with st.form(f"assignment_form_v13_{case_id}"):
         c1, c2 = st.columns(2)
         selected_user_label = c1.selectbox(
             "Usuario responsable",
             list(user_labels.keys()),
-            index=list(user_labels.keys()).index(default_label) if default_label else 0,
         )
         max_resolution = c2.date_input(
             "Fecha máxima de resolución",
-            value=(
-                date.fromisoformat(str(selected_row["fecha_maxima_resolucion"]))
-                if selected_row.get("fecha_maxima_resolucion")
-                else date.today()
+            value=safe_date_value(
+                selected_row.get("fecha_maxima_resolucion"),
+                date.today() + timedelta(days=15),
             ),
             min_value=date.today(),
         )
@@ -6103,15 +6355,95 @@ def render_assignment_form() -> None:
                 max_resolution,
                 observation,
             )
-            st.success("Asignación guardada y permisos actualizados correctamente.")
+            queue_action_confirmation(
+                "La asignación se guardó correctamente y los permisos del caso fueron actualizados.",
+                reset_keys=["assignment_case_v13"],
+                reset_prefixes=["assignment_topic_", "assignment_detail_", "assignment_globalid_"],
+            )
             st.rerun()
         except Exception as exc:
             st.error(str(exc))
 
-    st.markdown("#### Historial de asignaciones")
+    st.markdown("#### Historial de asignaciones del caso")
     history = assignment_history_df()
     history = history[history["id_caso"] == case_id]
     st.dataframe(history, use_container_width=True, hide_index=True)
+
+
+def render_reassignment_form(case_id: str) -> None:
+    """Permite al responsable actual transferir el caso conservando el historial."""
+    if not user_can_modify_case(case_id):
+        return
+
+    assignment = get_active_assignment(case_id)
+    users = [user for user in active_users() if user.get("puede_recibir_casos")]
+    if not users:
+        return
+
+    user_labels = {
+        f"{user['nombre_completo']} · {user.get('cargo') or 'Sin cargo'}": user["id_usuario"]
+        for user in users
+    }
+    current_user_assigned_id = (
+        str(assignment["id_usuario_asignado"]) if assignment else current_user_id()
+    )
+    labels_list = list(user_labels.keys())
+    default_index = next(
+        (index for index, label in enumerate(labels_list) if user_labels[label] == current_user_assigned_id),
+        0,
+    )
+
+    with st.expander("Reasignar este caso", expanded=False):
+        st.caption(
+            "La asignación anterior quedará como reemplazada y se conservará en el histórico."
+        )
+        with st.form(f"reassignment_form_v13_{case_id}"):
+            c1, c2 = st.columns(2)
+            selected_user_label = c1.selectbox(
+                "Nuevo usuario responsable",
+                labels_list,
+                index=default_index,
+            )
+            maximum_date = c2.date_input(
+                "Nueva fecha máxima de resolución",
+                value=safe_date_value(
+                    assignment["fecha_maxima_resolucion"] if assignment else None,
+                    date.today() + timedelta(days=15),
+                ),
+                min_value=date.today(),
+            )
+            observation = st.text_area(
+                "Motivo o instrucción de reasignación",
+                height=110,
+            )
+            save_reassignment = st.form_submit_button(
+                "Guardar reasignación",
+                type="primary",
+                use_container_width=True,
+            )
+
+        if save_reassignment:
+            try:
+                require_case_permission(case_id, "reasignar")
+                target_user_id = user_labels[selected_user_label]
+                if assignment and target_user_id == assignment["id_usuario_asignado"]:
+                    raise ValueError("Seleccione un usuario diferente al responsable actual.")
+                required_text(observation, "Motivo o instrucción de reasignación")
+                assign_case_to_user(
+                    case_id,
+                    target_user_id,
+                    maximum_date,
+                    observation,
+                )
+                queue_action_confirmation(
+                    "El caso fue reasignado correctamente y se conservó el historial anterior.",
+                    reset_keys=["edit_case_v13"],
+                    reset_prefixes=["reassignment_form_v13_", "edit_case_v13_"],
+                )
+                st.rerun()
+            except Exception as exc:
+                st.error(str(exc))
+
 
 # =========================================================
 # PANTALLAS
@@ -6191,7 +6523,7 @@ elif page == "Carga de información":
     uploaded_file = st.file_uploader(
         "Cargar archivo Excel exportado desde Survey123",
         type=["xlsx"],
-        key="survey_import_v12",
+        key="survey_import_v13",
     )
     if uploaded_file:
         try:
@@ -6212,11 +6544,19 @@ elif page == "Carga de información":
             ):
                 uploaded_file.seek(0)
                 result = importar_survey123(uploaded_file, current_user_name())
-                st.success("Importación Survey123 finalizada.")
-                st.json(result)
+                st.session_state["_m8_last_import_result"] = result
+                queue_action_confirmation(
+                    "La importación de Survey123 finalizó correctamente.",
+                    reset_keys=["survey_import_v13"],
+                )
                 st.rerun()
         except Exception as exc:
             st.error(f"No fue posible procesar el archivo: {exc}")
+
+    last_import_result = st.session_state.get("_m8_last_import_result")
+    if last_import_result:
+        with st.expander("Resumen de la última importación", expanded=True):
+            st.json(last_import_result)
 
     pending = read_table_df("registros_survey_pendientes")
     if not pending.empty:
@@ -6245,7 +6585,7 @@ elif page == "Casos":
     with tab_edit:
         case_id = select_case_id(
             "Seleccione uno de sus casos asignados",
-            "edit_case_v12",
+            "edit_case_v13",
             only_assigned_to_current=True,
         )
         if case_id:
@@ -6253,15 +6593,20 @@ elif page == "Casos":
                 selected_case = get_case(conn, case_id)
             submitted, payload, files = case_form(
                 defaults=selected_case,
-                form_key=f"edit_case_v12_{case_id}",
+                form_key=f"edit_case_v13_{case_id}",
             )
             if submitted:
                 try:
                     update_existing_case(case_id, payload, files)
-                    st.success("Caso actualizado correctamente.")
+                    queue_action_confirmation(
+                        "Los cambios del caso se guardaron correctamente.",
+                        reset_keys=["edit_case_v13"],
+                        reset_prefixes=["edit_case_v13_"],
+                    )
                     st.rerun()
                 except Exception as exc:
                     st.error(str(exc))
+            render_reassignment_form(case_id)
 
 elif page == "Seguimiento":
     st.markdown("### Seguimiento de casos")
@@ -6272,7 +6617,7 @@ elif page == "Seguimiento":
     )
     mode = render_work_mode(
         ["Agregar seguimiento", "Editar seguimiento"],
-        "followup_mode_v12",
+        "followup_mode_v13",
     )
     if mode == "Agregar seguimiento":
         render_attention_form()
@@ -6293,8 +6638,14 @@ elif page == "Seguimiento":
                 ): row["id_seguimiento"]
                 for _, row in df.iterrows()
             }
-            selected = st.selectbox("Seleccione el seguimiento", list(labels.keys()))
-            render_followup_form(labels[selected])
+            placeholder = "— Seleccione un seguimiento —"
+            selected = st.selectbox(
+                "Seleccione el seguimiento",
+                [placeholder, *list(labels.keys())],
+                key="followup_edit_record_v13",
+            )
+            if selected != placeholder:
+                render_followup_form(labels[selected])
 
 elif page == "Cierre":
     st.markdown("### Cierre de casos")

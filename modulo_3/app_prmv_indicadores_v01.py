@@ -1,19 +1,19 @@
 # ============================================================
 # SIR ACP - Módulo D Indicadores por sujeto de medición
-# Versión v2 unificada / autosuficiente
+# Versión validada contra indicadores oficiales PRMV y M&E
 # ============================================================
-# Incluye:
-# - Una sola pantalla dinámica de captura de formularios.
-# - Una pantalla de edición por tipo de sujeto, registro y levantamiento.
-# - Tablero de indicadores por capital, categoría, sujeto y estado.
-# - Histórico descargable y catálogo de preguntas/indicadores.
-# - Catálogo de preguntas/indicadores embebido en este mismo archivo.
-# - Sin archivos externos .sql ni .json de semilla.
-# - Memoria local JSON generada automáticamente por la app para persistencia,
-#   siguiendo el patrón del M01 compartido.
+# - Un solo archivo .py autosuficiente.
+# - No requiere schema.sql ni seed_catalogo.json.
+# - El catálogo de preguntas proviene de la matriz validada:
+#   Matriz_Formularios_Indicadores_PRMV_ME_validada.xlsx
+# - No contiene indicadores inventados: cada pregunta conserva fuente,
+#   hoja y fila de origen del indicador oficial.
+# - Mantiene interfaz tipo M01: sidebar, tarjetas, métricas, formularios
+#   reactivos, edición, histórico, tablero y memoria local JSON.
 # ============================================================
 
 import json
+import re
 import uuid
 from pathlib import Path
 from datetime import date, datetime
@@ -36,63 +36,2524 @@ st.set_page_config(
 COLOR_PRIMARIO_SOCIONAUT = "#073B5A"
 COLOR_SECUNDARIO_SOCIONAUT = "#00A6A6"
 COLOR_CORAL = "#F05A43"
-COLOR_GRIS_CLARO = "#F4F7F9"
 COLOR_BORDE = "#D6DEE6"
 
-ARCHIVO_MEMORIA = Path("memoria_modulo_d_indicadores_v2.json")
+ARCHIVO_MEMORIA = Path("memoria_modulo_d_indicadores_validado.json")
 USUARIO_PROTOTIPO = "usuario_prototipo"
 
 ESTADOS_CUMPLIMIENTO = ["Cumple", "Parcial", "No cumple", "No aplica", "En proceso", "Sin dato"]
 FUENTES_INFORMACION = [
-    "Encuesta / formulario de campo",
-    "Seguimiento social",
-    "Verificación documental",
-    "Acta / minuta",
-    "Registro administrativo SIR",
-    "Inspección / visita técnica",
-    "Reporte externo",
-    "Otro",
+    "Módulo alimentador oficial",
+    "Seguimiento operativo",
+    "Formulario de campo",
+    "Acta / lista de asistencia",
+    "Encuesta / entrevista",
+    "Expediente documental",
+    "CDQR / caso",
+    "Otro soporte",
 ]
-PERIODICIDADES = ["Por evento", "Mensual", "Trimestral", "Semestral", "Anual", "Cierre / entrega", "Otro"]
 
 # ============================================================
-# 2. CATÁLOGO EMBEBIDO DE PREGUNTAS E INDICADORES
+# 2. CATÁLOGO VALIDADO DE PREGUNTAS E INDICADORES
 # ============================================================
 
-CATALOGO_FORMULARIOS = json.loads('[\n  {\n    "id_pregunta": "PER-001",\n    "formulario": "Formulario persona",\n    "tipo_sujeto": "Persona",\n    "tabla_base": "personas",\n    "campo_llave_sujeto": "id_persona",\n    "categoria": "Identificación / documentación",\n    "subcategoria": "Documentación personal",\n    "indicador": "Persona cuenta con documento de identificación registrado y vigente",\n    "codigo_indicador": "IND-PER-001",\n    "pregunta": "¿La persona cuenta con documento de identificación registrado y vigente?",\n    "tipo_respuesta": "Sí / No / No aplica",\n    "catalogo_valores": "Sí, No, No aplica",\n    "resultado_esperado": "Sí",\n    "regla_cumplimiento": "Cumple si resultado_obtenido = Sí",\n    "periodicidad": "Semestral",\n    "fuente_informacion": "Ficha de persona / verificación documental",\n    "evidencia_soporte": "Documento de identidad, ficha de persona",\n    "campos_existentes": "id_persona, tipo_documento, numero_documento, fecha_nacimiento, sexo, hogar_id",\n    "campos_nuevos": "resultado_obtenido, estado_cumplimiento, fecha_medicion, evidencia_id, observ...",\n    "validacion_funcional": "No permitir guardar si no se selecciona persona existente.",\n    "prioridad": "Alta",\n    "capital": "Capital humano"\n  },\n  {\n    "id_pregunta": "PER-002",\n    "formulario": "Formulario persona",\n    "tipo_sujeto": "Persona",\n    "tabla_base": "personas",\n    "campo_llave_sujeto": "id_persona",\n    "categoria": "Participación",\n    "subcategoria": "Información y socialización",\n    "indicador": "Persona recibió información del proceso de reasentamiento",\n    "codigo_indicador": "IND-PER-002",\n    "pregunta": "¿La persona recibió información verificable sobre el proceso?",\n    "tipo_respuesta": "Sí / No",\n    "catalogo_valores": "Sí, No",\n    "resultado_esperado": "Sí",\n    "regla_cumplimiento": "Cumple si existe registro de socialización o respuesta Sí",\n    "periodicidad": "Trimestral",\n    "fuente_informacion": "Actas, asistencia, seguimiento social",\n    "evidencia_soporte": "Lista de asistencia, acta, minuta",\n    "campos_existentes": "id_persona, hogar_id, comunidad_id",\n    "campos_nuevos": "resultado_obtenido, evento_asociado_id, fuente_informacion, observaciones",\n    "validacion_funcional": "Debe permitir vincular actividad o seguimiento.",\n    "prioridad": "Alta",\n    "capital": "Capital social"\n  },\n  {\n    "id_pregunta": "PER-003",\n    "formulario": "Formulario persona",\n    "tipo_sujeto": "Persona",\n    "tabla_base": "personas",\n    "campo_llave_sujeto": "id_persona",\n    "categoria": "Participación",\n    "subcategoria": "Capacitación",\n    "indicador": "Persona participó en capacitación programada",\n    "codigo_indicador": "IND-PER-003",\n    "pregunta": "¿La persona participó en la capacitación programada?",\n    "tipo_respuesta": "Sí / No / No aplica",\n    "catalogo_valores": "Sí, No, No aplica",\n    "resultado_esperado": "Sí",\n    "regla_cumplimiento": "Cumple si resultado_obtenido = Sí o No aplica justificado",\n    "periodicidad": "Por evento",\n    "fuente_informacion": "Registro de asistencia",\n    "evidencia_soporte": "Lista de asistencia, certificado",\n    "campos_existentes": "id_persona, hogar_id, comunidad_id",\n    "campos_nuevos": "capacitacion_id, resultado_obtenido, fecha_medicion, evidencia_id",\n    "validacion_funcional": "Si se marca No aplica, exigir observación.",\n    "prioridad": "Alta",\n    "capital": "Capital humano"\n  },\n  {\n    "id_pregunta": "PER-004",\n    "formulario": "Formulario persona",\n    "tipo_sujeto": "Persona",\n    "tabla_base": "personas",\n    "campo_llave_sujeto": "id_persona",\n    "categoria": "Medios de vida",\n    "subcategoria": "Empleo e ingresos",\n    "indicador": "Persona con fuente de ingreso restablecida",\n    "codigo_indicador": "IND-PER-004",\n    "pregunta": "¿La persona tiene una fuente de ingreso restablecida o sustituida?",\n    "tipo_respuesta": "Catálogo cumplimiento",\n    "catalogo_valores": "Cumple, Parcial, No cumple, No aplica, Sin dato",\n    "resultado_esperado": "Cumple",\n    "regla_cumplimiento": "Cumple si la fuente de ingreso actual es igual o mejor a la línea base",\n    "periodicidad": "Semestral",\n    "fuente_informacion": "Seguimiento socioeconómico",\n    "evidencia_soporte": "Encuesta, ficha de seguimiento",\n    "campos_existentes": "id_persona, ocupacion, actividad_economica, hogar_id",\n    "campos_nuevos": "ingreso_base, ingreso_actual, resultado_obtenido, estado_cumplimiento",\n    "validacion_funcional": "Si no hay línea base, clasificar como Sin dato.",\n    "prioridad": "Alta",\n    "capital": "Capital financiero"\n  },\n  {\n    "id_pregunta": "PER-005",\n    "formulario": "Formulario persona",\n    "tipo_sujeto": "Persona",\n    "tabla_base": "personas",\n    "campo_llave_sujeto": "id_persona",\n    "categoria": "Vulnerabilidad",\n    "subcategoria": "Atención diferencial",\n    "indicador": "Persona vulnerable recibió atención diferencial según condición",\n    "codigo_indicador": "IND-PER-005",\n    "pregunta": "¿La persona vulnerable recibió la atención diferencial requerida?",\n    "tipo_respuesta": "Sí / No / No aplica",\n    "catalogo_valores": "Sí, No, No aplica",\n    "resultado_esperado": "Sí o No aplica",\n    "regla_cumplimiento": "Cumple si persona no vulnerable = No aplica o vulnerable con atención = Sí",\n    "periodicidad": "Trimestral",\n    "fuente_informacion": "Seguimiento social / plan diferencial",\n    "evidencia_soporte": "Ficha de atención, remisión",\n    "campos_existentes": "id_persona, condicion_vulnerabilidad, hogar_id",\n    "campos_nuevos": "tipo_atencion, fecha_atencion, resultado_obtenido, evidencia_id",\n    "validacion_funcional": "Si vulnerable = Sí y respuesta = No, generar alerta.",\n    "prioridad": "Alta",\n    "capital": "Capital humano"\n  },\n  {\n    "id_pregunta": "PER-006",\n    "formulario": "Formulario persona",\n    "tipo_sujeto": "Persona",\n    "tabla_base": "personas",\n    "campo_llave_sujeto": "id_persona",\n    "categoria": "Salud y bienestar",\n    "subcategoria": "Acceso a servicios",\n    "indicador": "Persona mantiene acceso a servicios de salud",\n    "codigo_indicador": "IND-PER-006",\n    "pregunta": "¿La persona mantiene acceso a servicios de salud después del proceso?",\n    "tipo_respuesta": "Sí / No / Parcial / Sin dato",\n    "catalogo_valores": "Sí, No, Parcial, Sin dato",\n    "resultado_esperado": "Sí",\n    "regla_cumplimiento": "Cumple si resultado_obtenido = Sí",\n    "periodicidad": "Semestral",\n    "fuente_informacion": "Encuesta / seguimiento social",\n    "evidencia_soporte": "Ficha, constancia, entrevista",\n    "campos_existentes": "id_persona, edad, hogar_id, comunidad_id",\n    "campos_nuevos": "resultado_obtenido, barrera_identificada, observaciones",\n    "validacion_funcional": "Si respuesta = No o Parcial, exigir barrera identificada.",\n    "prioridad": "Alta",\n    "capital": "Capital humano"\n  },\n  {\n    "id_pregunta": "PER-007",\n    "formulario": "Formulario persona",\n    "tipo_sujeto": "Persona",\n    "tabla_base": "personas",\n    "campo_llave_sujeto": "id_persona",\n    "categoria": "Educación",\n    "subcategoria": "Continuidad educativa",\n    "indicador": "Persona en edad escolar mantiene continuidad educativa",\n    "codigo_indicador": "IND-PER-007",\n    "pregunta": "¿La persona en edad escolar mantiene continuidad educativa?",\n    "tipo_respuesta": "Sí / No / No aplica",\n    "catalogo_valores": "Sí, No, No aplica",\n    "resultado_esperado": "Sí o No aplica",\n    "regla_cumplimiento": "Cumple si edad fuera de rango = No aplica o respuesta = Sí",\n    "periodicidad": "Semestral",\n    "fuente_informacion": "Seguimiento social / educación",\n    "evidencia_soporte": "Matrícula, constancia, entrevista",\n    "campos_existentes": "id_persona, fecha_nacimiento, hogar_id",\n    "campos_nuevos": "resultado_obtenido, institucion_educativa, evidencia_id",\n    "validacion_funcional": "El formulario debe calcular edad automáticamente.",\n    "prioridad": "Alta",\n    "capital": "Capital humano"\n  },\n  {\n    "id_pregunta": "PER-008",\n    "formulario": "Formulario persona",\n    "tipo_sujeto": "Persona",\n    "tabla_base": "personas",\n    "campo_llave_sujeto": "id_persona",\n    "categoria": "Participación",\n    "subcategoria": "Consulta individual",\n    "indicador": "Persona tiene consultas/quejas individuales atendidas oportunamente",\n    "codigo_indicador": "IND-PER-008",\n    "pregunta": "¿Las consultas o quejas de la persona fueron atendidas dentro del plazo defin...",\n    "tipo_respuesta": "Sí / No / No aplica",\n    "catalogo_valores": "Sí, No, No aplica",\n    "resultado_esperado": "Sí o No aplica",\n    "regla_cumplimiento": "Cumple si no tiene casos abiertos vencidos",\n    "periodicidad": "Mensual",\n    "fuente_informacion": "Módulo de consultas y quejas",\n    "evidencia_soporte": "Radicado, respuesta, acta",\n    "campos_existentes": "id_persona, numero_documento, casos_asociados",\n    "campos_nuevos": "caso_id, estado_cumplimiento, fecha_medicion",\n    "validacion_funcional": "Debe traer casos ligados por cédula o id_persona.",\n    "prioridad": "Alta",\n    "capital": "Capital social"\n  },\n  {\n    "id_pregunta": "PER-009",\n    "formulario": "Formulario persona",\n    "tipo_sujeto": "Persona",\n    "tabla_base": "personas",\n    "campo_llave_sujeto": "id_persona",\n    "categoria": "Documentación",\n    "subcategoria": "Expediente individual",\n    "indicador": "Persona tiene expediente documental completo según checklist",\n    "codigo_indicador": "IND-PER-009",\n    "pregunta": "¿El expediente individual de la persona está completo según checklist?",\n    "tipo_respuesta": "Porcentaje",\n    "catalogo_valores": "0% a 100%",\n    "resultado_esperado": "100%",\n    "regla_cumplimiento": "Cumple si porcentaje >= umbral definido, sugerido 100%",\n    "periodicidad": "Mensual",\n    "fuente_informacion": "Módulo documental",\n    "evidencia_soporte": "Checklist documental",\n    "campos_existentes": "id_persona, documentos_cargados",\n    "campos_nuevos": "porcentaje_cumplimiento, documentos_faltantes, observaciones",\n    "validacion_funcional": "El porcentaje debe calcularse desde checklist.",\n    "prioridad": "Alta",\n    "capital": "Capital humano"\n  },\n  {\n    "id_pregunta": "PER-010",\n    "formulario": "Formulario persona",\n    "tipo_sujeto": "Persona",\n    "tabla_base": "personas",\n    "campo_llave_sujeto": "id_persona",\n    "categoria": "Restablecimiento social",\n    "subcategoria": "Acompañamiento",\n    "indicador": "Persona recibió seguimiento social individual cuando aplica",\n    "codigo_indicador": "IND-PER-010",\n    "pregunta": "¿La persona recibió seguimiento social individual en el periodo?",\n    "tipo_respuesta": "Sí / No / No aplica",\n    "catalogo_valores": "Sí, No, No aplica",\n    "resultado_esperado": "Sí o No aplica",\n    "regla_cumplimiento": "Cumple si hay seguimiento registrado en el periodo",\n    "periodicidad": "Mensual",\n    "fuente_informacion": "Seguimiento social",\n    "evidencia_soporte": "Ficha de seguimiento",\n    "campos_existentes": "id_persona, hogar_id, seguimientos",\n    "campos_nuevos": "seguimiento_id, resultado_obtenido, fecha_medicion",\n    "validacion_funcional": "No duplicar medición del mismo seguimiento.",\n    "prioridad": "Alta",\n    "capital": "Capital social"\n  },\n  {\n    "id_pregunta": "HOG-011",\n    "formulario": "Formulario hogar",\n    "tipo_sujeto": "Hogar",\n    "tabla_base": "hogares",\n    "campo_llave_sujeto": "id_hogar",\n    "categoria": "Vivienda",\n    "subcategoria": "Reposición habitacional",\n    "indicador": "Hogar cuenta con vivienda de reposición entregada",\n    "codigo_indicador": "IND-HOG-001",\n    "pregunta": "¿El hogar cuenta con vivienda de reposición entregada?",\n    "tipo_respuesta": "Sí / No / Parcial / No aplica",\n    "catalogo_valores": "Sí, No, Parcial, No aplica",\n    "resultado_esperado": "Sí",\n    "regla_cumplimiento": "Cumple si vivienda entregada y acta asociada",\n    "periodicidad": "Mensual",\n    "fuente_informacion": "Módulo de bienes / acuerdos",\n    "evidencia_soporte": "Acta de entrega, fotos, ficha",\n    "campos_existentes": "id_hogar, jefe_hogar_id, comunidad_id",\n    "campos_nuevos": "resultado_obtenido, fecha_entrega, evidencia_id, observaciones",\n    "validacion_funcional": "Si respuesta Sí, exigir evidencia de entrega.",\n    "prioridad": "Alta",\n    "capital": "Capital físico"\n  },\n  {\n    "id_pregunta": "HOG-012",\n    "formulario": "Formulario hogar",\n    "tipo_sujeto": "Hogar",\n    "tabla_base": "hogares",\n    "campo_llave_sujeto": "id_hogar",\n    "categoria": "Vivienda",\n    "subcategoria": "Servicios básicos",\n    "indicador": "Hogar cuenta con servicios básicos restablecidos",\n    "codigo_indicador": "IND-HOG-002",\n    "pregunta": "¿El hogar cuenta con servicios básicos restablecidos?",\n    "tipo_respuesta": "Catálogo múltiple",\n    "catalogo_valores": "Agua, Energía, Saneamiento, Acceso vial, Internet, Otro",\n    "resultado_esperado": "Todos los requeridos según acuerdo",\n    "regla_cumplimiento": "Cumple si servicios requeridos = servicios disponibles",\n    "periodicidad": "Trimestral",\n    "fuente_informacion": "Seguimiento de vivienda",\n    "evidencia_soporte": "Ficha, fotos, acta",\n    "campos_existentes": "id_hogar, vivienda_reposicion_id, comunidad_id",\n    "campos_nuevos": "servicios_requeridos, servicios_disponibles, brechas",\n    "validacion_funcional": "Permitir selección múltiple y cálculo de brecha.",\n    "prioridad": "Alta",\n    "capital": "Capital físico"\n  },\n  {\n    "id_pregunta": "HOG-013",\n    "formulario": "Formulario hogar",\n    "tipo_sujeto": "Hogar",\n    "tabla_base": "hogares",\n    "campo_llave_sujeto": "id_hogar",\n    "categoria": "Compensaciones",\n    "subcategoria": "Pago / entrega",\n    "indicador": "Hogar recibió compensación acordada",\n    "codigo_indicador": "IND-HOG-003",\n    "pregunta": "¿El hogar recibió la compensación acordada?",\n    "tipo_respuesta": "Sí / No / Parcial / No aplica",\n    "catalogo_valores": "Sí, No, Parcial, No aplica",\n    "resultado_esperado": "Sí",\n    "regla_cumplimiento": "Cumple si monto/entrega obtenido = monto/entrega esperado",\n    "periodicidad": "Mensual",\n    "fuente_informacion": "Módulo de negociación / compensaciones",\n    "evidencia_soporte": "Acuerdo, comprobante",\n    "campos_existentes": "id_hogar, acuerdo_id, paquete_compensacion_id",\n    "campos_nuevos": "valor_esperado, valor_obtenido, estado_cumplimiento",\n    "validacion_funcional": "Si Parcial, exigir diferencia pendiente.",\n    "prioridad": "Alta",\n    "capital": "Capital físico"\n  },\n  {\n    "id_pregunta": "HOG-014",\n    "formulario": "Formulario hogar",\n    "tipo_sujeto": "Hogar",\n    "tabla_base": "hogares",\n    "campo_llave_sujeto": "id_hogar",\n    "categoria": "Documentación",\n    "subcategoria": "Expediente de hogar",\n    "indicador": "Hogar tiene expediente documental completo",\n    "codigo_indicador": "IND-HOG-004",\n    "pregunta": "¿El expediente documental del hogar está completo?",\n    "tipo_respuesta": "Porcentaje",\n    "catalogo_valores": "0% a 100%",\n    "resultado_esperado": "100%",\n    "regla_cumplimiento": "Cumple si porcentaje checklist >= umbral",\n    "periodicidad": "Mensual",\n    "fuente_informacion": "Módulo documental",\n    "evidencia_soporte": "Checklist, documentos",\n    "campos_existentes": "id_hogar, documentos_cargados",\n    "campos_nuevos": "porcentaje_cumplimiento, documentos_faltantes",\n    "validacion_funcional": "Debe calcularse desde checklist del expediente.",\n    "prioridad": "Alta",\n    "capital": "Capital humano"\n  },\n  {\n    "id_pregunta": "HOG-015",\n    "formulario": "Formulario hogar",\n    "tipo_sujeto": "Hogar",\n    "tabla_base": "hogares",\n    "campo_llave_sujeto": "id_hogar",\n    "categoria": "Medios de vida",\n    "subcategoria": "Condiciones económicas",\n    "indicador": "Hogar mantiene o mejora sus condiciones de ingreso",\n    "codigo_indicador": "IND-HOG-005",\n    "pregunta": "¿El hogar mantiene o mejora sus condiciones de ingreso frente a línea base?",\n    "tipo_respuesta": "Mejora / Igual / Empeora / Sin dato",\n    "catalogo_valores": "Mejora, Igual, Empeora, Sin dato",\n    "resultado_esperado": "Mejora o Igual",\n    "regla_cumplimiento": "Cumple si resultado = Mejora o Igual",\n    "periodicidad": "Semestral",\n    "fuente_informacion": "Encuesta socioeconómica",\n    "evidencia_soporte": "Encuesta, informe",\n    "campos_existentes": "id_hogar, ingreso_linea_base, integrantes",\n    "campos_nuevos": "ingreso_actual, variacion_ingreso, resultado_obtenido",\n    "validacion_funcional": "Debe comparar línea base vs medición actual.",\n    "prioridad": "Alta",\n    "capital": "Capital financiero"\n  },\n  {\n    "id_pregunta": "HOG-016",\n    "formulario": "Formulario hogar",\n    "tipo_sujeto": "Hogar",\n    "tabla_base": "hogares",\n    "campo_llave_sujeto": "id_hogar",\n    "categoria": "Acompañamiento social",\n    "subcategoria": "Seguimiento familiar",\n    "indicador": "Hogar recibió acompañamiento social en el periodo",\n    "codigo_indicador": "IND-HOG-006",\n    "pregunta": "¿El hogar recibió acompañamiento social en el periodo de medición?",\n    "tipo_respuesta": "Sí / No",\n    "catalogo_valores": "Sí, No",\n    "resultado_esperado": "Sí",\n    "regla_cumplimiento": "Cumple si existe seguimiento asociado al hogar en el periodo",\n    "periodicidad": "Mensual",\n    "fuente_informacion": "Seguimiento social",\n    "evidencia_soporte": "Ficha de seguimiento",\n    "campos_existentes": "id_hogar, seguimientos",\n    "campos_nuevos": "seguimiento_id, fecha_medicion, resultado_obtenido",\n    "validacion_funcional": "Evitar duplicar por el mismo seguimiento.",\n    "prioridad": "Alta",\n    "capital": "Capital social"\n  },\n  {\n    "id_pregunta": "HOG-017",\n    "formulario": "Formulario hogar",\n    "tipo_sujeto": "Hogar",\n    "tabla_base": "hogares",\n    "campo_llave_sujeto": "id_hogar",\n    "categoria": "Movilidad / traslado",\n    "subcategoria": "Traslado",\n    "indicador": "Hogar trasladado conforme al cronograma acordado",\n    "codigo_indicador": "IND-HOG-007",\n    "pregunta": "¿El hogar fue trasladado conforme al cronograma acordado?",\n    "tipo_respuesta": "Sí / No / Parcial / No aplica",\n    "catalogo_valores": "Sí, No, Parcial, No aplica",\n    "resultado_esperado": "Sí",\n    "regla_cumplimiento": "Cumple si fecha real <= fecha programada o desviación aprobada",\n    "periodicidad": "Por evento",\n    "fuente_informacion": "Cronograma / actas",\n    "evidencia_soporte": "Acta de traslado",\n    "campos_existentes": "id_hogar, fecha_programada_traslado",\n    "campos_nuevos": "fecha_real_traslado, causa_desviacion, estado_cumplimiento",\n    "validacion_funcional": "Si hay retraso, exigir causa.",\n    "prioridad": "Alta",\n    "capital": "Capital físico"\n  },\n  {\n    "id_pregunta": "HOG-018",\n    "formulario": "Formulario hogar",\n    "tipo_sujeto": "Hogar",\n    "tabla_base": "hogares",\n    "campo_llave_sujeto": "id_hogar",\n    "categoria": "Seguridad alimentaria",\n    "subcategoria": "Transición",\n    "indicador": "Hogar cuenta con condiciones mínimas durante transición",\n    "codigo_indicador": "IND-HOG-008",\n    "pregunta": "¿El hogar cuenta con condiciones mínimas durante la transición?",\n    "tipo_respuesta": "Sí / No / Parcial",\n    "catalogo_valores": "Sí, No, Parcial",\n    "resultado_esperado": "Sí",\n    "regla_cumplimiento": "Cumple si todos los criterios mínimos están cubiertos",\n    "periodicidad": "Mensual",\n    "fuente_informacion": "Seguimiento social",\n    "evidencia_soporte": "Ficha de visita",\n    "campos_existentes": "id_hogar, integrantes, vulnerabilidad",\n    "campos_nuevos": "criterios_cubiertos, criterios_pendientes, observaciones",\n    "validacion_funcional": "Aplicar solo durante fase de transición.",\n    "prioridad": "Alta",\n    "capital": "Sin clasificar"\n  },\n  {\n    "id_pregunta": "HOG-019",\n    "formulario": "Formulario hogar",\n    "tipo_sujeto": "Hogar",\n    "tabla_base": "hogares",\n    "campo_llave_sujeto": "id_hogar",\n    "categoria": "Consulta y quejas",\n    "subcategoria": "Atención al hogar",\n    "indicador": "Hogar tiene consultas/quejas atendidas oportunamente",\n    "codigo_indicador": "IND-HOG-009",\n    "pregunta": "¿Las consultas o quejas del hogar fueron atendidas dentro del plazo?",\n    "tipo_respuesta": "Sí / No / No aplica",\n    "catalogo_valores": "Sí, No, No aplica",\n    "resultado_esperado": "Sí o No aplica",\n    "regla_cumplimiento": "Cumple si no hay casos vencidos abiertos",\n    "periodicidad": "Mensual",\n    "fuente_informacion": "Módulo consultas y quejas",\n    "evidencia_soporte": "Radicado, respuesta",\n    "campos_existentes": "id_hogar, casos_asociados",\n    "campos_nuevos": "caso_id, estado_cumplimiento, fecha_medicion",\n    "validacion_funcional": "Debe vincular casos por id_hogar o cédula integrante.",\n    "prioridad": "Alta",\n    "capital": "Capital social"\n  },\n  {\n    "id_pregunta": "HOG-020",\n    "formulario": "Formulario hogar",\n    "tipo_sujeto": "Hogar",\n    "tabla_base": "hogares",\n    "campo_llave_sujeto": "id_hogar",\n    "categoria": "Restablecimiento integral",\n    "subcategoria": "Condiciones de vida",\n    "indicador": "Hogar restableció condiciones de vida conforme a plan",\n    "codigo_indicador": "IND-HOG-010",\n    "pregunta": "¿El hogar restableció sus condiciones de vida conforme al plan acordado?",\n    "tipo_respuesta": "Cumple / Parcial / No cumple / Sin dato",\n    "catalogo_valores": "Cumple, Parcial, No cumple, Sin dato",\n    "resultado_esperado": "Cumple",\n    "regla_cumplimiento": "Cumple si vivienda, medios de vida, servicios y documentación están cerrados",\n    "periodicidad": "Semestral",\n    "fuente_informacion": "Evaluación integral",\n    "evidencia_soporte": "Informe de cierre",\n    "campos_existentes": "id_hogar, plan_reasentamiento_id",\n    "campos_nuevos": "resultado_integral, brechas, evidencia_id",\n    "validacion_funcional": "Indicador compuesto; debe permitir ver detalle de componentes.",\n    "prioridad": "Alta",\n    "capital": "Sin clasificar"\n  },\n  {\n    "id_pregunta": "COM-021",\n    "formulario": "Formulario comunidad / lugar poblado",\n    "tipo_sujeto": "Comunidad / lugar poblado",\n    "tabla_base": "lugares_poblados",\n    "campo_llave_sujeto": "id_lugar_poblado",\n    "categoria": "Infraestructura comunitaria",\n    "subcategoria": "Reposición",\n    "indicador": "Comunidad cuenta con infraestructura comunitaria restituida",\n    "codigo_indicador": "IND-COM-001",\n    "pregunta": "¿La comunidad cuenta con infraestructura comunitaria restituida?",\n    "tipo_respuesta": "Sí / No / Parcial / No aplica",\n    "catalogo_valores": "Sí, No, Parcial, No aplica",\n    "resultado_esperado": "Sí",\n    "regla_cumplimiento": "Cumple si infraestructura entregada y validada por acta",\n    "periodicidad": "Trimestral",\n    "fuente_informacion": "Módulo de bienes / infraestructura",\n    "evidencia_soporte": "Acta, fotos, informe técnico",\n    "campos_existentes": "id_lugar_poblado, tipo_lugar, infraestructura_asociada",\n    "campos_nuevos": "infraestructura_id, avance_fisico, estado_cumplimiento",\n    "validacion_funcional": "Si Parcial, registrar porcentaje de avance.",\n    "prioridad": "Alta",\n    "capital": "Capital social"\n  },\n  {\n    "id_pregunta": "COM-022",\n    "formulario": "Formulario comunidad / lugar poblado",\n    "tipo_sujeto": "Comunidad / lugar poblado",\n    "tabla_base": "lugares_poblados",\n    "campo_llave_sujeto": "id_lugar_poblado",\n    "categoria": "Servicios comunitarios",\n    "subcategoria": "Acceso a servicios",\n    "indicador": "Comunidad mantiene o mejora acceso a servicios básicos",\n    "codigo_indicador": "IND-COM-002",\n    "pregunta": "¿La comunidad mantiene o mejora el acceso a servicios básicos?",\n    "tipo_respuesta": "Mejora / Igual / Empeora / Sin dato",\n    "catalogo_valores": "Mejora, Igual, Empeora, Sin dato",\n    "resultado_esperado": "Mejora o Igual",\n    "regla_cumplimiento": "Cumple si resultado = Mejora o Igual",\n    "periodicidad": "Semestral",\n    "fuente_informacion": "Diagnóstico comunitario",\n    "evidencia_soporte": "Informe, encuesta comunitaria",\n    "campos_existentes": "id_lugar_poblado, servicios_base",\n    "campos_nuevos": "servicios_actuales, resultado_obtenido, brechas",\n    "validacion_funcional": "Debe comparar base vs estado actual.",\n    "prioridad": "Alta",\n    "capital": "Capital social"\n  },\n  {\n    "id_pregunta": "COM-023",\n    "formulario": "Formulario comunidad / lugar poblado",\n    "tipo_sujeto": "Comunidad / lugar poblado",\n    "tabla_base": "lugares_poblados",\n    "campo_llave_sujeto": "id_lugar_poblado",\n    "categoria": "Participación comunitaria",\n    "subcategoria": "Socialización",\n    "indicador": "Comunidad recibió socialización del proceso",\n    "codigo_indicador": "IND-COM-003",\n    "pregunta": "¿La comunidad recibió socialización del proceso en el periodo?",\n    "tipo_respuesta": "Sí / No",\n    "catalogo_valores": "Sí, No",\n    "resultado_esperado": "Sí",\n    "regla_cumplimiento": "Cumple si existe evento de socialización asociado",\n    "periodicidad": "Mensual",\n    "fuente_informacion": "Actas / participación",\n    "evidencia_soporte": "Acta, lista de asistencia",\n    "campos_existentes": "id_lugar_poblado, eventos_asociados",\n    "campos_nuevos": "evento_id, fecha_medicion, evidencia_id",\n    "validacion_funcional": "Vincular evento comunitario.",\n    "prioridad": "Alta",\n    "capital": "Capital social"\n  },\n  {\n    "id_pregunta": "COM-024",\n    "formulario": "Formulario comunidad / lugar poblado",\n    "tipo_sujeto": "Comunidad / lugar poblado",\n    "tabla_base": "lugares_poblados",\n    "campo_llave_sujeto": "id_lugar_poblado",\n    "categoria": "Consulta comunitaria",\n    "subcategoria": "Mecanismos activos",\n    "indicador": "Comunidad tiene mecanismos de consulta activos",\n    "codigo_indicador": "IND-COM-004",\n    "pregunta": "¿La comunidad tiene mecanismos de consulta o comunicación activos?",\n    "tipo_respuesta": "Sí / No / Parcial",\n    "catalogo_valores": "Sí, No, Parcial",\n    "resultado_esperado": "Sí",\n    "regla_cumplimiento": "Cumple si existe canal activo y evidencia de uso",\n    "periodicidad": "Trimestral",\n    "fuente_informacion": "Módulo consultas / participación",\n    "evidencia_soporte": "Reporte del mecanismo",\n    "campos_existentes": "id_lugar_poblado, mecanismos",\n    "campos_nuevos": "mecanismo_id, estado, observaciones",\n    "validacion_funcional": "Si Parcial o No, registrar brecha.",\n    "prioridad": "Alta",\n    "capital": "Capital social"\n  },\n  {\n    "id_pregunta": "COM-025",\n    "formulario": "Formulario comunidad / lugar poblado",\n    "tipo_sujeto": "Comunidad / lugar poblado",\n    "tabla_base": "lugares_poblados",\n    "campo_llave_sujeto": "id_lugar_poblado",\n    "categoria": "Acuerdos comunitarios",\n    "subcategoria": "Actas y compromisos",\n    "indicador": "Comunidad cuenta con actas de acuerdos comunitarios documentadas",\n    "codigo_indicador": "IND-COM-005",\n    "pregunta": "¿Los acuerdos comunitarios están documentados y cargados?",\n    "tipo_respuesta": "Sí / No / Parcial",\n    "catalogo_valores": "Sí, No, Parcial",\n    "resultado_esperado": "Sí",\n    "regla_cumplimiento": "Cumple si acuerdos esperados tienen soporte cargado",\n    "periodicidad": "Mensual",\n    "fuente_informacion": "Gestión documental / participación",\n    "evidencia_soporte": "Actas, minutas",\n    "campos_existentes": "id_lugar_poblado, acuerdos",\n    "campos_nuevos": "documentos_faltantes, porcentaje_cumplimiento",\n    "validacion_funcional": "Calcular desde checklist documental.",\n    "prioridad": "Alta",\n    "capital": "Capital humano"\n  },\n  {\n    "id_pregunta": "COM-026",\n    "formulario": "Formulario comunidad / lugar poblado",\n    "tipo_sujeto": "Comunidad / lugar poblado",\n    "tabla_base": "lugares_poblados",\n    "campo_llave_sujeto": "id_lugar_poblado",\n    "categoria": "Integración social",\n    "subcategoria": "Comunidad receptora",\n    "indicador": "Comunidad receptora cuenta con condiciones mínimas de integración",\n    "codigo_indicador": "IND-COM-006",\n    "pregunta": "¿La comunidad receptora cuenta con condiciones mínimas para integración?",\n    "tipo_respuesta": "Cumple / Parcial / No cumple / No aplica",\n    "catalogo_valores": "Cumple, Parcial, No cumple, No aplica",\n    "resultado_esperado": "Cumple o No aplica",\n    "regla_cumplimiento": "Cumple si criterios mínimos están cubiertos",\n    "periodicidad": "Trimestral",\n    "fuente_informacion": "Diagnóstico comunitario",\n    "evidencia_soporte": "Informe técnico/social",\n    "campos_existentes": "id_lugar_poblado, tipo_comunidad",\n    "campos_nuevos": "criterios_integracion, resultado_obtenido",\n    "validacion_funcional": "Aplicar solo si tipo comunidad = receptora.",\n    "prioridad": "Alta",\n    "capital": "Capital social"\n  },\n  {\n    "id_pregunta": "COM-027",\n    "formulario": "Formulario comunidad / lugar poblado",\n    "tipo_sujeto": "Comunidad / lugar poblado",\n    "tabla_base": "lugares_poblados",\n    "campo_llave_sujeto": "id_lugar_poblado",\n    "categoria": "Organización social",\n    "subcategoria": "Representación",\n    "indicador": "Comunidad cuenta con instancia de representación definida",\n    "codigo_indicador": "IND-COM-007",\n    "pregunta": "¿La comunidad cuenta con instancia de representación definida?",\n    "tipo_respuesta": "Sí / No / Parcial",\n    "catalogo_valores": "Sí, No, Parcial",\n    "resultado_esperado": "Sí",\n    "regla_cumplimiento": "Cumple si existe organización o comité activo asociado",\n    "periodicidad": "Trimestral",\n    "fuente_informacion": "Módulo organizaciones",\n    "evidencia_soporte": "Acta de conformación",\n    "campos_existentes": "id_lugar_poblado, organizaciones",\n    "campos_nuevos": "organizacion_id, estado_cumplimiento",\n    "validacion_funcional": "Debe permitir abrir detalle de organización.",\n    "prioridad": "Alta",\n    "capital": "Capital social"\n  },\n  {\n    "id_pregunta": "COM-028",\n    "formulario": "Formulario comunidad / lugar poblado",\n    "tipo_sujeto": "Comunidad / lugar poblado",\n    "tabla_base": "lugares_poblados",\n    "campo_llave_sujeto": "id_lugar_poblado",\n    "categoria": "Infraestructura",\n    "subcategoria": "Avance físico",\n    "indicador": "Infraestructura comunitaria tiene avance físico registrado",\n    "codigo_indicador": "IND-COM-008",\n    "pregunta": "¿La infraestructura comunitaria tiene avance físico actualizado?",\n    "tipo_respuesta": "Porcentaje",\n    "catalogo_valores": "0% a 100%",\n    "resultado_esperado": "100% al cierre o meta del periodo",\n    "regla_cumplimiento": "Cumple si avance >= meta_periodo",\n    "periodicidad": "Mensual",\n    "fuente_informacion": "Supervisión técnica",\n    "evidencia_soporte": "Informe de avance, fotos",\n    "campos_existentes": "id_lugar_poblado, infraestructura_id",\n    "campos_nuevos": "avance_esperado, avance_real, desviacion",\n    "validacion_funcional": "Si desviación negativa, exigir justificación.",\n    "prioridad": "Alta",\n    "capital": "Capital social"\n  },\n  {\n    "id_pregunta": "COM-029",\n    "formulario": "Formulario comunidad / lugar poblado",\n    "tipo_sujeto": "Comunidad / lugar poblado",\n    "tabla_base": "lugares_poblados",\n    "campo_llave_sujeto": "id_lugar_poblado",\n    "categoria": "Documentación comunitaria",\n    "subcategoria": "Expediente comunitario",\n    "indicador": "Comunidad tiene expediente documental completo",\n    "codigo_indicador": "IND-COM-009",\n    "pregunta": "¿El expediente documental de la comunidad está completo?",\n    "tipo_respuesta": "Porcentaje",\n    "catalogo_valores": "0% a 100%",\n    "resultado_esperado": "100%",\n    "regla_cumplimiento": "Cumple si porcentaje checklist >= umbral",\n    "periodicidad": "Mensual",\n    "fuente_informacion": "Módulo documental",\n    "evidencia_soporte": "Checklist documental",\n    "campos_existentes": "id_lugar_poblado, documentos_cargados",\n    "campos_nuevos": "porcentaje_cumplimiento, documentos_faltantes",\n    "validacion_funcional": "Calcular por carpeta documental.",\n    "prioridad": "Alta",\n    "capital": "Capital humano"\n  },\n  {\n    "id_pregunta": "COM-030",\n    "formulario": "Formulario comunidad / lugar poblado",\n    "tipo_sujeto": "Comunidad / lugar poblado",\n    "tabla_base": "lugares_poblados",\n    "campo_llave_sujeto": "id_lugar_poblado",\n    "categoria": "Cierre comunitario",\n    "subcategoria": "Entrega / recepción",\n    "indicador": "Comunidad cuenta con acta de entrega, reubicación o recepción cuando aplica",\n    "codigo_indicador": "IND-COM-010",\n    "pregunta": "¿Existe acta de entrega, reubicación o recepción comunitaria cuando aplica?",\n    "tipo_respuesta": "Sí / No / No aplica",\n    "catalogo_valores": "Sí, No, No aplica",\n    "resultado_esperado": "Sí o No aplica",\n    "regla_cumplimiento": "Cumple si acta requerida está cargada",\n    "periodicidad": "Por evento",\n    "fuente_informacion": "Gestión documental / seguimiento",\n    "evidencia_soporte": "Acta firmada",\n    "campos_existentes": "id_lugar_poblado, fase, carpeta_documental",\n    "campos_nuevos": "documento_id, resultado_obtenido, observaciones",\n    "validacion_funcional": "Si fase requiere acta y respuesta No, alerta.",\n    "prioridad": "Alta",\n    "capital": "Capital social"\n  },\n  {\n    "id_pregunta": "ORG-031",\n    "formulario": "Formulario organización comunitaria",\n    "tipo_sujeto": "Organización comunitaria",\n    "tabla_base": "organizaciones_comunitarias",\n    "campo_llave_sujeto": "id_organizacion",\n    "categoria": "Gobernanza",\n    "subcategoria": "Actividad organizativa",\n    "indicador": "Organización comunitaria está activa",\n    "codigo_indicador": "IND-ORG-001",\n    "pregunta": "¿La organización comunitaria se encuentra activa?",\n    "tipo_respuesta": "Sí / No / Parcial",\n    "catalogo_valores": "Sí, No, Parcial",\n    "resultado_esperado": "Sí",\n    "regla_cumplimiento": "Cumple si tiene actividad o reunión registrada en el periodo",\n    "periodicidad": "Trimestral",\n    "fuente_informacion": "Módulo organizaciones / actas",\n    "evidencia_soporte": "Acta, lista de asistencia",\n    "campos_existentes": "id_organizacion, id_lugar_poblado, representante_id",\n    "campos_nuevos": "estado_actividad, fecha_medicion, evidencia_id",\n    "validacion_funcional": "Si No, registrar motivo de inactividad.",\n    "prioridad": "Alta",\n    "capital": "Capital social"\n  },\n  {\n    "id_pregunta": "ORG-032",\n    "formulario": "Formulario organización comunitaria",\n    "tipo_sujeto": "Organización comunitaria",\n    "tabla_base": "organizaciones_comunitarias",\n    "campo_llave_sujeto": "id_organizacion",\n    "categoria": "Gobernanza",\n    "subcategoria": "Representación",\n    "indicador": "Organización cuenta con representantes definidos",\n    "codigo_indicador": "IND-ORG-002",\n    "pregunta": "¿La organización cuenta con representantes definidos y vigentes?",\n    "tipo_respuesta": "Sí / No / Parcial",\n    "catalogo_valores": "Sí, No, Parcial",\n    "resultado_esperado": "Sí",\n    "regla_cumplimiento": "Cumple si representantes y cargos están registrados",\n    "periodicidad": "Semestral",\n    "fuente_informacion": "Módulo organizaciones",\n    "evidencia_soporte": "Acta de elección / conformación",\n    "campos_existentes": "id_organizacion, representantes",\n    "campos_nuevos": "representantes_vigentes, fecha_vigencia, observaciones",\n    "validacion_funcional": "Validar que haya al menos un representante.",\n    "prioridad": "Alta",\n    "capital": "Capital social"\n  },\n  {\n    "id_pregunta": "ORG-033",\n    "formulario": "Formulario organización comunitaria",\n    "tipo_sujeto": "Organización comunitaria",\n    "tabla_base": "organizaciones_comunitarias",\n    "campo_llave_sujeto": "id_organizacion",\n    "categoria": "Participación",\n    "subcategoria": "Seguimiento comunitario",\n    "indicador": "Organización participa en espacios de seguimiento",\n    "codigo_indicador": "IND-ORG-003",\n    "pregunta": "¿La organización participó en espacios de seguimiento del periodo?",\n    "tipo_respuesta": "Sí / No",\n    "catalogo_valores": "Sí, No",\n    "resultado_esperado": "Sí",\n    "regla_cumplimiento": "Cumple si existe asistencia asociada",\n    "periodicidad": "Mensual",\n    "fuente_informacion": "Actas / participación",\n    "evidencia_soporte": "Lista de asistencia",\n    "campos_existentes": "id_organizacion, eventos_asociados",\n    "campos_nuevos": "evento_id, resultado_obtenido, evidencia_id",\n    "validacion_funcional": "Vincular evento.",\n    "prioridad": "Alta",\n    "capital": "Capital social"\n  },\n  {\n    "id_pregunta": "ORG-034",\n    "formulario": "Formulario organización comunitaria",\n    "tipo_sujeto": "Organización comunitaria",\n    "tabla_base": "organizaciones_comunitarias",\n    "campo_llave_sujeto": "id_organizacion",\n    "categoria": "Documentación",\n    "subcategoria": "Soporte organizativo",\n    "indicador": "Organización tiene actas o soportes de reuniones cargados",\n    "codigo_indicador": "IND-ORG-004",\n    "pregunta": "¿La organización tiene actas o soportes de reuniones cargados?",\n    "tipo_respuesta": "Sí / No / Parcial",\n    "catalogo_valores": "Sí, No, Parcial",\n    "resultado_esperado": "Sí",\n    "regla_cumplimiento": "Cumple si soportes esperados están cargados",\n    "periodicidad": "Mensual",\n    "fuente_informacion": "Gestión documental",\n    "evidencia_soporte": "Actas, minutas",\n    "campos_existentes": "id_organizacion, documentos",\n    "campos_nuevos": "documentos_faltantes, porcentaje_cumplimiento",\n    "validacion_funcional": "Calcular con checklist.",\n    "prioridad": "Alta",\n    "capital": "Capital humano"\n  },\n  {\n    "id_pregunta": "ORG-035",\n    "formulario": "Formulario organización comunitaria",\n    "tipo_sujeto": "Organización comunitaria",\n    "tabla_base": "organizaciones_comunitarias",\n    "campo_llave_sujeto": "id_organizacion",\n    "categoria": "Consulta comunitaria",\n    "subcategoria": "Canalización",\n    "indicador": "Organización canaliza consultas o inquietudes comunitarias",\n    "codigo_indicador": "IND-ORG-005",\n    "pregunta": "¿La organización canalizó consultas o inquietudes comunitarias en el periodo?",\n    "tipo_respuesta": "Sí / No / No aplica",\n    "catalogo_valores": "Sí, No, No aplica",\n    "resultado_esperado": "Sí o No aplica",\n    "regla_cumplimiento": "Cumple si consultas canalizadas tienen registro o si no aplica justificado",\n    "periodicidad": "Mensual",\n    "fuente_informacion": "Módulo consultas y quejas",\n    "evidencia_soporte": "Radicados, actas",\n    "campos_existentes": "id_organizacion, casos_asociados",\n    "campos_nuevos": "caso_id, resultado_obtenido, observaciones",\n    "validacion_funcional": "Si No aplica, exigir motivo.",\n    "prioridad": "Alta",\n    "capital": "Capital social"\n  },\n  {\n    "id_pregunta": "ORG-036",\n    "formulario": "Formulario organización comunitaria",\n    "tipo_sujeto": "Organización comunitaria",\n    "tabla_base": "organizaciones_comunitarias",\n    "campo_llave_sujeto": "id_organizacion",\n    "categoria": "Fortalecimiento",\n    "subcategoria": "Capacitación organizativa",\n    "indicador": "Organización recibió fortalecimiento o capacitación",\n    "codigo_indicador": "IND-ORG-006",\n    "pregunta": "¿La organización recibió capacitación o fortalecimiento programado?",\n    "tipo_respuesta": "Sí / No / No aplica",\n    "catalogo_valores": "Sí, No, No aplica",\n    "resultado_esperado": "Sí o No aplica",\n    "regla_cumplimiento": "Cumple si capacitación programada fue realizada",\n    "periodicidad": "Trimestral",\n    "fuente_informacion": "Plan de fortalecimiento",\n    "evidencia_soporte": "Registro asistencia",\n    "campos_existentes": "id_organizacion, plan_fortalecimiento_id",\n    "campos_nuevos": "capacitacion_id, resultado_obtenido, evidencia_id",\n    "validacion_funcional": "Cruzar con actividades programadas.",\n    "prioridad": "Alta",\n    "capital": "Capital humano"\n  },\n  {\n    "id_pregunta": "ORG-037",\n    "formulario": "Formulario organización comunitaria",\n    "tipo_sujeto": "Organización comunitaria",\n    "tabla_base": "organizaciones_comunitarias",\n    "campo_llave_sujeto": "id_organizacion",\n    "categoria": "Gobernanza",\n    "subcategoria": "Cumplimiento de compromisos",\n    "indicador": "Organización cumple compromisos asumidos",\n    "codigo_indicador": "IND-ORG-007",\n    "pregunta": "¿La organización cumplió los compromisos asumidos en el periodo?",\n    "tipo_respuesta": "Cumple / Parcial / No cumple / Sin dato",\n    "catalogo_valores": "Cumple, Parcial, No cumple, Sin dato",\n    "resultado_esperado": "Cumple",\n    "regla_cumplimiento": "Cumple si compromisos cerrados / compromisos vencidos = 100%",\n    "periodicidad": "Mensual",\n    "fuente_informacion": "Módulo compromisos",\n    "evidencia_soporte": "Matriz de compromisos",\n    "campos_existentes": "id_organizacion, compromisos",\n    "campos_nuevos": "compromisos_totales, compromisos_cerrados, estado_cumplimiento",\n    "validacion_funcional": "Indicador derivado; permitir detalle.",\n    "prioridad": "Alta",\n    "capital": "Capital social"\n  },\n  {\n    "id_pregunta": "ORG-038",\n    "formulario": "Formulario organización comunitaria",\n    "tipo_sujeto": "Organización comunitaria",\n    "tabla_base": "organizaciones_comunitarias",\n    "campo_llave_sujeto": "id_organizacion",\n    "categoria": "Comunicación",\n    "subcategoria": "Difusión",\n    "indicador": "Organización difundió información a sus miembros o comunidad",\n    "codigo_indicador": "IND-ORG-008",\n    "pregunta": "¿La organización difundió información relevante del proceso?",\n    "tipo_respuesta": "Sí / No / Parcial",\n    "catalogo_valores": "Sí, No, Parcial",\n    "resultado_esperado": "Sí",\n    "regla_cumplimiento": "Cumple si existe soporte de difusión",\n    "periodicidad": "Trimestral",\n    "fuente_informacion": "Actas / comunicaciones",\n    "evidencia_soporte": "Acta, circular, evidencia",\n    "campos_existentes": "id_organizacion, comunidad_id",\n    "campos_nuevos": "medio_difusion, fecha_difusion, evidencia_id",\n    "validacion_funcional": "Registrar medio usado.",\n    "prioridad": "Alta",\n    "capital": "Capital social"\n  },\n  {\n    "id_pregunta": "BIE-039",\n    "formulario": "Formulario predio / bien / infraestructura",\n    "tipo_sujeto": "Predio / bien / infraestructura",\n    "tabla_base": "predios_bienes_infraestructura",\n    "campo_llave_sujeto": "id_bien_o_predio",\n    "categoria": "Reposición de bienes",\n    "subcategoria": "Identificación",\n    "indicador": "Bien original está identificado y ligado al sujeto afectado",\n    "codigo_indicador": "IND-BIE-001",\n    "pregunta": "¿El bien original está identificado y ligado al sujeto afectado?",\n    "tipo_respuesta": "Sí / No",\n    "catalogo_valores": "Sí, No",\n    "resultado_esperado": "Sí",\n    "regla_cumplimiento": "Cumple si bien original tiene ID y relación con hogar/persona/predio",\n    "periodicidad": "Por evento",\n    "fuente_informacion": "Módulo predial / bienes",\n    "evidencia_soporte": "Ficha, fotos, coordenadas",\n    "campos_existentes": "id_bien_original, id_predio, id_hogar, id_persona",\n    "campos_nuevos": "resultado_obtenido, fecha_medicion, evidencia_id",\n    "validacion_funcional": "No permitir medición si no existe bien.",\n    "prioridad": "Alta",\n    "capital": "Capital humano"\n  },\n  {\n    "id_pregunta": "BIE-040",\n    "formulario": "Formulario predio / bien / infraestructura",\n    "tipo_sujeto": "Predio / bien / infraestructura",\n    "tabla_base": "predios_bienes_infraestructura",\n    "campo_llave_sujeto": "id_bien_o_predio",\n    "categoria": "Reposición de bienes",\n    "subcategoria": "Trazabilidad",\n    "indicador": "Bien de reposición está registrado y vinculado al bien original",\n    "codigo_indicador": "IND-BIE-002",\n    "pregunta": "¿El bien de reposición está registrado y vinculado al bien original?",\n    "tipo_respuesta": "Sí / No / No aplica",\n    "catalogo_valores": "Sí, No, No aplica",\n    "resultado_esperado": "Sí o No aplica",\n    "regla_cumplimiento": "Cumple si existe id_bien_reposicion vinculado",\n    "periodicidad": "Mensual",\n    "fuente_informacion": "Módulo bienes de reposición",\n    "evidencia_soporte": "Ficha de reposición",\n    "campos_existentes": "id_bien_original, id_bien_reposicion",\n    "campos_nuevos": "resultado_obtenido, estado_cumplimiento, observaciones",\n    "validacion_funcional": "Si requiere reposición y respuesta No, alerta.",\n    "prioridad": "Alta",\n    "capital": "Capital físico"\n  },\n  {\n    "id_pregunta": "BIE-041",\n    "formulario": "Formulario predio / bien / infraestructura",\n    "tipo_sujeto": "Predio / bien / infraestructura",\n    "tabla_base": "predios_bienes_infraestructura",\n    "campo_llave_sujeto": "id_bien_o_predio",\n    "categoria": "Reposición de bienes",\n    "subcategoria": "Cumplimiento acuerdo",\n    "indicador": "Bien repuesto cumple con el acuerdo",\n    "codigo_indicador": "IND-BIE-003",\n    "pregunta": "¿El bien repuesto cumple con las condiciones acordadas?",\n    "tipo_respuesta": "Cumple / Parcial / No cumple / No aplica",\n    "catalogo_valores": "Cumple, Parcial, No cumple, No aplica",\n    "resultado_esperado": "Cumple",\n    "regla_cumplimiento": "Cumple si atributos acordados = atributos entregados",\n    "periodicidad": "Por evento",\n    "fuente_informacion": "Negociación / entrega",\n    "evidencia_soporte": "Acta, fotos, ficha técnica",\n    "campos_existentes": "id_bien_reposicion, acuerdo_id",\n    "campos_nuevos": "criterios_cumplidos, criterios_pendientes, evidencia_id",\n    "validacion_funcional": "Si Parcial/No cumple, exigir criterios pendientes.",\n    "prioridad": "Alta",\n    "capital": "Capital social"\n  },\n  {\n    "id_pregunta": "BIE-042",\n    "formulario": "Formulario predio / bien / infraestructura",\n    "tipo_sujeto": "Predio / bien / infraestructura",\n    "tabla_base": "predios_bienes_infraestructura",\n    "campo_llave_sujeto": "id_bien_o_predio",\n    "categoria": "Predial",\n    "subcategoria": "Avalúo",\n    "indicador": "Predio cuenta con avalúo registrado",\n    "codigo_indicador": "IND-BIE-004",\n    "pregunta": "¿El predio cuenta con avalúo registrado?",\n    "tipo_respuesta": "Sí / No / No aplica",\n    "catalogo_valores": "Sí, No, No aplica",\n    "resultado_esperado": "Sí o No aplica",\n    "regla_cumplimiento": "Cumple si avalúo existe y está asociado al predio",\n    "periodicidad": "Por evento",\n    "fuente_informacion": "Módulo predial",\n    "evidencia_soporte": "Avalúo, informe",\n    "campos_existentes": "id_predio, id_hogar, id_persona",\n    "campos_nuevos": "avaluo_id, resultado_obtenido, fecha_medicion",\n    "validacion_funcional": "Aplica solo cuando predio requiere avalúo.",\n    "prioridad": "Alta",\n    "capital": "Capital físico"\n  },\n  {\n    "id_pregunta": "BIE-043",\n    "formulario": "Formulario predio / bien / infraestructura",\n    "tipo_sujeto": "Predio / bien / infraestructura",\n    "tabla_base": "predios_bienes_infraestructura",\n    "campo_llave_sujeto": "id_bien_o_predio",\n    "categoria": "Salvataje",\n    "subcategoria": "Registro de salvataje",\n    "indicador": "Salvataje documentado cuando aplica",\n    "codigo_indicador": "IND-BIE-005",\n    "pregunta": "¿El proceso de salvataje está documentado cuando aplica?",\n    "tipo_respuesta": "Sí / No / No aplica",\n    "catalogo_valores": "Sí, No, No aplica",\n    "resultado_esperado": "Sí o No aplica",\n    "regla_cumplimiento": "Cumple si documentos de salvataje están cargados",\n    "periodicidad": "Por evento",\n    "fuente_informacion": "Módulo documental / bienes",\n    "evidencia_soporte": "Acta, fotos",\n    "campos_existentes": "id_bien_original, id_hogar",\n    "campos_nuevos": "documento_id, resultado_obtenido, observaciones",\n    "validacion_funcional": "Si aplica salvataje y No, alerta.",\n    "prioridad": "Alta",\n    "capital": "Capital humano"\n  },\n  {\n    "id_pregunta": "BIE-044",\n    "formulario": "Formulario predio / bien / infraestructura",\n    "tipo_sujeto": "Predio / bien / infraestructura",\n    "tabla_base": "predios_bienes_infraestructura",\n    "campo_llave_sujeto": "id_bien_o_predio",\n    "categoria": "Entrega",\n    "subcategoria": "Acta de entrega",\n    "indicador": "Acta de entrega del bien cargada",\n    "codigo_indicador": "IND-BIE-006",\n    "pregunta": "¿El acta de entrega del bien está cargada y asociada?",\n    "tipo_respuesta": "Sí / No / No aplica",\n    "catalogo_valores": "Sí, No, No aplica",\n    "resultado_esperado": "Sí o No aplica",\n    "regla_cumplimiento": "Cumple si documento tipo acta de entrega existe",\n    "periodicidad": "Por evento",\n    "fuente_informacion": "Gestión documental",\n    "evidencia_soporte": "Acta de entrega",\n    "campos_existentes": "id_bien_reposicion, id_hogar, documento_id",\n    "campos_nuevos": "resultado_obtenido, fecha_medicion, evidencia_id",\n    "validacion_funcional": "Validar tipo documental correcto.",\n    "prioridad": "Alta",\n    "capital": "Capital físico"\n  },\n  {\n    "id_pregunta": "BIE-045",\n    "formulario": "Formulario predio / bien / infraestructura",\n    "tipo_sujeto": "Predio / bien / infraestructura",\n    "tabla_base": "predios_bienes_infraestructura",\n    "campo_llave_sujeto": "id_bien_o_predio",\n    "categoria": "Ubicación",\n    "subcategoria": "Coordenadas",\n    "indicador": "Bien cuenta con coordenadas de referencia actualizadas",\n    "codigo_indicador": "IND-BIE-007",\n    "pregunta": "¿El bien cuenta con coordenadas de referencia actualizadas?",\n    "tipo_respuesta": "Sí / No / No aplica",\n    "catalogo_valores": "Sí, No, No aplica",\n    "resultado_esperado": "Sí",\n    "regla_cumplimiento": "Cumple si latitud/longitud válidas están registradas",\n    "periodicidad": "Por evento",\n    "fuente_informacion": "Ficha técnica / GIS",\n    "evidencia_soporte": "Punto georreferenciado, foto",\n    "campos_existentes": "id_bien, latitud, longitud",\n    "campos_nuevos": "resultado_obtenido, fecha_medicion, precision_gps",\n    "validacion_funcional": "Validar rango de coordenadas.",\n    "prioridad": "Alta",\n    "capital": "Capital físico"\n  },\n  {\n    "id_pregunta": "BIE-046",\n    "formulario": "Formulario predio / bien / infraestructura",\n    "tipo_sujeto": "Predio / bien / infraestructura",\n    "tabla_base": "predios_bienes_infraestructura",\n    "campo_llave_sujeto": "id_bien_o_predio",\n    "categoria": "Infraestructura",\n    "subcategoria": "Avance de reposición",\n    "indicador": "Infraestructura tiene avance registrado contra meta",\n    "codigo_indicador": "IND-BIE-008",\n    "pregunta": "¿La infraestructura tiene avance registrado contra la meta del periodo?",\n    "tipo_respuesta": "Porcentaje",\n    "catalogo_valores": "0% a 100%",\n    "resultado_esperado": "Meta del periodo",\n    "regla_cumplimiento": "Cumple si avance_real >= avance_esperado",\n    "periodicidad": "Mensual",\n    "fuente_informacion": "Supervisión técnica",\n    "evidencia_soporte": "Informe de avance",\n    "campos_existentes": "id_infraestructura, meta_periodo",\n    "campos_nuevos": "avance_esperado, avance_real, desviacion",\n    "validacion_funcional": "Exigir observación si avance < meta.",\n    "prioridad": "Alta",\n    "capital": "Capital físico"\n  },\n  {\n    "id_pregunta": "BIE-047",\n    "formulario": "Formulario predio / bien / infraestructura",\n    "tipo_sujeto": "Predio / bien / infraestructura",\n    "tabla_base": "predios_bienes_infraestructura",\n    "campo_llave_sujeto": "id_bien_o_predio",\n    "categoria": "Capitales",\n    "subcategoria": "Clasificación",\n    "indicador": "Bien cuenta con clasificación de capital asociado",\n    "codigo_indicador": "IND-BIE-009",\n    "pregunta": "¿El bien cuenta con clasificación de capital asociado?",\n    "tipo_respuesta": "Catálogo capitales",\n    "catalogo_valores": "Natural, Físico, Financiero, Humano, Social",\n    "resultado_esperado": "Capital asignado",\n    "regla_cumplimiento": "Cumple si capital no está vacío",\n    "periodicidad": "Por evento",\n    "fuente_informacion": "Módulo bienes",\n    "evidencia_soporte": "Ficha del bien",\n    "campos_existentes": "id_bien, tipo_bien",\n    "campos_nuevos": "capital_asociado, resultado_obtenido",\n    "validacion_funcional": "Validar catálogo de capitales.",\n    "prioridad": "Alta",\n    "capital": "Capital físico"\n  },\n  {\n    "id_pregunta": "BIE-048",\n    "formulario": "Formulario predio / bien / infraestructura",\n    "tipo_sujeto": "Predio / bien / infraestructura",\n    "tabla_base": "predios_bienes_infraestructura",\n    "campo_llave_sujeto": "id_bien_o_predio",\n    "categoria": "Cierre físico",\n    "subcategoria": "Recepción",\n    "indicador": "Bien o infraestructura tiene recepción validada",\n    "codigo_indicador": "IND-BIE-010",\n    "pregunta": "¿El bien o infraestructura tiene recepción validada?",\n    "tipo_respuesta": "Sí / No / Parcial / No aplica",\n    "catalogo_valores": "Sí, No, Parcial, No aplica",\n    "resultado_esperado": "Sí",\n    "regla_cumplimiento": "Cumple si acta de recepción y validación están cargadas",\n    "periodicidad": "Por evento",\n    "fuente_informacion": "Entrega / recepción",\n    "evidencia_soporte": "Acta de recepción, fotos",\n    "campos_existentes": "id_bien_reposicion, id_infraestructura",\n    "campos_nuevos": "fecha_recepcion, validado_por, evidencia_id",\n    "validacion_funcional": "Si Sí, exigir fecha y soporte.",\n    "prioridad": "Alta",\n    "capital": "Capital social"\n  },\n  {\n    "id_pregunta": "CAS-049",\n    "formulario": "Formulario caso / seguimiento",\n    "tipo_sujeto": "Caso / seguimiento operativo",\n    "tabla_base": "casos_seguimientos_compromisos",\n    "campo_llave_sujeto": "id_caso_o_seguimiento",\n    "categoria": "Consultas y quejas",\n    "subcategoria": "Radicación",\n    "indicador": "Caso registrado con sujeto asociado",\n    "codigo_indicador": "IND-CAS-001",\n    "pregunta": "¿El caso tiene sujeto asociado correctamente?",\n    "tipo_respuesta": "Sí / No / No aplica",\n    "catalogo_valores": "Sí, No, No aplica",\n    "resultado_esperado": "Sí",\n    "regla_cumplimiento": "Cumple si caso se liga a persona/hogar/comunidad cuando corresponde",\n    "periodicidad": "Por caso",\n    "fuente_informacion": "Módulo consultas y quejas",\n    "evidencia_soporte": "Radicado",\n    "campos_existentes": "id_caso, tipo_sujeto, id_sujeto",\n    "campos_nuevos": "resultado_obtenido, observaciones",\n    "validacion_funcional": "Si sujeto pertenece al proyecto, exigir vínculo.",\n    "prioridad": "Alta",\n    "capital": "Capital social"\n  },\n  {\n    "id_pregunta": "CAS-050",\n    "formulario": "Formulario caso / seguimiento",\n    "tipo_sujeto": "Caso / seguimiento operativo",\n    "tabla_base": "casos_seguimientos_compromisos",\n    "campo_llave_sujeto": "id_caso_o_seguimiento",\n    "categoria": "Consultas y quejas",\n    "subcategoria": "Oportunidad",\n    "indicador": "Caso atendido dentro del plazo",\n    "codigo_indicador": "IND-CAS-002",\n    "pregunta": "¿El caso fue atendido dentro del plazo establecido?",\n    "tipo_respuesta": "Sí / No / En proceso",\n    "catalogo_valores": "Sí, No, En proceso",\n    "resultado_esperado": "Sí",\n    "regla_cumplimiento": "Cumple si fecha_respuesta <= fecha_vencimiento",\n    "periodicidad": "Mensual",\n    "fuente_informacion": "Módulo consultas y quejas",\n    "evidencia_soporte": "Respuesta, radicado",\n    "campos_existentes": "id_caso, fecha_radicacion, fecha_vencimiento, estado",\n    "campos_nuevos": "fecha_respuesta, dias_atencion, estado_cumplimiento",\n    "validacion_funcional": "Debe calcular días automáticamente.",\n    "prioridad": "Alta",\n    "capital": "Capital social"\n  },\n  {\n    "id_pregunta": "CAS-051",\n    "formulario": "Formulario caso / seguimiento",\n    "tipo_sujeto": "Caso / seguimiento operativo",\n    "tabla_base": "casos_seguimientos_compromisos",\n    "campo_llave_sujeto": "id_caso_o_seguimiento",\n    "categoria": "Seguimiento operativo",\n    "subcategoria": "Cierre",\n    "indicador": "Seguimiento cerrado con resultado y soporte",\n    "codigo_indicador": "IND-CAS-003",\n    "pregunta": "¿El seguimiento fue cerrado con resultado y soporte?",\n    "tipo_respuesta": "Sí / No / En proceso",\n    "catalogo_valores": "Sí, No, En proceso",\n    "resultado_esperado": "Sí",\n    "regla_cumplimiento": "Cumple si seguimiento tiene estado Cerrado y evidencia",\n    "periodicidad": "Mensual",\n    "fuente_informacion": "Módulo seguimiento",\n    "evidencia_soporte": "Ficha, soporte",\n    "campos_existentes": "id_seguimiento, tipo_sujeto, id_sujeto",\n    "campos_nuevos": "resultado_obtenido, evidencia_id, fecha_cierre",\n    "validacion_funcional": "No permitir cerrar sin resultado.",\n    "prioridad": "Alta",\n    "capital": "Capital social"\n  },\n  {\n    "id_pregunta": "CAS-052",\n    "formulario": "Formulario caso / seguimiento",\n    "tipo_sujeto": "Caso / seguimiento operativo",\n    "tabla_base": "casos_seguimientos_compromisos",\n    "campo_llave_sujeto": "id_caso_o_seguimiento",\n    "categoria": "Compromisos",\n    "subcategoria": "Vencimiento",\n    "indicador": "Compromiso cumplido antes de vencimiento",\n    "codigo_indicador": "IND-CAS-004",\n    "pregunta": "¿El compromiso fue cumplido antes de la fecha de vencimiento?",\n    "tipo_respuesta": "Sí / No / En proceso / No aplica",\n    "catalogo_valores": "Sí, No, En proceso, No aplica",\n    "resultado_esperado": "Sí o No aplica",\n    "regla_cumplimiento": "Cumple si fecha_cierre <= fecha_vencimiento",\n    "periodicidad": "Mensual",\n    "fuente_informacion": "Módulo compromisos",\n    "evidencia_soporte": "Acta, evidencia",\n    "campos_existentes": "id_compromiso, responsable, fecha_vencimiento",\n    "campos_nuevos": "fecha_cierre, estado_cumplimiento, observaciones",\n    "validacion_funcional": "Si vencido, generar alerta.",\n    "prioridad": "Alta",\n    "capital": "Capital social"\n  },\n  {\n    "id_pregunta": "CAS-053",\n    "formulario": "Formulario caso / seguimiento",\n    "tipo_sujeto": "Caso / seguimiento operativo",\n    "tabla_base": "casos_seguimientos_compromisos",\n    "campo_llave_sujeto": "id_caso_o_seguimiento",\n    "categoria": "Gestión documental",\n    "subcategoria": "Soporte",\n    "indicador": "Registro cuenta con soporte documental mínimo",\n    "codigo_indicador": "IND-CAS-005",\n    "pregunta": "¿El registro cuenta con soporte documental mínimo?",\n    "tipo_respuesta": "Sí / No / No aplica",\n    "catalogo_valores": "Sí, No, No aplica",\n    "resultado_esperado": "Sí o No aplica",\n    "regla_cumplimiento": "Cumple si evidencia requerida está cargada",\n    "periodicidad": "Mensual",\n    "fuente_informacion": "Gestión documental",\n    "evidencia_soporte": "Documento soporte",\n    "campos_existentes": "id_registro, tipo_registro, evidencia_id",\n    "campos_nuevos": "resultado_obtenido, observaciones",\n    "validacion_funcional": "Validar obligatoriedad según tipo.",\n    "prioridad": "Alta",\n    "capital": "Capital humano"\n  }\n]')
+CATALOGO_FORMULARIOS = [
+  {
+    "id_pregunta": "PREG-001",
+    "referencia_indicador": "INDICADORES_PRMV · fila 3",
+    "codigo_indicador": "INDICADORES_PRMV · fila 3",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "3",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Natural / Humano",
+    "categoria": "Compensación socioec. [Individual y Colectivo] Duración: (por definir)",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida del acceso, disponibilidad y calidad de los servicios ecosistémicos basados en dinámicas culturales (madera, medicinas, alimentos, entorno natural) ubicados en el área del Lago",
+    "indicador": "% de familias que participan en el proyecto de capacitaciones en buenas prácticas ambientales",
+    "formula_meta": "(# familias que participan en el proyecto formulado y validado / # total familias sujetas que aplican) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia/hogar participa en el proyecto de capacitaciones en buenas prácticas ambientales?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# familias que participan en el proyecto formulado y validado / # total familias sujetas que aplican) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: total familias sujetas que aplican.",
+    "modulos_disparan": "M01 Registro de hogares + Seguimiento operativo / actividades",
+    "numerador_base": "familias que participan en el proyecto formulado y validado",
+    "denominador_base": "total familias sujetas que aplican"
+  },
+  {
+    "id_pregunta": "PREG-002",
+    "referencia_indicador": "INDICADORES_PRMV · fila 4",
+    "codigo_indicador": "INDICADORES_PRMV · fila 4",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "4",
+    "formulario": "Formulario Organización comunitaria / OBC",
+    "tipo_sujeto": "Organización comunitaria / OBC",
+    "capital": "Natural / Humano",
+    "categoria": "Compensación socioec. [Individual y Colectivo] Duración: (por definir)",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida del acceso, disponibilidad y calidad de los servicios ecosistémicos basados en dinámicas culturales (madera, medicinas, alimentos, entorno natural) ubicados en el área del Lago",
+    "indicador": "% de OBC que participan en las capacitaciones",
+    "formula_meta": "(# OBC que participan / # total OBC sujetas que aplican) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La OBC participa en las capacitaciones?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# OBC que participan / # total OBC sujetas que aplican) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: total OBC sujetas que aplican.",
+    "modulos_disparan": "Módulo comunidades / OBC + Seguimiento operativo / actividades",
+    "numerador_base": "OBC que participan",
+    "denominador_base": "total OBC sujetas que aplican"
+  },
+  {
+    "id_pregunta": "PREG-003",
+    "referencia_indicador": "INDICADORES_PRMV · fila 5",
+    "codigo_indicador": "INDICADORES_PRMV · fila 5",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "5",
+    "formulario": "Formulario Actividad / evento",
+    "tipo_sujeto": "Actividad / evento",
+    "capital": "Natural / Humano",
+    "categoria": "Compensación socioec. [Individual y Colectivo] Duración: (por definir)",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida del acceso, disponibilidad y calidad de los servicios ecosistémicos basados en dinámicas culturales (madera, medicinas, alimentos, entorno natural) ubicados en el área del Lago",
+    "indicador": "% de cumplimiento de visitas y encuentros de diálogo de saberes",
+    "formula_meta": "(# visitas realizadas / # visitas previstas) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La visita o encuentro de diálogo de saberes previsto fue realizado?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# visitas realizadas / # visitas previstas) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: visitas previstas.",
+    "modulos_disparan": "Seguimiento operativo / actividades",
+    "numerador_base": "visitas realizadas",
+    "denominador_base": "visitas previstas"
+  },
+  {
+    "id_pregunta": "PREG-004",
+    "referencia_indicador": "INDICADORES_PRMV · fila 6",
+    "codigo_indicador": "INDICADORES_PRMV · fila 6",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "6",
+    "formulario": "Formulario Actividad / evento",
+    "tipo_sujeto": "Actividad / evento",
+    "capital": "Natural / Humano",
+    "categoria": "Compensación socioec. [Individual y Colectivo] Duración: (por definir)",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida del acceso, disponibilidad y calidad de los servicios ecosistémicos basados en dinámicas culturales (madera, medicinas, alimentos, entorno natural) ubicados en el área del Lago",
+    "indicador": "% de avance en la ejecución de capacitaciones",
+    "formula_meta": "(# capacitaciones implementadas / # programadas) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La capacitación programada fue implementada?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# capacitaciones implementadas / # programadas) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: programadas.",
+    "modulos_disparan": "Seguimiento operativo / actividades",
+    "numerador_base": "capacitaciones implementadas",
+    "denominador_base": "programadas"
+  },
+  {
+    "id_pregunta": "PREG-005",
+    "referencia_indicador": "INDICADORES_PRMV · fila 7",
+    "codigo_indicador": "INDICADORES_PRMV · fila 7",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "7",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Natural / Humano",
+    "categoria": "Compensación socioec. [Individual y Colectivo] Duración: (por definir)",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida del acceso, disponibilidad y calidad de los servicios ecosistémicos basados en dinámicas culturales (madera, medicinas, alimentos, entorno natural) ubicados en el área del Lago",
+    "indicador": "% de familias que implementan buenas prácticas ambientales",
+    "formula_meta": "(# familias que implementan BPA / # total familias sujetas que aplican) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia/hogar implementa buenas prácticas ambientales?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# familias que implementan BPA / # total familias sujetas que aplican) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: total familias sujetas que aplican.",
+    "modulos_disparan": "M01 Registro de hogares",
+    "numerador_base": "familias que implementan BPA",
+    "denominador_base": "total familias sujetas que aplican"
+  },
+  {
+    "id_pregunta": "PREG-006",
+    "referencia_indicador": "INDICADORES_PRMV · fila 8",
+    "codigo_indicador": "INDICADORES_PRMV · fila 8",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "8",
+    "formulario": "Formulario Organización comunitaria / OBC",
+    "tipo_sujeto": "Organización comunitaria / OBC",
+    "capital": "Natural / Humano",
+    "categoria": "Compensación socioec. [Individual y Colectivo] Duración: (por definir)",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida del acceso, disponibilidad y calidad de los servicios ecosistémicos basados en dinámicas culturales (madera, medicinas, alimentos, entorno natural) ubicados en el área del Lago",
+    "indicador": "% de OBC que implementan buenas prácticas ambientales",
+    "formula_meta": "(# OBC que implementan BPA / # total OBC sujetas que aplican) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La OBC implementa buenas prácticas ambientales?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# OBC que implementan BPA / # total OBC sujetas que aplican) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: total OBC sujetas que aplican.",
+    "modulos_disparan": "Módulo comunidades / OBC",
+    "numerador_base": "OBC que implementan BPA",
+    "denominador_base": "total OBC sujetas que aplican"
+  },
+  {
+    "id_pregunta": "PREG-007",
+    "referencia_indicador": "INDICADORES_PRMV · fila 9",
+    "codigo_indicador": "INDICADORES_PRMV · fila 9",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "9",
+    "formulario": "Formulario Infraestructura comunitaria",
+    "tipo_sujeto": "Infraestructura comunitaria",
+    "capital": "Social / Físico",
+    "categoria": "Compensación socioec. [Colectivo] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida de los espacios públicos o comunitarios de equipamiento con significado cultural y social",
+    "indicador": "% de estructuras comunitarias restablecidas con vinculación de instituciones y/o OBC para su cuidado",
+    "formula_meta": "(# estructuras con instituciones/OBC vinculadas / # estructuras comunitarias restablecidas) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La estructura comunitaria restablecida cuenta con vinculación de instituciones y/o OBC para su cuidado?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# estructuras con instituciones/OBC vinculadas / # estructuras comunitarias restablecidas) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: estructuras comunitarias restablecidas.",
+    "modulos_disparan": "M07 Bienes / reposición / infraestructura",
+    "numerador_base": "estructuras con instituciones/OBC vinculadas",
+    "denominador_base": "estructuras comunitarias restablecidas"
+  },
+  {
+    "id_pregunta": "PREG-008",
+    "referencia_indicador": "INDICADORES_PRMV · fila 10",
+    "codigo_indicador": "INDICADORES_PRMV · fila 10",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "10",
+    "formulario": "Formulario Organización comunitaria / OBC",
+    "tipo_sujeto": "Organización comunitaria / OBC",
+    "capital": "Social / Físico",
+    "categoria": "Compensación socioec. [Colectivo] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida de los espacios públicos o comunitarios de equipamiento con significado cultural y social",
+    "indicador": "% de OBC apropiadas del cuidado y preservación de las infraestructuras comunitarias",
+    "formula_meta": "(# OBC con acciones sistemáticas de apropiación / # total OBC que participan) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La OBC evidencia apropiación del cuidado y preservación de las infraestructuras comunitarias?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# OBC con acciones sistemáticas de apropiación / # total OBC que participan) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: total OBC que participan.",
+    "modulos_disparan": "Módulo comunidades / OBC + M07 Bienes / reposición / infraestructura",
+    "numerador_base": "OBC con acciones sistemáticas de apropiación",
+    "denominador_base": "total OBC que participan"
+  },
+  {
+    "id_pregunta": "PREG-009",
+    "referencia_indicador": "INDICADORES_PRMV · fila 11",
+    "codigo_indicador": "INDICADORES_PRMV · fila 11",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "11",
+    "formulario": "Formulario Actividad / evento",
+    "tipo_sujeto": "Actividad / evento",
+    "capital": "Social / Físico",
+    "categoria": "Compensación socioec. [Colectivo] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida de los espacios públicos o comunitarios de equipamiento con significado cultural y social",
+    "indicador": "% de cumplimiento de encuentros comunitarios de promoción",
+    "formula_meta": "(# encuentros realizados / # encuentros previstos) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿El encuentro comunitario de promoción previsto fue realizado?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# encuentros realizados / # encuentros previstos) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: encuentros previstos.",
+    "modulos_disparan": "Seguimiento operativo / actividades",
+    "numerador_base": "encuentros realizados",
+    "denominador_base": "encuentros previstos"
+  },
+  {
+    "id_pregunta": "PREG-010",
+    "referencia_indicador": "INDICADORES_PRMV · fila 12",
+    "codigo_indicador": "INDICADORES_PRMV · fila 12",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "12",
+    "formulario": "Formulario Actividad / evento",
+    "tipo_sujeto": "Actividad / evento",
+    "capital": "Social / Físico",
+    "categoria": "Compensación socioec. [Colectivo] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida de los espacios públicos o comunitarios de equipamiento con significado cultural y social",
+    "indicador": "% de ejecución de actividades de socialización y promoción",
+    "formula_meta": "(# acciones implementadas / # programadas) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La actividad de socialización y promoción programada fue implementada?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# acciones implementadas / # programadas) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: programadas.",
+    "modulos_disparan": "Seguimiento operativo / actividades",
+    "numerador_base": "acciones implementadas",
+    "denominador_base": "programadas"
+  },
+  {
+    "id_pregunta": "PREG-011",
+    "referencia_indicador": "INDICADORES_PRMV · fila 13",
+    "codigo_indicador": "INDICADORES_PRMV · fila 13",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "13",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Social / Físico",
+    "categoria": "Compensación socioec. [Colectivo] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida de los espacios públicos o comunitarios de equipamiento con significado cultural y social",
+    "indicador": "% de hogares en reasentamiento colectivo que participan en actividades de cuidado/mantenimiento",
+    "formula_meta": "(# hogares participantes / # hogares reasentados colectivamente) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿El hogar en reasentamiento colectivo participa en actividades de cuidado/mantenimiento?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# hogares participantes / # hogares reasentados colectivamente) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: hogares reasentados colectivamente.",
+    "modulos_disparan": "M01 Registro de hogares",
+    "numerador_base": "hogares participantes",
+    "denominador_base": "hogares reasentados colectivamente"
+  },
+  {
+    "id_pregunta": "PREG-012",
+    "referencia_indicador": "INDICADORES_PRMV · fila 14",
+    "codigo_indicador": "INDICADORES_PRMV · fila 14",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "14",
+    "formulario": "Formulario Organización comunitaria / OBC",
+    "tipo_sujeto": "Organización comunitaria / OBC",
+    "capital": "Social",
+    "categoria": "Compensación socioec. [Colectivo] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Afectación de la composición y dinámica de organizaciones de base comunitaria (OBC) y comités conformados en el territorio",
+    "indicador": "% de OBC que participan en procesos orientados a su preservación y fortalecimiento",
+    "formula_meta": "(# OBC que participan en procesos validados / # total OBC sujetas de acompañamiento) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La OBC participa en procesos orientados a su preservación y fortalecimiento?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# OBC que participan en procesos validados / # total OBC sujetas de acompañamiento) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: total OBC sujetas de acompañamiento.",
+    "modulos_disparan": "Módulo comunidades / OBC",
+    "numerador_base": "OBC que participan en procesos validados",
+    "denominador_base": "total OBC sujetas de acompañamiento"
+  },
+  {
+    "id_pregunta": "PREG-013",
+    "referencia_indicador": "INDICADORES_PRMV · fila 15",
+    "codigo_indicador": "INDICADORES_PRMV · fila 15",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "15",
+    "formulario": "Formulario Organización comunitaria / OBC",
+    "tipo_sujeto": "Organización comunitaria / OBC",
+    "capital": "Social",
+    "categoria": "Compensación socioec. [Colectivo] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Afectación de la composición y dinámica de organizaciones de base comunitaria (OBC) y comités conformados en el territorio",
+    "indicador": "% de OBC reconfiguradas que implementan iniciativas de beneficio comunitario",
+    "formula_meta": "(# OBC en funcionamiento tras 3 años / # total OBC que participan) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La OBC reconfigurada implementa iniciativas de beneficio comunitario?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# OBC en funcionamiento tras 3 años / # total OBC que participan) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: total OBC que participan.",
+    "modulos_disparan": "Módulo comunidades / OBC",
+    "numerador_base": "OBC en funcionamiento tras 3 años",
+    "denominador_base": "total OBC que participan"
+  },
+  {
+    "id_pregunta": "PREG-014",
+    "referencia_indicador": "INDICADORES_PRMV · fila 16",
+    "codigo_indicador": "INDICADORES_PRMV · fila 16",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "16",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Social / Humano (cultural)",
+    "categoria": "Compensación socioec. [Colectivo] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Afectación de las dinámicas o prácticas culturales y tradiciones",
+    "indicador": "% de familias que participan en actividades de preservación de identidad cultural y memoria",
+    "formula_meta": "(# familias en reasentamiento colectivo que participan / # familias que optan por colectivo) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia/hogar participa en actividades de preservación de identidad cultural y memoria?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# familias en reasentamiento colectivo que participan / # familias que optan por colectivo) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: familias que optan por colectivo.",
+    "modulos_disparan": "M01 Registro de hogares",
+    "numerador_base": "familias en reasentamiento colectivo que participan",
+    "denominador_base": "familias que optan por colectivo"
+  },
+  {
+    "id_pregunta": "PREG-015",
+    "referencia_indicador": "INDICADORES_PRMV · fila 17",
+    "codigo_indicador": "INDICADORES_PRMV · fila 17",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "17",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Social / Humano (cultural)",
+    "categoria": "Compensación socioec. [Colectivo] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Afectación de las dinámicas o prácticas culturales y tradiciones",
+    "indicador": "% de familias artesanas que retoman cultivo/elaboración como práctica tradicional",
+    "formula_meta": "(# familias que retoman / # familias que antes elaboraban sombreros/artesanías) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia/hogar artesana retoma cultivo/elaboración como práctica tradicional?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# familias que retoman / # familias que antes elaboraban sombreros/artesanías) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: familias que antes elaboraban sombreros/artesanías.",
+    "modulos_disparan": "M01 Registro de hogares",
+    "numerador_base": "familias que retoman",
+    "denominador_base": "familias que antes elaboraban sombreros/artesanías"
+  },
+  {
+    "id_pregunta": "PREG-016",
+    "referencia_indicador": "INDICADORES_PRMV · fila 18",
+    "codigo_indicador": "INDICADORES_PRMV · fila 18",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "18",
+    "formulario": "Formulario Comunidad / lugar poblado",
+    "tipo_sujeto": "Comunidad / lugar poblado",
+    "capital": "Social / Humano (cultural)",
+    "categoria": "Compensación socioec. [Colectivo] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Afectación de las dinámicas o prácticas culturales y tradiciones",
+    "indicador": "% de lugares de reasentamiento con nueva identidad local y tradiciones implementadas",
+    "formula_meta": "(# lugares con prácticas tradicionales / # lugares de reasentamiento colectivo) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿El lugar de reasentamiento/comunidad cuenta con nueva identidad local y tradiciones implementadas?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# lugares con prácticas tradicionales / # lugares de reasentamiento colectivo) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: lugares de reasentamiento colectivo.",
+    "modulos_disparan": "Módulo comunidades / lugares poblados",
+    "numerador_base": "lugares con prácticas tradicionales",
+    "denominador_base": "lugares de reasentamiento colectivo"
+  },
+  {
+    "id_pregunta": "PREG-017",
+    "referencia_indicador": "INDICADORES_PRMV · fila 19",
+    "codigo_indicador": "INDICADORES_PRMV · fila 19",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "19",
+    "formulario": "Formulario Comunidad / lugar poblado",
+    "tipo_sujeto": "Comunidad / lugar poblado",
+    "capital": "Social / Humano (cultural)",
+    "categoria": "Compensación socioec. [Colectivo] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Afectación de las dinámicas o prácticas culturales y tradiciones",
+    "indicador": "% de lugares con levantamiento de memoria histórica y cultural local",
+    "formula_meta": "(# lugares con levantamiento / # lugares de reasentamiento colectivo) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿El lugar de reasentamiento/comunidad cuenta con levantamiento de memoria histórica y cultural local?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# lugares con levantamiento / # lugares de reasentamiento colectivo) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: lugares de reasentamiento colectivo.",
+    "modulos_disparan": "Módulo comunidades / lugares poblados",
+    "numerador_base": "lugares con levantamiento",
+    "denominador_base": "lugares de reasentamiento colectivo"
+  },
+  {
+    "id_pregunta": "PREG-018",
+    "referencia_indicador": "INDICADORES_PRMV · fila 20",
+    "codigo_indicador": "INDICADORES_PRMV · fila 20",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "20",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Social / Humano (cultural)",
+    "categoria": "Compensación socioec. [Colectivo] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Afectación de las dinámicas o prácticas culturales y tradiciones",
+    "indicador": "% de familias por grupo poblacional que participan en promoción/divulgación de la memoria",
+    "formula_meta": "(# familias participantes / # familias que optan por colectivo) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia/hogar del grupo poblacional participa en promoción/divulgación de la memoria?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# familias participantes / # familias que optan por colectivo) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: familias que optan por colectivo.",
+    "modulos_disparan": "M01 Registro de hogares + M06 Gestión documental / soportes",
+    "numerador_base": "familias participantes",
+    "denominador_base": "familias que optan por colectivo"
+  },
+  {
+    "id_pregunta": "PREG-019",
+    "referencia_indicador": "INDICADORES_PRMV · fila 21",
+    "codigo_indicador": "INDICADORES_PRMV · fila 21",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "21",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Social",
+    "categoria": "Compensación socioec. [Colectivo] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Afectación de las relaciones comunitarias y la estructura social en el territorio",
+    "indicador": "% de familias reasentadas que participan en espacios de relacionamiento con población receptora",
+    "formula_meta": "(# familias reasentadas colectivamente que participan / # familias de reasentamiento colectivo) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia/hogar reasentada participa en espacios de relacionamiento con población receptora?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# familias reasentadas colectivamente que participan / # familias de reasentamiento colectivo) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: familias de reasentamiento colectivo.",
+    "modulos_disparan": "M01 Registro de hogares",
+    "numerador_base": "familias reasentadas colectivamente que participan",
+    "denominador_base": "familias de reasentamiento colectivo"
+  },
+  {
+    "id_pregunta": "PREG-020",
+    "referencia_indicador": "INDICADORES_PRMV · fila 22",
+    "codigo_indicador": "INDICADORES_PRMV · fila 22",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "22",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Social",
+    "categoria": "Compensación socioec. [Colectivo] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Afectación de las relaciones comunitarias y la estructura social en el territorio",
+    "indicador": "% de familias (reasentadas y receptoras) con percepciones positivas de convivencia",
+    "formula_meta": "(# familias con percepción positiva / # familias participantes en encuesta) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia encuestada reporta percepción positiva de convivencia?",
+    "tipo_respuesta": "Catálogo de percepción",
+    "catalogo_valores": "Favorable; Neutral; Desfavorable; No sabe/No responde; No aplica",
+    "resultado_esperado": "(# familias con percepción positiva / # familias participantes en encuesta) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: familias participantes en encuesta.",
+    "modulos_disparan": "M01 Registro de hogares",
+    "numerador_base": "familias con percepción positiva",
+    "denominador_base": "familias participantes en encuesta"
+  },
+  {
+    "id_pregunta": "PREG-021",
+    "referencia_indicador": "INDICADORES_PRMV · fila 23",
+    "codigo_indicador": "INDICADORES_PRMV · fila 23",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "23",
+    "formulario": "Formulario Comunidad / lugar poblado",
+    "tipo_sujeto": "Comunidad / lugar poblado",
+    "capital": "Social",
+    "categoria": "Compensación socioec. [Colectivo] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Afectación de las relaciones comunitarias y la estructura social en el territorio",
+    "indicador": "% de lugares de reasentamiento con mecanismos locales de diálogo y convivencia",
+    "formula_meta": "(# lugares con mecanismos establecidos / # lugares de reasentamiento colectivo) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿El lugar de reasentamiento/comunidad cuenta con mecanismos locales de diálogo y convivencia?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# lugares con mecanismos establecidos / # lugares de reasentamiento colectivo) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: lugares de reasentamiento colectivo.",
+    "modulos_disparan": "Módulo comunidades / lugares poblados + Seguimiento operativo / actividades",
+    "numerador_base": "lugares con mecanismos establecidos",
+    "denominador_base": "lugares de reasentamiento colectivo"
+  },
+  {
+    "id_pregunta": "PREG-022",
+    "referencia_indicador": "INDICADORES_PRMV · fila 24",
+    "codigo_indicador": "INDICADORES_PRMV · fila 24",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "24",
+    "formulario": "Formulario Organización comunitaria / OBC",
+    "tipo_sujeto": "Organización comunitaria / OBC",
+    "capital": "Social",
+    "categoria": "Compensación socioec. [Colectivo] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Afectación de las relaciones comunitarias y la estructura social en el territorio",
+    "indicador": "% de OBC que participan en capacitación/fortalecimiento con organizaciones receptoras",
+    "formula_meta": "(# OBC del reasentamiento que participan / # OBC del reasentamiento colectivo) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La OBC participa en capacitación/fortalecimiento con organizaciones receptoras?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# OBC del reasentamiento que participan / # OBC del reasentamiento colectivo) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: OBC del reasentamiento colectivo.",
+    "modulos_disparan": "Módulo comunidades / OBC",
+    "numerador_base": "OBC del reasentamiento que participan",
+    "denominador_base": "OBC del reasentamiento colectivo"
+  },
+  {
+    "id_pregunta": "PREG-023",
+    "referencia_indicador": "INDICADORES_PRMV · fila 25",
+    "codigo_indicador": "INDICADORES_PRMV · fila 25",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "25",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Social",
+    "categoria": "Compensación socioec. [Colectivo] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Afectación de las relaciones comunitarias y la estructura social en el territorio",
+    "indicador": "% de familias que participan en espacios de diálogo y convivencia comunitaria",
+    "formula_meta": "(# familias participantes / # total familias en reasentamiento colectivo) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia/hogar participa en espacios de diálogo y convivencia comunitaria?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# familias participantes / # total familias en reasentamiento colectivo) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: total familias en reasentamiento colectivo.",
+    "modulos_disparan": "M01 Registro de hogares + Seguimiento operativo / actividades",
+    "numerador_base": "familias participantes",
+    "denominador_base": "total familias en reasentamiento colectivo"
+  },
+  {
+    "id_pregunta": "PREG-024",
+    "referencia_indicador": "INDICADORES_PRMV · fila 26",
+    "codigo_indicador": "INDICADORES_PRMV · fila 26",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "26",
+    "formulario": "Formulario Comunidad / lugar poblado",
+    "tipo_sujeto": "Comunidad / lugar poblado",
+    "capital": "Social",
+    "categoria": "Compensación socioec. [Colectivo] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Afectación de las relaciones comunitarias y la estructura social en el territorio",
+    "indicador": "% de lugares de reasentamiento con espacios de diálogo y convivencia implementados",
+    "formula_meta": "(# lugares con espacios implementados / # lugares de reasentamiento colectivo) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿El lugar de reasentamiento/comunidad cuenta con espacios de diálogo y convivencia implementados?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# lugares con espacios implementados / # lugares de reasentamiento colectivo) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: lugares de reasentamiento colectivo.",
+    "modulos_disparan": "Módulo comunidades / lugares poblados + Seguimiento operativo / actividades",
+    "numerador_base": "lugares con espacios implementados",
+    "denominador_base": "lugares de reasentamiento colectivo"
+  },
+  {
+    "id_pregunta": "PREG-025",
+    "referencia_indicador": "INDICADORES_PRMV · fila 27",
+    "codigo_indicador": "INDICADORES_PRMV · fila 27",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "27",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Social",
+    "categoria": "Compensación socioec. [Colectivo] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Afectación de las relaciones comunitarias y la estructura social en el territorio",
+    "indicador": "% de familias con percepciones favorables sobre la convivencia comunitaria",
+    "formula_meta": "(# familias con percepción favorable / # familias participantes encuestadas) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia encuestada reporta percepción favorable sobre la convivencia comunitaria?",
+    "tipo_respuesta": "Catálogo de percepción",
+    "catalogo_valores": "Favorable; Neutral; Desfavorable; No sabe/No responde; No aplica",
+    "resultado_esperado": "(# familias con percepción favorable / # familias participantes encuestadas) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: familias participantes encuestadas.",
+    "modulos_disparan": "M01 Registro de hogares",
+    "numerador_base": "familias con percepción favorable",
+    "denominador_base": "familias participantes encuestadas"
+  },
+  {
+    "id_pregunta": "PREG-026",
+    "referencia_indicador": "INDICADORES_PRMV · fila 28",
+    "codigo_indicador": "INDICADORES_PRMV · fila 28",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "28",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Físico",
+    "categoria": "Compensación [Colectivo] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida de la vivienda e infraestructuras residenciales anexas",
+    "indicador": "% de familias en colectivo con vivienda restablecida según el marco de compensación",
+    "formula_meta": "(# familias con reposición de vivienda / # familias de reasentamiento colectivo) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia/hogar en colectivo cuenta con vivienda restablecida según el marco de compensación?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# familias con reposición de vivienda / # familias de reasentamiento colectivo) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: familias de reasentamiento colectivo.",
+    "modulos_disparan": "M01 Registro de hogares + M07 Bienes / reposición / infraestructura + M04 Compensaciones / negociación",
+    "numerador_base": "familias con reposición de vivienda",
+    "denominador_base": "familias de reasentamiento colectivo"
+  },
+  {
+    "id_pregunta": "PREG-027",
+    "referencia_indicador": "INDICADORES_PRMV · fila 29",
+    "codigo_indicador": "INDICADORES_PRMV · fila 29",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "29",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Físico",
+    "categoria": "Compensación [Colectivo] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida de la vivienda e infraestructuras residenciales anexas",
+    "indicador": "% de familias con título de propiedad inscrito en registro público",
+    "formula_meta": "(# familias con título registrado / # familias con reposición de vivienda) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia/hogar cuenta con título de propiedad inscrito en registro público?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# familias con título registrado / # familias con reposición de vivienda) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: familias con reposición de vivienda.",
+    "modulos_disparan": "M01 Registro de hogares + M06 Gestión documental / soportes",
+    "numerador_base": "familias con título registrado",
+    "denominador_base": "familias con reposición de vivienda"
+  },
+  {
+    "id_pregunta": "PREG-028",
+    "referencia_indicador": "INDICADORES_PRMV · fila 30",
+    "codigo_indicador": "INDICADORES_PRMV · fila 30",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "30",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Físico",
+    "categoria": "Compensación [Colectivo] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida de la vivienda e infraestructuras residenciales anexas",
+    "indicador": "% de familias que participan en seguimiento al proceso de construcción",
+    "formula_meta": "(# familias que participan / # familias con reposición de vivienda) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia/hogar participa en seguimiento al proceso de construcción?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# familias que participan / # familias con reposición de vivienda) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: familias con reposición de vivienda.",
+    "modulos_disparan": "M01 Registro de hogares",
+    "numerador_base": "familias que participan",
+    "denominador_base": "familias con reposición de vivienda"
+  },
+  {
+    "id_pregunta": "PREG-029",
+    "referencia_indicador": "INDICADORES_PRMV · fila 31",
+    "codigo_indicador": "INDICADORES_PRMV · fila 31",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "31",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Físico",
+    "categoria": "Compensación [Colectivo] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida de la vivienda e infraestructuras residenciales anexas",
+    "indicador": "% de familias que reportaron daño o afectación en la vivienda (garantías)",
+    "formula_meta": "(# familias que solicitaron arreglos por garantía / # familias con reposición) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia/hogar reportó daño o afectación en la vivienda por garantía?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# familias que solicitaron arreglos por garantía / # familias con reposición) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: familias con reposición.",
+    "modulos_disparan": "M01 Registro de hogares + M07 Bienes / reposición / infraestructura",
+    "numerador_base": "familias que solicitaron arreglos por garantía",
+    "denominador_base": "familias con reposición"
+  },
+  {
+    "id_pregunta": "PREG-030",
+    "referencia_indicador": "INDICADORES_PRMV · fila 32",
+    "codigo_indicador": "INDICADORES_PRMV · fila 32",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "32",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Físico",
+    "categoria": "Compensación [Colectivo] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida de la vivienda e infraestructuras residenciales anexas",
+    "indicador": "% de familias que implementan prácticas de cuidado y manejo ambiental de la vivienda",
+    "formula_meta": "(# familias que implementan / # familias con reposición de vivienda) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia/hogar implementa prácticas de cuidado y manejo ambiental de la vivienda?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# familias que implementan / # familias con reposición de vivienda) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: familias con reposición de vivienda.",
+    "modulos_disparan": "M01 Registro de hogares + M07 Bienes / reposición / infraestructura",
+    "numerador_base": "familias que implementan",
+    "denominador_base": "familias con reposición de vivienda"
+  },
+  {
+    "id_pregunta": "PREG-031",
+    "referencia_indicador": "INDICADORES_PRMV · fila 33",
+    "codigo_indicador": "INDICADORES_PRMV · fila 33",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "33",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Físico",
+    "categoria": "Compensación [Individual] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida de la vivienda y estructuras residenciales anexas",
+    "indicador": "% de familias en individual con vivienda restablecida según el marco de compensación",
+    "formula_meta": "(# familias reasentadas individualmente con vivienda restablecida / # familias elegibles que optan por individual) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia/hogar en individual cuenta con vivienda restablecida según el marco de compensación?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# familias reasentadas individualmente con vivienda restablecida / # familias elegibles que optan por individual) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: familias elegibles que optan por individual.",
+    "modulos_disparan": "M01 Registro de hogares + M07 Bienes / reposición / infraestructura + M04 Compensaciones / negociación",
+    "numerador_base": "familias reasentadas individualmente con vivienda restablecida",
+    "denominador_base": "familias elegibles que optan por individual"
+  },
+  {
+    "id_pregunta": "PREG-032",
+    "referencia_indicador": "INDICADORES_PRMV · fila 34",
+    "codigo_indicador": "INDICADORES_PRMV · fila 34",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "34",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Físico",
+    "categoria": "Compensación [Individual] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida de la vivienda y estructuras residenciales anexas",
+    "indicador": "% de familias con título de propiedad inscrito en registro público",
+    "formula_meta": "(# familias con título registrado / # familias con reposición de vivienda individual) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia/hogar cuenta con título de propiedad inscrito en registro público?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# familias con título registrado / # familias con reposición de vivienda individual) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: familias con reposición de vivienda individual.",
+    "modulos_disparan": "M01 Registro de hogares + M06 Gestión documental / soportes",
+    "numerador_base": "familias con título registrado",
+    "denominador_base": "familias con reposición de vivienda individual"
+  },
+  {
+    "id_pregunta": "PREG-033",
+    "referencia_indicador": "INDICADORES_PRMV · fila 35",
+    "codigo_indicador": "INDICADORES_PRMV · fila 35",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "35",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Físico",
+    "categoria": "Compensación [Individual] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida de la vivienda y estructuras residenciales anexas",
+    "indicador": "% de familias que manifiestan satisfacción con la vivienda repuesta",
+    "formula_meta": "(# familias satisfechas / # familias con reposición) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia/hogar manifiesta satisfacción con la vivienda repuesta?",
+    "tipo_respuesta": "Catálogo de percepción",
+    "catalogo_valores": "Favorable; Neutral; Desfavorable; No sabe/No responde; No aplica",
+    "resultado_esperado": "(# familias satisfechas / # familias con reposición) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: familias con reposición.",
+    "modulos_disparan": "M01 Registro de hogares + M07 Bienes / reposición / infraestructura",
+    "numerador_base": "familias satisfechas",
+    "denominador_base": "familias con reposición"
+  },
+  {
+    "id_pregunta": "PREG-034",
+    "referencia_indicador": "INDICADORES_PRMV · fila 36",
+    "codigo_indicador": "INDICADORES_PRMV · fila 36",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "36",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Físico",
+    "categoria": "Compensación [Individual] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida de la vivienda y estructuras residenciales anexas",
+    "indicador": "% de familias que implementan prácticas de cuidado y manejo ambiental de la vivienda",
+    "formula_meta": "(# familias que implementan / # familias con reposición individual) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia/hogar implementa prácticas de cuidado y manejo ambiental de la vivienda?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# familias que implementan / # familias con reposición individual) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: familias con reposición individual.",
+    "modulos_disparan": "M01 Registro de hogares + M07 Bienes / reposición / infraestructura",
+    "numerador_base": "familias que implementan",
+    "denominador_base": "familias con reposición individual"
+  },
+  {
+    "id_pregunta": "PREG-035",
+    "referencia_indicador": "INDICADORES_PRMV · fila 37",
+    "codigo_indicador": "INDICADORES_PRMV · fila 37",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "37",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Físico",
+    "categoria": "Compensación [Individual y Colectivo] Duración: 12 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida de la vivienda y estructuras residenciales anexas (viviendas adicionales y anexos no repuestos)",
+    "indicador": "% de familias que reciben pago a valor de reposición por viviendas adicionales",
+    "formula_meta": "(# familias que reciben pago / # familias con más de una vivienda impactada) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia/hogar recibe pago a valor de reposición por viviendas adicionales?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# familias que reciben pago / # familias con más de una vivienda impactada) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: familias con más de una vivienda impactada.",
+    "modulos_disparan": "M01 Registro de hogares + M07 Bienes / reposición / infraestructura + M04 Compensaciones / negociación",
+    "numerador_base": "familias que reciben pago",
+    "denominador_base": "familias con más de una vivienda impactada"
+  },
+  {
+    "id_pregunta": "PREG-036",
+    "referencia_indicador": "INDICADORES_PRMV · fila 38",
+    "codigo_indicador": "INDICADORES_PRMV · fila 38",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "38",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Físico",
+    "categoria": "Compensación [Individual y Colectivo] Duración: 12 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida de la vivienda y estructuras residenciales anexas (viviendas adicionales y anexos no repuestos)",
+    "indicador": "% de familias que reciben pago por estructuras anexas no reemplazadas",
+    "formula_meta": "(# familias que reciben pago / # familias con estructuras anexas no reemplazadas) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia/hogar recibe pago por estructuras anexas no reemplazadas?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# familias que reciben pago / # familias con estructuras anexas no reemplazadas) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: familias con estructuras anexas no reemplazadas.",
+    "modulos_disparan": "M01 Registro de hogares + M07 Bienes / reposición / infraestructura + M04 Compensaciones / negociación",
+    "numerador_base": "familias que reciben pago",
+    "denominador_base": "familias con estructuras anexas no reemplazadas"
+  },
+  {
+    "id_pregunta": "PREG-037",
+    "referencia_indicador": "INDICADORES_PRMV · fila 39",
+    "codigo_indicador": "INDICADORES_PRMV · fila 39",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "39",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Físico",
+    "categoria": "Compensación [Individual] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida de vivienda en la que se reside en condición de arriendo, préstamo o cesión",
+    "indicador": "% de familias arrendatarias o en préstamo que acceden oportunamente a compensación de arriendo",
+    "formula_meta": "(# familias que reciben pago oportuno / # familias arrendatarias o en préstamo) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia/hogar arrendataria o en préstamo accede oportunamente a compensación de arriendo?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# familias que reciben pago oportuno / # familias arrendatarias o en préstamo) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: familias arrendatarias o en préstamo.",
+    "modulos_disparan": "M01 Registro de hogares + M04 Compensaciones / negociación",
+    "numerador_base": "familias que reciben pago oportuno",
+    "denominador_base": "familias arrendatarias o en préstamo"
+  },
+  {
+    "id_pregunta": "PREG-038",
+    "referencia_indicador": "INDICADORES_PRMV · fila 40",
+    "codigo_indicador": "INDICADORES_PRMV · fila 40",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "40",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Físico",
+    "categoria": "Compensación [Individual] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida de vivienda en la que se reside en condición de arriendo, préstamo o cesión",
+    "indicador": "% de familias arrendatarias con acceso a vivienda en transición de un año",
+    "formula_meta": "(# familias que acceden a vivienda en arriendo / # familias arrendatarias o en préstamo) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia/hogar arrendataria cuenta con acceso a vivienda en transición de un año?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# familias que acceden a vivienda en arriendo / # familias arrendatarias o en préstamo) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: familias arrendatarias o en préstamo.",
+    "modulos_disparan": "M01 Registro de hogares + M07 Bienes / reposición / infraestructura",
+    "numerador_base": "familias que acceden a vivienda en arriendo",
+    "denominador_base": "familias arrendatarias o en préstamo"
+  },
+  {
+    "id_pregunta": "PREG-039",
+    "referencia_indicador": "INDICADORES_PRMV · fila 41",
+    "codigo_indicador": "INDICADORES_PRMV · fila 41",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "41",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Natural / Físico",
+    "categoria": "Compensación [Colectivo] Duración: 12 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida del terreno • Pérdida del acceso, disponibilidad y calidad de los servicios ecosistémicos del área del Lago",
+    "indicador": "% de familias en colectivo con terreno restablecido según el marco de compensación",
+    "formula_meta": "(# familias con reposición de terreno / # familias de reasentamiento colectivo) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia/hogar en colectivo cuenta con terreno restablecido según el marco de compensación?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# familias con reposición de terreno / # familias de reasentamiento colectivo) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: familias de reasentamiento colectivo.",
+    "modulos_disparan": "M01 Registro de hogares + M07 Bienes / reposición / infraestructura + M04 Compensaciones / negociación",
+    "numerador_base": "familias con reposición de terreno",
+    "denominador_base": "familias de reasentamiento colectivo"
+  },
+  {
+    "id_pregunta": "PREG-040",
+    "referencia_indicador": "INDICADORES_PRMV · fila 42",
+    "codigo_indicador": "INDICADORES_PRMV · fila 42",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "42",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Natural / Físico",
+    "categoria": "Compensación [Colectivo] Duración: 12 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida del terreno • Pérdida del acceso, disponibilidad y calidad de los servicios ecosistémicos del área del Lago",
+    "indicador": "% de familias con título de propiedad del terreno inscrito en registro público",
+    "formula_meta": "(# familias con título registrado / # familias con reposición de terreno colectivo) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia/hogar cuenta con título de propiedad del terreno inscrito en registro público?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# familias con título registrado / # familias con reposición de terreno colectivo) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: familias con reposición de terreno colectivo.",
+    "modulos_disparan": "M01 Registro de hogares + M07 Bienes / reposición / infraestructura + M06 Gestión documental / soportes",
+    "numerador_base": "familias con título registrado",
+    "denominador_base": "familias con reposición de terreno colectivo"
+  },
+  {
+    "id_pregunta": "PREG-041",
+    "referencia_indicador": "INDICADORES_PRMV · fila 43",
+    "codigo_indicador": "INDICADORES_PRMV · fila 43",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "43",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Natural / Físico",
+    "categoria": "Compensación [Individual] Duración: 30 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida del terreno",
+    "indicador": "% de familias en individual con terreno restablecido según el marco de compensación",
+    "formula_meta": "(# familias con restablecimiento de terreno / # familias que optan por individual) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia/hogar en individual cuenta con terreno restablecido según el marco de compensación?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# familias con restablecimiento de terreno / # familias que optan por individual) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: familias que optan por individual.",
+    "modulos_disparan": "M01 Registro de hogares + M07 Bienes / reposición / infraestructura + M04 Compensaciones / negociación",
+    "numerador_base": "familias con restablecimiento de terreno",
+    "denominador_base": "familias que optan por individual"
+  },
+  {
+    "id_pregunta": "PREG-042",
+    "referencia_indicador": "INDICADORES_PRMV · fila 44",
+    "codigo_indicador": "INDICADORES_PRMV · fila 44",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "44",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Natural / Físico",
+    "categoria": "Compensación [Individual] Duración: 30 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida del terreno",
+    "indicador": "% de familias con título de propiedad del terreno inscrito en registro público",
+    "formula_meta": "(# familias que reciben títulos / # familias que optan por individual) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia/hogar cuenta con título de propiedad del terreno inscrito en registro público?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# familias que reciben títulos / # familias que optan por individual) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: familias que optan por individual.",
+    "modulos_disparan": "M01 Registro de hogares + M07 Bienes / reposición / infraestructura + M06 Gestión documental / soportes",
+    "numerador_base": "familias que reciben títulos",
+    "denominador_base": "familias que optan por individual"
+  },
+  {
+    "id_pregunta": "PREG-043",
+    "referencia_indicador": "INDICADORES_PRMV · fila 45",
+    "codigo_indicador": "INDICADORES_PRMV · fila 45",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "45",
+    "formulario": "Formulario Infraestructura comunitaria",
+    "tipo_sujeto": "Infraestructura comunitaria",
+    "capital": "Físico / Social",
+    "categoria": "Compensación [Colectivo] Duración: 30 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Cambio en el acceso/aseguramiento a servicios sociales de salud • Cambio en el acceso a servicios de educación • Cambio en el acceso a servicios de recreación • Pérdida de espacios públicos o comunitarios de equipamiento con significado cultural y social",
+    "indicador": "% de diseños de espacios públicos y estructuras comunitarias diseñados, socializados y aprobados",
+    "formula_meta": "(# estructuras diseñadas/socializadas/aprobadas / # estructuras impactadas) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿El diseño del espacio público o estructura comunitaria fue diseñado, socializado y aprobado?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# estructuras diseñadas/socializadas/aprobadas / # estructuras impactadas) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: estructuras impactadas.",
+    "modulos_disparan": "M07 Bienes / reposición / infraestructura",
+    "numerador_base": "estructuras diseñadas/socializadas/aprobadas",
+    "denominador_base": "estructuras impactadas"
+  },
+  {
+    "id_pregunta": "PREG-044",
+    "referencia_indicador": "INDICADORES_PRMV · fila 46",
+    "codigo_indicador": "INDICADORES_PRMV · fila 46",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "46",
+    "formulario": "Formulario Infraestructura comunitaria",
+    "tipo_sujeto": "Infraestructura comunitaria",
+    "capital": "Físico / Social",
+    "categoria": "Compensación [Colectivo] Duración: 30 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Cambio en el acceso/aseguramiento a servicios sociales de salud • Cambio en el acceso a servicios de educación • Cambio en el acceso a servicios de recreación • Pérdida de espacios públicos o comunitarios de equipamiento con significado cultural y social",
+    "indicador": "% de estructuras de uso comunitario restablecidas",
+    "formula_meta": "(# estructuras restablecidas / # estructuras impactadas) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La estructura de uso comunitario fue restablecida?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# estructuras restablecidas / # estructuras impactadas) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: estructuras impactadas.",
+    "modulos_disparan": "M07 Bienes / reposición / infraestructura",
+    "numerador_base": "estructuras restablecidas",
+    "denominador_base": "estructuras impactadas"
+  },
+  {
+    "id_pregunta": "PREG-045",
+    "referencia_indicador": "INDICADORES_PRMV · fila 47",
+    "codigo_indicador": "INDICADORES_PRMV · fila 47",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "47",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Económico",
+    "categoria": "Compensación [Individual y Colectivo] Duración: 36 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida de cultivos o especies vegetales • Pérdida de estructuras de aprovechamiento productivo/comercial no trasladable • Afectación de negocios vinculados al territorio",
+    "indicador": "% de familias con pago completo a cargo de ACP según el contrato de transacción notariado",
+    "formula_meta": "(# familias con pago completo / # familias con contrato de transacción suscrito y notariado) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia/hogar cuenta con pago completo a cargo de ACP según el contrato de transacción notariado?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# familias con pago completo / # familias con contrato de transacción suscrito y notariado) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: familias con contrato de transacción suscrito y notariado.",
+    "modulos_disparan": "M01 Registro de hogares + M04 Compensaciones / negociación",
+    "numerador_base": "familias con pago completo",
+    "denominador_base": "familias con contrato de transacción suscrito y notariado"
+  },
+  {
+    "id_pregunta": "PREG-046",
+    "referencia_indicador": "INDICADORES_PRMV · fila 48",
+    "codigo_indicador": "INDICADORES_PRMV · fila 48",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "48",
+    "formulario": "Formulario Persona / trabajador",
+    "tipo_sujeto": "Persona / trabajador",
+    "capital": "Económico",
+    "categoria": "Compensación [Individual y Colectivo] Duración: 60 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida de fuente de ingresos por trabajo remunerado (asalariados o jornaleros)",
+    "indicador": "% de trabajadores con pérdida de ingresos que participan en procesos de formación para el trabajo",
+    "formula_meta": "(# trabajadores que participan en formación / # trabajadores con pérdida de ingresos) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿El trabajador con pérdida de ingresos participa en procesos de formación para el trabajo?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# trabajadores que participan en formación / # trabajadores con pérdida de ingresos) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: trabajadores con pérdida de ingresos.",
+    "modulos_disparan": "M01 Personas / vulnerabilidades + Seguimiento operativo / actividades",
+    "numerador_base": "trabajadores que participan en formación",
+    "denominador_base": "trabajadores con pérdida de ingresos"
+  },
+  {
+    "id_pregunta": "PREG-047",
+    "referencia_indicador": "INDICADORES_PRMV · fila 49",
+    "codigo_indicador": "INDICADORES_PRMV · fila 49",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "49",
+    "formulario": "Formulario Persona / trabajador",
+    "tipo_sujeto": "Persona / trabajador",
+    "capital": "Económico",
+    "categoria": "Compensación [Individual y Colectivo] Duración: 60 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida de fuente de ingresos por trabajo remunerado (asalariados o jornaleros)",
+    "indicador": "% de trabajadores con pago completo de la compensación según contrato de transacción",
+    "formula_meta": "(# trabajadores con pago completo consignado / # trabajadores con contrato suscrito y protocolizado) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿El trabajador cuenta con pago completo de la compensación según contrato de transacción?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# trabajadores con pago completo consignado / # trabajadores con contrato suscrito y protocolizado) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: trabajadores con contrato suscrito y protocolizado.",
+    "modulos_disparan": "M01 Personas / vulnerabilidades + M04 Compensaciones / negociación",
+    "numerador_base": "trabajadores con pago completo consignado",
+    "denominador_base": "trabajadores con contrato suscrito y protocolizado"
+  },
+  {
+    "id_pregunta": "PREG-048",
+    "referencia_indicador": "INDICADORES_PRMV · fila 50",
+    "codigo_indicador": "INDICADORES_PRMV · fila 50",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "50",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Económico",
+    "categoria": "Compensación [Individual y Colectivo] Duración: 30 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Afectación por la necesidad de traslado de animales (activos pecuarios)",
+    "indicador": "% de familias con proceso de traslado de animales planificado y formalizado",
+    "formula_meta": "(# familias con acta veterinaria previa e infraestructura verificada / # total familias con animales en línea base) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia/hogar cuenta con proceso de traslado de animales planificado y formalizado?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# familias con acta veterinaria previa e infraestructura verificada / # total familias con animales en línea base) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: total familias con animales en línea base.",
+    "modulos_disparan": "M01 Registro de hogares + M07 Bienes / reposición / infraestructura",
+    "numerador_base": "familias con acta veterinaria previa e infraestructura verificada",
+    "denominador_base": "total familias con animales en línea base"
+  },
+  {
+    "id_pregunta": "PREG-049",
+    "referencia_indicador": "INDICADORES_PRMV · fila 51",
+    "codigo_indicador": "INDICADORES_PRMV · fila 51",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "51",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Económico",
+    "categoria": "Compensación [Individual y Colectivo] Duración: 30 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Afectación por la necesidad de traslado de animales (activos pecuarios)",
+    "indicador": "% de familias con traslado efectivo de animales de uso productivo",
+    "formula_meta": "(# familias con animales trasladados / # total familias con animales en línea base) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia/hogar cuenta con traslado efectivo de animales de uso productivo?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# familias con animales trasladados / # total familias con animales en línea base) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: total familias con animales en línea base.",
+    "modulos_disparan": "M01 Registro de hogares + M07 Bienes / reposición / infraestructura",
+    "numerador_base": "familias con animales trasladados",
+    "denominador_base": "total familias con animales en línea base"
+  },
+  {
+    "id_pregunta": "PREG-050",
+    "referencia_indicador": "INDICADORES_PRMV · fila 52",
+    "codigo_indicador": "INDICADORES_PRMV · fila 52",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "52",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Económico",
+    "categoria": "Compensación [Individual y Colectivo] Duración: 30 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Afectación por la necesidad de traslado de animales (activos pecuarios)",
+    "indicador": "% de familias con compensación por disminución temporal de producción/daño emergente pagada",
+    "formula_meta": "(# familias con pago efectivo / # total familias con producción pecuaria) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia/hogar cuenta con compensación por disminución temporal de producción/daño emergente pagada?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# familias con pago efectivo / # total familias con producción pecuaria) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: total familias con producción pecuaria.",
+    "modulos_disparan": "M01 Registro de hogares + M04 Compensaciones / negociación",
+    "numerador_base": "familias con pago efectivo",
+    "denominador_base": "total familias con producción pecuaria"
+  },
+  {
+    "id_pregunta": "PREG-051",
+    "referencia_indicador": "INDICADORES_PRMV · fila 53",
+    "codigo_indicador": "INDICADORES_PRMV · fila 53",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "53",
+    "formulario": "Formulario Persona vulnerable",
+    "tipo_sujeto": "Persona vulnerable",
+    "capital": "Humano",
+    "categoria": "RMV · Diferencial [Individual] Duración: 60 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Afectación del proyecto de vida de personas en condición de vulnerabilidad",
+    "indicador": "% de personas y familias vulnerables con acompañamiento psicosocial diferencial",
+    "formula_meta": "(# vulnerables con acompañamiento / # vulnerables identificadas) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La persona o familia vulnerable cuenta con acompañamiento psicosocial diferencial?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# vulnerables con acompañamiento / # vulnerables identificadas) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: vulnerables identificadas.",
+    "modulos_disparan": "M01 Personas / vulnerabilidades",
+    "numerador_base": "vulnerables con acompañamiento",
+    "denominador_base": "vulnerables identificadas"
+  },
+  {
+    "id_pregunta": "PREG-052",
+    "referencia_indicador": "INDICADORES_PRMV · fila 54",
+    "codigo_indicador": "INDICADORES_PRMV · fila 54",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "54",
+    "formulario": "Formulario Persona vulnerable",
+    "tipo_sujeto": "Persona vulnerable",
+    "capital": "Humano",
+    "categoria": "RMV · Diferencial [Individual] Duración: 60 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Afectación del proyecto de vida de personas en condición de vulnerabilidad",
+    "indicador": "% de vulnerables que desarrollan capacidades de afrontamiento y adaptación fortalecidas",
+    "formula_meta": "(# vulnerables con capacidades fortalecidas / # vulnerables con acompañamiento) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La persona vulnerable desarrolla capacidades de afrontamiento y adaptación fortalecidas?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# vulnerables con capacidades fortalecidas / # vulnerables con acompañamiento) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: vulnerables con acompañamiento.",
+    "modulos_disparan": "M01 Personas / vulnerabilidades",
+    "numerador_base": "vulnerables con capacidades fortalecidas",
+    "denominador_base": "vulnerables con acompañamiento"
+  },
+  {
+    "id_pregunta": "PREG-053",
+    "referencia_indicador": "INDICADORES_PRMV · fila 55",
+    "codigo_indicador": "INDICADORES_PRMV · fila 55",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "55",
+    "formulario": "Formulario Persona vulnerable",
+    "tipo_sujeto": "Persona vulnerable",
+    "capital": "Humano",
+    "categoria": "RMV · Diferencial [Individual] Duración: 60 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Afectación del proyecto de vida de personas en condición de vulnerabilidad",
+    "indicador": "% de vulnerables que acceden a servicios de protección social a los que son elegibles",
+    "formula_meta": "(# vulnerables que acceden / # vulnerables que cumplen requisitos) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La persona vulnerable accede a servicios de protección social para los que es elegible?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# vulnerables que acceden / # vulnerables que cumplen requisitos) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: vulnerables que cumplen requisitos.",
+    "modulos_disparan": "M01 Personas / vulnerabilidades",
+    "numerador_base": "vulnerables que acceden",
+    "denominador_base": "vulnerables que cumplen requisitos"
+  },
+  {
+    "id_pregunta": "PREG-054",
+    "referencia_indicador": "INDICADORES_PRMV · fila 56",
+    "codigo_indicador": "INDICADORES_PRMV · fila 56",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "56",
+    "formulario": "Formulario Persona vulnerable",
+    "tipo_sujeto": "Persona vulnerable",
+    "capital": "Humano",
+    "categoria": "RMV · Diferencial [Individual] Duración: 60 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Afectación del proyecto de vida de personas en condición de vulnerabilidad",
+    "indicador": "% de vulnerables con medidas de compensación y RMV articuladas a sus características",
+    "formula_meta": "(# vulnerables con medidas articuladas / # vulnerables identificadas) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La persona vulnerable cuenta con medidas de compensación y RMV articuladas a sus características?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# vulnerables con medidas articuladas / # vulnerables identificadas) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: vulnerables identificadas.",
+    "modulos_disparan": "M01 Personas / vulnerabilidades + M04 Compensaciones / negociación",
+    "numerador_base": "vulnerables con medidas articuladas",
+    "denominador_base": "vulnerables identificadas"
+  },
+  {
+    "id_pregunta": "PREG-055",
+    "referencia_indicador": "INDICADORES_PRMV · fila 57",
+    "codigo_indicador": "INDICADORES_PRMV · fila 57",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "57",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Económico",
+    "categoria": "RMV · Diferencial [Individual y Colectivo] Duración: 12 meses",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Pérdida de cultivos o especies vegetales • Pérdida de estructuras productivas/comerciales no trasladables • Afectación de negocios vinculados al territorio (en hogares sin capacidad de proyecto productivo)",
+    "indicador": "% de hogares vulnerables con opción sustitutiva de ingresos implementada y operativa",
+    "formula_meta": "(# hogares con opción sustitutiva en funcionamiento / # total hogares vulnerables que cumplen criterios) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿El hogar vulnerable cuenta con opción sustitutiva de ingresos implementada y operativa?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# hogares con opción sustitutiva en funcionamiento / # total hogares vulnerables que cumplen criterios) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: total hogares vulnerables que cumplen criterios.",
+    "modulos_disparan": "M01 Registro de hogares",
+    "numerador_base": "hogares con opción sustitutiva en funcionamiento",
+    "denominador_base": "total hogares vulnerables que cumplen criterios"
+  },
+  {
+    "id_pregunta": "PREG-056",
+    "referencia_indicador": "INDICADORES_PRMV · fila 58",
+    "codigo_indicador": "INDICADORES_PRMV · fila 58",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "58",
+    "formulario": "Formulario Actividad / evento",
+    "tipo_sujeto": "Actividad / evento",
+    "capital": "Social / Humano",
+    "categoria": "Transversal [Individual y Colectivo] Duración: Toda la implementación",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Afectación emocional por desarraigo con el entorno • Afectación de las relaciones comunitarias y la estructura social • Afectación de las dinámicas o prácticas culturales y tradicionales",
+    "indicador": "% de acciones comunicativas implementadas",
+    "formula_meta": "(# acciones implementadas / # acciones planificadas) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La acción comunicativa planificada fue implementada?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# acciones implementadas / # acciones planificadas) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: acciones planificadas.",
+    "modulos_disparan": "Seguimiento operativo / actividades",
+    "numerador_base": "acciones implementadas",
+    "denominador_base": "acciones planificadas"
+  },
+  {
+    "id_pregunta": "PREG-057",
+    "referencia_indicador": "INDICADORES_PRMV · fila 59",
+    "codigo_indicador": "INDICADORES_PRMV · fila 59",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "59",
+    "formulario": "Formulario Actividad / evento",
+    "tipo_sujeto": "Actividad / evento",
+    "capital": "Social / Humano",
+    "categoria": "Transversal [Individual y Colectivo] Duración: Toda la implementación",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Afectación emocional por desarraigo con el entorno • Afectación de las relaciones comunitarias y la estructura social • Afectación de las dinámicas o prácticas culturales y tradicionales",
+    "indicador": "% de piezas comunicativas elaboradas y divulgadas",
+    "formula_meta": "(# piezas divulgadas / # piezas proyectadas) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La pieza comunicativa proyectada fue elaborada y divulgada?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# piezas divulgadas / # piezas proyectadas) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: piezas proyectadas.",
+    "modulos_disparan": "M06 Gestión documental / soportes + Seguimiento operativo / actividades",
+    "numerador_base": "piezas divulgadas",
+    "denominador_base": "piezas proyectadas"
+  },
+  {
+    "id_pregunta": "PREG-058",
+    "referencia_indicador": "INDICADORES_PRMV · fila 60",
+    "codigo_indicador": "INDICADORES_PRMV · fila 60",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "60",
+    "formulario": "Formulario Actividad / evento",
+    "tipo_sujeto": "Actividad / evento",
+    "capital": "Social / Humano",
+    "categoria": "Transversal [Individual y Colectivo] Duración: Toda la implementación",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Afectación emocional por desarraigo con el entorno • Afectación de las relaciones comunitarias y la estructura social • Afectación de las dinámicas o prácticas culturales y tradicionales",
+    "indicador": "% de espacios de socialización realizados",
+    "formula_meta": "(# espacios realizados / # espacios planificados) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿El espacio de socialización planificado fue realizado?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# espacios realizados / # espacios planificados) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: espacios planificados.",
+    "modulos_disparan": "Seguimiento operativo / actividades",
+    "numerador_base": "espacios realizados",
+    "denominador_base": "espacios planificados"
+  },
+  {
+    "id_pregunta": "PREG-059",
+    "referencia_indicador": "INDICADORES_PRMV · fila 61",
+    "codigo_indicador": "INDICADORES_PRMV · fila 61",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "61",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Social / Humano",
+    "categoria": "Transversal [Individual y Colectivo] Duración: Toda la implementación",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Afectación emocional por desarraigo con el entorno • Afectación de las relaciones comunitarias y la estructura social • Afectación de las dinámicas o prácticas culturales y tradicionales",
+    "indicador": "% de familias que acceden a mecanismos de información acordes con sus características",
+    "formula_meta": "(# familias que acceden / # familias reasentadas) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La familia/hogar accede a mecanismos de información acordes con sus características?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# familias que acceden / # familias reasentadas) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: familias reasentadas.",
+    "modulos_disparan": "M01 Registro de hogares + Seguimiento operativo / actividades",
+    "numerador_base": "familias que acceden",
+    "denominador_base": "familias reasentadas"
+  },
+  {
+    "id_pregunta": "PREG-060",
+    "referencia_indicador": "INDICADORES_PRMV · fila 62",
+    "codigo_indicador": "INDICADORES_PRMV · fila 62",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "62",
+    "formulario": "Formulario Comunidad receptora",
+    "tipo_sujeto": "Comunidad receptora",
+    "capital": "Social / Humano",
+    "categoria": "Transversal [Individual y Colectivo] Duración: Toda la implementación",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Afectación emocional por desarraigo con el entorno • Afectación de las relaciones comunitarias y la estructura social • Afectación de las dinámicas o prácticas culturales y tradicionales",
+    "indicador": "% de comunidades receptoras que acceden a mecanismos de información",
+    "formula_meta": "(# comunidades receptoras que acceden / total comunidades receptoras) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La comunidad receptora accede a mecanismos de información?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# comunidades receptoras que acceden / total comunidades receptoras) × 100",
+    "cuando_se_llena": "Aplicar cuando el sujeto corresponda al universo definido por el indicador.",
+    "modulos_disparan": "Módulo comunidades / lugares poblados + Seguimiento operativo / actividades",
+    "numerador_base": "",
+    "denominador_base": ""
+  },
+  {
+    "id_pregunta": "PREG-061",
+    "referencia_indicador": "INDICADORES_PRMV · fila 63",
+    "codigo_indicador": "INDICADORES_PRMV · fila 63",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "63",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Social / Humano",
+    "categoria": "Transversal [Individual y Colectivo] Duración: Toda la implementación",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Afectación emocional por desarraigo con el entorno • Afectación de las relaciones comunitarias y la estructura social • Afectación de las dinámicas o prácticas culturales y tradicionales",
+    "indicador": "Nivel de comprensión de la información en espacios de socialización",
+    "formula_meta": "(# familias que demuestran comprensión / # familias que participan) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿El hogar/familia participante comprende la información presentada en el espacio de socialización?",
+    "tipo_respuesta": "Catálogo de comprensión",
+    "catalogo_valores": "Comprende; Comprende parcialmente; No comprende; No aplica",
+    "resultado_esperado": "(# familias que demuestran comprensión / # familias que participan) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: familias que participan.",
+    "modulos_disparan": "M01 Registro de hogares + Seguimiento operativo / actividades",
+    "numerador_base": "familias que demuestran comprensión",
+    "denominador_base": "familias que participan"
+  },
+  {
+    "id_pregunta": "PREG-062",
+    "referencia_indicador": "INDICADORES_PRMV · fila 64",
+    "codigo_indicador": "INDICADORES_PRMV · fila 64",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "64",
+    "formulario": "Formulario CDQR / caso",
+    "tipo_sujeto": "CDQR / caso",
+    "capital": "Social (gobernanza)",
+    "categoria": "Transversal [Individual y Colectivo] Duración: Todo el ciclo de vida del proyecto",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Riesgo de inconformidades, conflictos y desinformación asociados al proyecto (medida preventiva y de gestión, no atiende un impacto físico)",
+    "indicador": "% de CDQR registradas y atendidas dentro del plazo establecido",
+    "formula_meta": "(# CDQR atendidas en plazo / # CDQR recibidas) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La CDQR recibida fue atendida dentro del plazo establecido?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# CDQR atendidas en plazo / # CDQR recibidas) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: CDQR recibidas.",
+    "modulos_disparan": "M08 Consultas, quejas y reclamos",
+    "numerador_base": "CDQR atendidas en plazo",
+    "denominador_base": "CDQR recibidas"
+  },
+  {
+    "id_pregunta": "PREG-063",
+    "referencia_indicador": "INDICADORES_PRMV · fila 65",
+    "codigo_indicador": "INDICADORES_PRMV · fila 65",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "65",
+    "formulario": "Formulario CDQR / caso",
+    "tipo_sujeto": "CDQR / caso",
+    "capital": "Social (gobernanza)",
+    "categoria": "Transversal [Individual y Colectivo] Duración: Todo el ciclo de vida del proyecto",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Riesgo de inconformidades, conflictos y desinformación asociados al proyecto (medida preventiva y de gestión, no atiende un impacto físico)",
+    "indicador": "% de CDQR resueltas a satisfacción del solicitante",
+    "formula_meta": "(# CDQR resueltas a satisfacción / # CDQR cerradas) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La CDQR cerrada fue resuelta a satisfacción del solicitante?",
+    "tipo_respuesta": "Catálogo de percepción",
+    "catalogo_valores": "Favorable; Neutral; Desfavorable; No sabe/No responde; No aplica",
+    "resultado_esperado": "(# CDQR resueltas a satisfacción / # CDQR cerradas) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: CDQR cerradas.",
+    "modulos_disparan": "M08 Consultas, quejas y reclamos",
+    "numerador_base": "CDQR resueltas a satisfacción",
+    "denominador_base": "CDQR cerradas"
+  },
+  {
+    "id_pregunta": "PREG-064",
+    "referencia_indicador": "INDICADORES_PRMV · fila 66",
+    "codigo_indicador": "INDICADORES_PRMV · fila 66",
+    "fuente": "Indicadores PRMV",
+    "hoja_origen": "INDICADORES_PRMV",
+    "fila_origen": "66",
+    "formulario": "Formulario Actividad / evento",
+    "tipo_sujeto": "Actividad / evento",
+    "capital": "Social (gobernanza)",
+    "categoria": "Transversal [Individual y Colectivo] Duración: Todo el ciclo de vida del proyecto",
+    "subcategoria": "Indicadores PRMV",
+    "impacto_asociado": "• Riesgo de inconformidades, conflictos y desinformación asociados al proyecto (medida preventiva y de gestión, no atiende un impacto físico)",
+    "indicador": "Cobertura de divulgación del mecanismo CDQR",
+    "formula_meta": "(# espacios/piezas de divulgación realizados / # programados) × 100",
+    "periodicidad": "",
+    "medicion_periodicidad": "",
+    "pregunta": "¿La actividad o pieza de divulgación del mecanismo CDQR programada fue realizada?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "(# espacios/piezas de divulgación realizados / # programados) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: programados.",
+    "modulos_disparan": "M06 Gestión documental / soportes + M08 Consultas, quejas y reclamos",
+    "numerador_base": "espacios/piezas de divulgación realizados",
+    "denominador_base": "programados"
+  },
+  {
+    "id_pregunta": "PREG-065",
+    "referencia_indicador": "Indicadores M&E por capital · fila 3",
+    "codigo_indicador": "Indicadores M&E por capital · fila 3",
+    "fuente": "M&E por capital",
+    "hoja_origen": "Indicadores M&E por capital",
+    "fila_origen": "3",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Capital Humano",
+    "categoria": "M&E por capital",
+    "subcategoria": "M&E por capital",
+    "impacto_asociado": "",
+    "indicador": "Hogares con acceso a educación primaria completa",
+    "formula_meta": "≥95%",
+    "periodicidad": "Línea base + anual",
+    "medicion_periodicidad": "Línea base + anual",
+    "pregunta": "¿El hogar cuenta con acceso a educación primaria completa?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "≥95%",
+    "cuando_se_llena": "Aplicar según la medición definida: Línea base + anual.",
+    "modulos_disparan": "M01 Registro de hogares",
+    "numerador_base": "",
+    "denominador_base": ""
+  },
+  {
+    "id_pregunta": "PREG-066",
+    "referencia_indicador": "Indicadores M&E por capital · fila 4",
+    "codigo_indicador": "Indicadores M&E por capital · fila 4",
+    "fuente": "M&E por capital",
+    "hoja_origen": "Indicadores M&E por capital",
+    "fila_origen": "4",
+    "formulario": "Formulario Persona",
+    "tipo_sujeto": "Persona",
+    "capital": "Capital Humano",
+    "categoria": "M&E por capital",
+    "subcategoria": "M&E por capital",
+    "impacto_asociado": "",
+    "indicador": "Beneficiarios capacitados que aplican conocimientos",
+    "formula_meta": "≥80%",
+    "periodicidad": "Línea base + semestral",
+    "medicion_periodicidad": "Línea base + semestral",
+    "pregunta": "¿La persona beneficiaria capacitada aplica los conocimientos recibidos?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "≥80%",
+    "cuando_se_llena": "Aplicar según la medición definida: Línea base + semestral.",
+    "modulos_disparan": "M01 Personas / vulnerabilidades",
+    "numerador_base": "",
+    "denominador_base": ""
+  },
+  {
+    "id_pregunta": "PREG-067",
+    "referencia_indicador": "Indicadores M&E por capital · fila 5",
+    "codigo_indicador": "Indicadores M&E por capital · fila 5",
+    "fuente": "M&E por capital",
+    "hoja_origen": "Indicadores M&E por capital",
+    "fila_origen": "5",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Capital Humano",
+    "categoria": "M&E por capital",
+    "subcategoria": "M&E por capital",
+    "impacto_asociado": "",
+    "indicador": "Hogares con acceso a servicios de salud básicos",
+    "formula_meta": "≥90%",
+    "periodicidad": "Línea base + semestral",
+    "medicion_periodicidad": "Línea base + semestral",
+    "pregunta": "¿El hogar cuenta con acceso a servicios de salud básicos?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "≥90%",
+    "cuando_se_llena": "Aplicar según la medición definida: Línea base + semestral.",
+    "modulos_disparan": "M01 Registro de hogares",
+    "numerador_base": "",
+    "denominador_base": ""
+  },
+  {
+    "id_pregunta": "PREG-068",
+    "referencia_indicador": "Indicadores M&E por capital · fila 6",
+    "codigo_indicador": "Indicadores M&E por capital · fila 6",
+    "fuente": "M&E por capital",
+    "hoja_origen": "Indicadores M&E por capital",
+    "fila_origen": "6",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Capital Humano",
+    "categoria": "M&E por capital",
+    "subcategoria": "M&E por capital",
+    "impacto_asociado": "",
+    "indicador": "Promedio de años de escolaridad en el hogar",
+    "formula_meta": "0.1",
+    "periodicidad": "Línea base + anual",
+    "medicion_periodicidad": "Línea base + anual",
+    "pregunta": "¿Cuál es el promedio de años de escolaridad del hogar en el periodo medido?",
+    "tipo_respuesta": "Numérico",
+    "catalogo_valores": "Número; unidad definida por el indicador",
+    "resultado_esperado": "0.1",
+    "cuando_se_llena": "Aplicar según la medición definida: Línea base + anual.",
+    "modulos_disparan": "M01 Registro de hogares",
+    "numerador_base": "",
+    "denominador_base": ""
+  },
+  {
+    "id_pregunta": "PREG-069",
+    "referencia_indicador": "Indicadores M&E por capital · fila 7",
+    "codigo_indicador": "Indicadores M&E por capital · fila 7",
+    "fuente": "M&E por capital",
+    "hoja_origen": "Indicadores M&E por capital",
+    "fila_origen": "7",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Capital Social",
+    "categoria": "M&E por capital",
+    "subcategoria": "M&E por capital",
+    "impacto_asociado": "",
+    "indicador": "Hogares en organizaciones o grupos comunitarios",
+    "formula_meta": "≥80%",
+    "periodicidad": "Línea base + anual",
+    "medicion_periodicidad": "Línea base + anual",
+    "pregunta": "¿El hogar participa o está vinculado a organizaciones o grupos comunitarios?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "≥80%",
+    "cuando_se_llena": "Aplicar según la medición definida: Línea base + anual.",
+    "modulos_disparan": "M01 Registro de hogares",
+    "numerador_base": "",
+    "denominador_base": ""
+  },
+  {
+    "id_pregunta": "PREG-070",
+    "referencia_indicador": "Indicadores M&E por capital · fila 8",
+    "codigo_indicador": "Indicadores M&E por capital · fila 8",
+    "fuente": "M&E por capital",
+    "hoja_origen": "Indicadores M&E por capital",
+    "fila_origen": "8",
+    "formulario": "Formulario Mecanismo / espacio comunitario",
+    "tipo_sujeto": "Mecanismo / espacio comunitario",
+    "capital": "Capital Social",
+    "categoria": "M&E por capital",
+    "subcategoria": "M&E por capital",
+    "impacto_asociado": "",
+    "indicador": "Espacios de diálogo funcionando regularmente",
+    "formula_meta": "1",
+    "periodicidad": "Línea base + continuo",
+    "medicion_periodicidad": "Línea base + continuo",
+    "pregunta": "¿El espacio de diálogo funciona regularmente?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "1",
+    "cuando_se_llena": "Aplicar según la medición definida: Línea base + continuo.",
+    "modulos_disparan": "Seguimiento operativo / actividades",
+    "numerador_base": "",
+    "denominador_base": ""
+  },
+  {
+    "id_pregunta": "PREG-071",
+    "referencia_indicador": "Indicadores M&E por capital · fila 9",
+    "codigo_indicador": "Indicadores M&E por capital · fila 9",
+    "fuente": "M&E por capital",
+    "hoja_origen": "Indicadores M&E por capital",
+    "fila_origen": "9",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Capital Social",
+    "categoria": "M&E por capital",
+    "subcategoria": "M&E por capital",
+    "impacto_asociado": "",
+    "indicador": "Satisfacción con calidad de relaciones comunitarias",
+    "formula_meta": "≥80%",
+    "periodicidad": "Línea base + semestral",
+    "medicion_periodicidad": "Línea base + semestral",
+    "pregunta": "¿La familia/hogar reporta satisfacción con la calidad de las relaciones comunitarias?",
+    "tipo_respuesta": "Catálogo de percepción",
+    "catalogo_valores": "Favorable; Neutral; Desfavorable; No sabe/No responde; No aplica",
+    "resultado_esperado": "≥80%",
+    "cuando_se_llena": "Aplicar según la medición definida: Línea base + semestral.",
+    "modulos_disparan": "M01 Registro de hogares",
+    "numerador_base": "",
+    "denominador_base": ""
+  },
+  {
+    "id_pregunta": "PREG-072",
+    "referencia_indicador": "Indicadores M&E por capital · fila 10",
+    "codigo_indicador": "Indicadores M&E por capital · fila 10",
+    "fuente": "M&E por capital",
+    "hoja_origen": "Indicadores M&E por capital",
+    "fila_origen": "10",
+    "formulario": "Formulario Conflicto / caso comunitario",
+    "tipo_sujeto": "Conflicto / caso comunitario",
+    "capital": "Capital Social",
+    "categoria": "M&E por capital",
+    "subcategoria": "M&E por capital",
+    "impacto_asociado": "",
+    "indicador": "Conflictos resueltos en plazo de 30 días",
+    "formula_meta": "≥95%",
+    "periodicidad": "Línea base + mensual",
+    "medicion_periodicidad": "Línea base + mensual",
+    "pregunta": "¿El conflicto registrado fue resuelto dentro del plazo de 30 días?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "≥95%",
+    "cuando_se_llena": "Aplicar según la medición definida: Línea base + mensual.",
+    "modulos_disparan": "Seguimiento M&E",
+    "numerador_base": "",
+    "denominador_base": ""
+  },
+  {
+    "id_pregunta": "PREG-073",
+    "referencia_indicador": "Indicadores M&E por capital · fila 11",
+    "codigo_indicador": "Indicadores M&E por capital · fila 11",
+    "fuente": "M&E por capital",
+    "hoja_origen": "Indicadores M&E por capital",
+    "fila_origen": "11",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Capital Económico",
+    "categoria": "M&E por capital",
+    "subcategoria": "M&E por capital",
+    "impacto_asociado": "",
+    "indicador": "Hogares que recuperan ingresos pre-reasentamiento",
+    "formula_meta": "≥90%",
+    "periodicidad": "Línea base + trimestral",
+    "medicion_periodicidad": "Línea base + trimestral",
+    "pregunta": "¿El hogar recupera ingresos pre-reasentamiento?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "≥90%",
+    "cuando_se_llena": "Aplicar según la medición definida: Línea base + trimestral.",
+    "modulos_disparan": "M01 Registro de hogares",
+    "numerador_base": "",
+    "denominador_base": ""
+  },
+  {
+    "id_pregunta": "PREG-074",
+    "referencia_indicador": "Indicadores M&E por capital · fila 12",
+    "codigo_indicador": "Indicadores M&E por capital · fila 12",
+    "fuente": "M&E por capital",
+    "hoja_origen": "Indicadores M&E por capital",
+    "fila_origen": "12",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Capital Económico",
+    "categoria": "M&E por capital",
+    "subcategoria": "M&E por capital",
+    "impacto_asociado": "",
+    "indicador": "Ingreso mensual per cápita",
+    "formula_meta": "Igualar niveles previos",
+    "periodicidad": "Línea base + semestral",
+    "medicion_periodicidad": "Línea base + semestral",
+    "pregunta": "¿Cuál es el ingreso mensual per cápita del hogar en el periodo medido?",
+    "tipo_respuesta": "Numérico",
+    "catalogo_valores": "Número; unidad definida por el indicador",
+    "resultado_esperado": "Igualar niveles previos",
+    "cuando_se_llena": "Aplicar según la medición definida: Línea base + semestral.",
+    "modulos_disparan": "M01 Registro de hogares",
+    "numerador_base": "",
+    "denominador_base": ""
+  },
+  {
+    "id_pregunta": "PREG-075",
+    "referencia_indicador": "Indicadores M&E por capital · fila 13",
+    "codigo_indicador": "Indicadores M&E por capital · fila 13",
+    "fuente": "M&E por capital",
+    "hoja_origen": "Indicadores M&E por capital",
+    "fila_origen": "13",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Capital Económico",
+    "categoria": "M&E por capital",
+    "subcategoria": "M&E por capital",
+    "impacto_asociado": "",
+    "indicador": "Hogares con acceso a crédito productivo formalizado",
+    "formula_meta": "≥75%",
+    "periodicidad": "Línea base + anual",
+    "medicion_periodicidad": "Línea base + anual",
+    "pregunta": "¿El hogar cuenta con acceso a crédito productivo formalizado?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "≥75%",
+    "cuando_se_llena": "Aplicar según la medición definida: Línea base + anual.",
+    "modulos_disparan": "M01 Registro de hogares",
+    "numerador_base": "",
+    "denominador_base": ""
+  },
+  {
+    "id_pregunta": "PREG-076",
+    "referencia_indicador": "Indicadores M&E por capital · fila 14",
+    "codigo_indicador": "Indicadores M&E por capital · fila 14",
+    "fuente": "M&E por capital",
+    "hoja_origen": "Indicadores M&E por capital",
+    "fila_origen": "14",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Capital Económico",
+    "categoria": "M&E por capital",
+    "subcategoria": "M&E por capital",
+    "impacto_asociado": "",
+    "indicador": "Fuentes de ingreso diversificadas",
+    "formula_meta": "Mínimo 2",
+    "periodicidad": "Línea base + anual",
+    "medicion_periodicidad": "Línea base + anual",
+    "pregunta": "¿Cuántas fuentes de ingreso activas tiene el hogar en el periodo medido?",
+    "tipo_respuesta": "Numérico",
+    "catalogo_valores": "Número; unidad definida por el indicador",
+    "resultado_esperado": "Mínimo 2",
+    "cuando_se_llena": "Aplicar según la medición definida: Línea base + anual.",
+    "modulos_disparan": "M01 Registro de hogares",
+    "numerador_base": "",
+    "denominador_base": ""
+  },
+  {
+    "id_pregunta": "PREG-077",
+    "referencia_indicador": "Indicadores M&E por capital · fila 15",
+    "codigo_indicador": "Indicadores M&E por capital · fila 15",
+    "fuente": "M&E por capital",
+    "hoja_origen": "Indicadores M&E por capital",
+    "fila_origen": "15",
+    "formulario": "Formulario Persona",
+    "tipo_sujeto": "Persona",
+    "capital": "Capital Económico",
+    "categoria": "M&E por capital",
+    "subcategoria": "M&E por capital",
+    "impacto_asociado": "",
+    "indicador": "Beneficiarios con inversiones en activos productivos",
+    "formula_meta": "≥70%",
+    "periodicidad": "Línea base + anual",
+    "medicion_periodicidad": "Línea base + anual",
+    "pregunta": "¿La persona beneficiaria cuenta con inversiones en activos productivos?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "≥70%",
+    "cuando_se_llena": "Aplicar según la medición definida: Línea base + anual.",
+    "modulos_disparan": "M01 Personas / vulnerabilidades + M07 Bienes / reposición / infraestructura",
+    "numerador_base": "",
+    "denominador_base": ""
+  },
+  {
+    "id_pregunta": "PREG-078",
+    "referencia_indicador": "Indicadores M&E por capital · fila 16",
+    "codigo_indicador": "Indicadores M&E por capital · fila 16",
+    "fuente": "M&E por capital",
+    "hoja_origen": "Indicadores M&E por capital",
+    "fila_origen": "16",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Capital Físico",
+    "categoria": "M&E por capital",
+    "subcategoria": "M&E por capital",
+    "impacto_asociado": "",
+    "indicador": "Viviendas en condición aceptable post-reasentamiento",
+    "formula_meta": "≥95%",
+    "periodicidad": "Línea base + anual",
+    "medicion_periodicidad": "Línea base + anual",
+    "pregunta": "¿La vivienda del hogar se encuentra en condición aceptable post-reasentamiento?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "≥95%",
+    "cuando_se_llena": "Aplicar según la medición definida: Línea base + anual.",
+    "modulos_disparan": "M01 Registro de hogares + M07 Bienes / reposición / infraestructura",
+    "numerador_base": "",
+    "denominador_base": ""
+  },
+  {
+    "id_pregunta": "PREG-079",
+    "referencia_indicador": "Indicadores M&E por capital · fila 17",
+    "codigo_indicador": "Indicadores M&E por capital · fila 17",
+    "fuente": "M&E por capital",
+    "hoja_origen": "Indicadores M&E por capital",
+    "fila_origen": "17",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Capital Físico",
+    "categoria": "M&E por capital",
+    "subcategoria": "M&E por capital",
+    "impacto_asociado": "",
+    "indicador": "Hogares con acceso a servicios básicos",
+    "formula_meta": "≥95%",
+    "periodicidad": "Línea base + semestral",
+    "medicion_periodicidad": "Línea base + semestral",
+    "pregunta": "¿El hogar cuenta con acceso a servicios básicos?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "≥95%",
+    "cuando_se_llena": "Aplicar según la medición definida: Línea base + semestral.",
+    "modulos_disparan": "M01 Registro de hogares",
+    "numerador_base": "",
+    "denominador_base": ""
+  },
+  {
+    "id_pregunta": "PREG-080",
+    "referencia_indicador": "Indicadores M&E por capital · fila 18",
+    "codigo_indicador": "Indicadores M&E por capital · fila 18",
+    "fuente": "M&E por capital",
+    "hoja_origen": "Indicadores M&E por capital",
+    "fila_origen": "18",
+    "formulario": "Formulario Infraestructura comunitaria",
+    "tipo_sujeto": "Infraestructura comunitaria",
+    "capital": "Capital Físico",
+    "categoria": "M&E por capital",
+    "subcategoria": "M&E por capital",
+    "impacto_asociado": "",
+    "indicador": "Infraestructura comunitaria en buen estado",
+    "formula_meta": "≥90%",
+    "periodicidad": "Línea base + anual",
+    "medicion_periodicidad": "Línea base + anual",
+    "pregunta": "¿La infraestructura comunitaria se encuentra en buen estado?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "≥90%",
+    "cuando_se_llena": "Aplicar según la medición definida: Línea base + anual.",
+    "modulos_disparan": "M07 Bienes / reposición / infraestructura",
+    "numerador_base": "",
+    "denominador_base": ""
+  },
+  {
+    "id_pregunta": "PREG-081",
+    "referencia_indicador": "Indicadores M&E por capital · fila 19",
+    "codigo_indicador": "Indicadores M&E por capital · fila 19",
+    "fuente": "M&E por capital",
+    "hoja_origen": "Indicadores M&E por capital",
+    "fila_origen": "19",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Capital Físico",
+    "categoria": "M&E por capital",
+    "subcategoria": "M&E por capital",
+    "impacto_asociado": "",
+    "indicador": "Disponibilidad de herramientas/equipos productivos",
+    "formula_meta": "Niveles previos",
+    "periodicidad": "Línea base + anual",
+    "medicion_periodicidad": "Línea base + anual",
+    "pregunta": "¿La disponibilidad de herramientas/equipos productivos del hogar o unidad productiva se mantiene respecto a la línea base?",
+    "tipo_respuesta": "Catálogo comparativo",
+    "catalogo_valores": "Mejoró; Igual; Disminuyó; No aplica; Sin dato",
+    "resultado_esperado": "Niveles previos",
+    "cuando_se_llena": "Aplicar según la medición definida: Línea base + anual.",
+    "modulos_disparan": "M01 Registro de hogares + M07 Bienes / reposición / infraestructura",
+    "numerador_base": "",
+    "denominador_base": ""
+  },
+  {
+    "id_pregunta": "PREG-082",
+    "referencia_indicador": "Indicadores M&E por capital · fila 20",
+    "codigo_indicador": "Indicadores M&E por capital · fila 20",
+    "fuente": "M&E por capital",
+    "hoja_origen": "Indicadores M&E por capital",
+    "fila_origen": "20",
+    "formulario": "Formulario Hogar / familia",
+    "tipo_sujeto": "Hogar / familia",
+    "capital": "Capital Natural",
+    "categoria": "M&E por capital",
+    "subcategoria": "M&E por capital",
+    "impacto_asociado": "",
+    "indicador": "Hogares agrícolas con acceso a tierra productiva",
+    "formula_meta": "1",
+    "periodicidad": "Línea base + anual",
+    "medicion_periodicidad": "Línea base + anual",
+    "pregunta": "¿El hogar agrícola cuenta con acceso a tierra productiva?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "1",
+    "cuando_se_llena": "Aplicar según la medición definida: Línea base + anual.",
+    "modulos_disparan": "M01 Registro de hogares + M07 Bienes / reposición / infraestructura",
+    "numerador_base": "",
+    "denominador_base": ""
+  },
+  {
+    "id_pregunta": "PREG-083",
+    "referencia_indicador": "Indicadores M&E por capital · fila 21",
+    "codigo_indicador": "Indicadores M&E por capital · fila 21",
+    "fuente": "M&E por capital",
+    "hoja_origen": "Indicadores M&E por capital",
+    "fila_origen": "21",
+    "formulario": "Formulario Hogar / unidad productiva",
+    "tipo_sujeto": "Hogar / unidad productiva",
+    "capital": "Capital Natural",
+    "categoria": "M&E por capital",
+    "subcategoria": "M&E por capital",
+    "impacto_asociado": "",
+    "indicador": "Rendimiento agrícola por hectárea",
+    "formula_meta": "Igualar previo",
+    "periodicidad": "Línea base + anual",
+    "medicion_periodicidad": "Línea base + anual",
+    "pregunta": "¿Cuál es el rendimiento agrícola por hectárea del hogar o unidad productiva en el periodo medido?",
+    "tipo_respuesta": "Numérico",
+    "catalogo_valores": "Número; unidad definida por el indicador",
+    "resultado_esperado": "Igualar previo",
+    "cuando_se_llena": "Aplicar según la medición definida: Línea base + anual.",
+    "modulos_disparan": "M01 Registro de hogares",
+    "numerador_base": "",
+    "denominador_base": ""
+  },
+  {
+    "id_pregunta": "PREG-084",
+    "referencia_indicador": "Indicadores M&E por capital · fila 22",
+    "codigo_indicador": "Indicadores M&E por capital · fila 22",
+    "fuente": "M&E por capital",
+    "hoja_origen": "Indicadores M&E por capital",
+    "fila_origen": "22",
+    "formulario": "Formulario Hogar / unidad productiva",
+    "tipo_sujeto": "Hogar / unidad productiva",
+    "capital": "Capital Natural",
+    "categoria": "M&E por capital",
+    "subcategoria": "M&E por capital",
+    "impacto_asociado": "",
+    "indicador": "Cultivos principales diversificados",
+    "formula_meta": "Mínimo 3",
+    "periodicidad": "Línea base + anual",
+    "medicion_periodicidad": "Línea base + anual",
+    "pregunta": "¿Cuántos cultivos principales mantiene el hogar o unidad productiva en el periodo medido?",
+    "tipo_respuesta": "Numérico",
+    "catalogo_valores": "Número; unidad definida por el indicador",
+    "resultado_esperado": "Mínimo 3",
+    "cuando_se_llena": "Aplicar según la medición definida: Línea base + anual.",
+    "modulos_disparan": "M01 Registro de hogares",
+    "numerador_base": "",
+    "denominador_base": ""
+  },
+  {
+    "id_pregunta": "PREG-085",
+    "referencia_indicador": "Indicadores M&E por capital · fila 23",
+    "codigo_indicador": "Indicadores M&E por capital · fila 23",
+    "fuente": "M&E por capital",
+    "hoja_origen": "Indicadores M&E por capital",
+    "fila_origen": "23",
+    "formulario": "Formulario Hogar / unidad productiva",
+    "tipo_sujeto": "Hogar / unidad productiva",
+    "capital": "Capital Natural",
+    "categoria": "M&E por capital",
+    "subcategoria": "M&E por capital",
+    "impacto_asociado": "",
+    "indicador": "Índice de salud del suelo/ecosistema",
+    "formula_meta": "Mantener o mejorar",
+    "periodicidad": "Línea base + anual",
+    "medicion_periodicidad": "Línea base + anual",
+    "pregunta": "¿Cuál es el índice de salud del suelo/ecosistema registrado para el hogar o unidad productiva?",
+    "tipo_respuesta": "Numérico",
+    "catalogo_valores": "Número; unidad definida por el indicador",
+    "resultado_esperado": "Mantener o mejorar",
+    "cuando_se_llena": "Aplicar según la medición definida: Línea base + anual.",
+    "modulos_disparan": "M01 Registro de hogares",
+    "numerador_base": "",
+    "denominador_base": ""
+  },
+  {
+    "id_pregunta": "PREG-086",
+    "referencia_indicador": "Indicadores M&E por capital · fila 24",
+    "codigo_indicador": "Indicadores M&E por capital · fila 24",
+    "fuente": "M&E por capital",
+    "hoja_origen": "Indicadores M&E por capital",
+    "fila_origen": "24",
+    "formulario": "Formulario Hogar / unidad productiva",
+    "tipo_sujeto": "Hogar / unidad productiva",
+    "capital": "Capital Natural",
+    "categoria": "M&E por capital",
+    "subcategoria": "M&E por capital",
+    "impacto_asociado": "",
+    "indicador": "Acceso a agua para uso productivo agrícola",
+    "formula_meta": "100% lluvia / ≥80% seco",
+    "periodicidad": "Línea base + trimestral",
+    "medicion_periodicidad": "Línea base + trimestral",
+    "pregunta": "¿El hogar o unidad productiva tiene acceso a agua para uso productivo agrícola en el periodo medido?",
+    "tipo_respuesta": "Catálogo de cumplimiento",
+    "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
+    "resultado_esperado": "100% lluvia / ≥80% seco",
+    "cuando_se_llena": "Aplicar según la medición definida: Línea base + trimestral.",
+    "modulos_disparan": "M01 Registro de hogares",
+    "numerador_base": "",
+    "denominador_base": ""
+  }
+]
 
-# Sujetos demo. En integración real, reemplazar por consultas al SIR:
-# personas, hogares, lugares_poblados, organizaciones, predios/bienes y seguimientos.
+# Sujetos de prueba para que el prototipo funcione sin conexión al SIR real.
+# En integración, esta lista debe reemplazarse por consultas a personas, hogares,
+# comunidades, OBC, actividades, CDQR, infraestructura y unidades productivas.
 SUJETOS_DEMO = [
-    {"tipo_sujeto": "Persona", "id_sujeto": "PER-0001", "nombre_sujeto": "María López", "descripcion": "Cédula 8-001-001 · Hogar HOG-0001 · Nuevo Progreso", "zona": "Zona 1", "id_hogar": "HOG-0001", "id_comunidad": "COM-0001"},
-    {"tipo_sujeto": "Persona", "id_sujeto": "PER-0002", "nombre_sujeto": "Carlos Mendoza", "descripcion": "Cédula 8-001-002 · Hogar HOG-0001 · Nuevo Progreso", "zona": "Zona 1", "id_hogar": "HOG-0001", "id_comunidad": "COM-0001"},
-    {"tipo_sujeto": "Persona", "id_sujeto": "PER-0003", "nombre_sujeto": "Rosa Martínez", "descripcion": "Cédula 8-001-003 · Hogar HOG-0002 · El Progreso", "zona": "Zona 2", "id_hogar": "HOG-0002", "id_comunidad": "COM-0002"},
-    {"tipo_sujeto": "Persona", "id_sujeto": "PER-0004", "nombre_sujeto": "José Pérez", "descripcion": "Cédula 8-001-004 · Hogar HOG-0003 · Santa Rosa", "zona": "Zona 2", "id_hogar": "HOG-0003", "id_comunidad": "COM-0003"},
-    {"tipo_sujeto": "Hogar", "id_sujeto": "HOG-0001", "nombre_sujeto": "Hogar López Mendoza", "descripcion": "5 integrantes · Nuevo Progreso · Afectación física", "zona": "Zona 1", "id_hogar": "HOG-0001", "id_comunidad": "COM-0001"},
-    {"tipo_sujeto": "Hogar", "id_sujeto": "HOG-0002", "nombre_sujeto": "Hogar Martínez", "descripcion": "3 integrantes · El Progreso · Afectación económica", "zona": "Zona 2", "id_hogar": "HOG-0002", "id_comunidad": "COM-0002"},
-    {"tipo_sujeto": "Hogar", "id_sujeto": "HOG-0003", "nombre_sujeto": "Hogar Pérez", "descripcion": "4 integrantes · Santa Rosa · Afectación físico-económica", "zona": "Zona 2", "id_hogar": "HOG-0003", "id_comunidad": "COM-0003"},
-    {"tipo_sujeto": "Comunidad / lugar poblado", "id_sujeto": "COM-0001", "nombre_sujeto": "Nuevo Progreso", "descripcion": "Lugar poblado receptor · Zona 1", "zona": "Zona 1", "id_hogar": "", "id_comunidad": "COM-0001"},
-    {"tipo_sujeto": "Comunidad / lugar poblado", "id_sujeto": "COM-0002", "nombre_sujeto": "El Progreso", "descripcion": "Lugar poblado de origen · Zona 2", "zona": "Zona 2", "id_hogar": "", "id_comunidad": "COM-0002"},
-    {"tipo_sujeto": "Comunidad / lugar poblado", "id_sujeto": "COM-0003", "nombre_sujeto": "Santa Rosa", "descripcion": "Lugar poblado con infraestructura comunitaria · Zona 2", "zona": "Zona 2", "id_hogar": "", "id_comunidad": "COM-0003"},
-    {"tipo_sujeto": "Organización comunitaria", "id_sujeto": "ORG-0001", "nombre_sujeto": "Comité de Reasentamiento Nuevo Progreso", "descripcion": "Organización asociada a COM-0001", "zona": "Zona 1", "id_hogar": "", "id_comunidad": "COM-0001"},
-    {"tipo_sujeto": "Organización comunitaria", "id_sujeto": "ORG-0002", "nombre_sujeto": "Asociación Productiva El Progreso", "descripcion": "Organización productiva asociada a COM-0002", "zona": "Zona 2", "id_hogar": "", "id_comunidad": "COM-0002"},
-    {"tipo_sujeto": "Organización comunitaria", "id_sujeto": "ORG-0003", "nombre_sujeto": "Junta de Agua Santa Rosa", "descripcion": "Organización de servicio comunitario asociada a COM-0003", "zona": "Zona 2", "id_hogar": "", "id_comunidad": "COM-0003"},
-    {"tipo_sujeto": "Predio / bien / infraestructura", "id_sujeto": "BIE-0001", "nombre_sujeto": "Vivienda original HOG-0001", "descripcion": "Bien original asociado a reposición del hogar HOG-0001", "zona": "Zona 1", "id_hogar": "HOG-0001", "id_comunidad": "COM-0001"},
-    {"tipo_sujeto": "Predio / bien / infraestructura", "id_sujeto": "BIE-0002", "nombre_sujeto": "Vivienda de reposición HOG-0001", "descripcion": "Bien de reposición asociado al hogar HOG-0001", "zona": "Zona 1", "id_hogar": "HOG-0001", "id_comunidad": "COM-0001"},
-    {"tipo_sujeto": "Predio / bien / infraestructura", "id_sujeto": "BIE-0003", "nombre_sujeto": "Centro comunitario Nuevo Progreso", "descripcion": "Infraestructura comunitaria en COM-0001", "zona": "Zona 1", "id_hogar": "", "id_comunidad": "COM-0001"},
-    {"tipo_sujeto": "Caso / seguimiento operativo", "id_sujeto": "SEG-0001", "nombre_sujeto": "Seguimiento social HOG-0001", "descripcion": "Seguimiento operativo asociado al hogar HOG-0001", "zona": "Zona 1", "id_hogar": "HOG-0001", "id_comunidad": "COM-0001"},
-    {"tipo_sujeto": "Caso / seguimiento operativo", "id_sujeto": "SEG-0002", "nombre_sujeto": "Compromiso comunitario COM-0001", "descripcion": "Compromiso de acta comunitaria asociado a COM-0001", "zona": "Zona 1", "id_hogar": "", "id_comunidad": "COM-0001"},
-    {"tipo_sujeto": "Caso / seguimiento operativo", "id_sujeto": "SEG-0003", "nombre_sujeto": "Caso documental HOG-0002", "descripcion": "Seguimiento documental asociado al hogar HOG-0002", "zona": "Zona 2", "id_hogar": "HOG-0002", "id_comunidad": "COM-0002"},
+  {
+    "tipo_sujeto": "Actividad / evento",
+    "id_sujeto": "ACT-0001",
+    "nombre_sujeto": "Capacitación BPA",
+    "descripcion": "Actividad programada de capacitación",
+    "zona": "Zona 1",
+    "id_hogar": "",
+    "id_comunidad": "COM-0001"
+  },
+  {
+    "tipo_sujeto": "Actividad / evento",
+    "id_sujeto": "ACT-0002",
+    "nombre_sujeto": "Encuentro de diálogo de saberes",
+    "descripcion": "Evento de participación comunitaria",
+    "zona": "Zona 2",
+    "id_hogar": "",
+    "id_comunidad": "COM-0002"
+  },
+  {
+    "tipo_sujeto": "CDQR / caso",
+    "id_sujeto": "CDQR-0001",
+    "nombre_sujeto": "Caso CDQR HOG-0001",
+    "descripcion": "Consulta/queja/reclamo asociado a hogar",
+    "zona": "Zona 1",
+    "id_hogar": "HOG-0001",
+    "id_comunidad": "COM-0001"
+  },
+  {
+    "tipo_sujeto": "CDQR / caso",
+    "id_sujeto": "CDQR-0002",
+    "nombre_sujeto": "Caso CDQR comunitario",
+    "descripcion": "Consulta/queja/reclamo comunitario",
+    "zona": "Zona 2",
+    "id_hogar": "",
+    "id_comunidad": "COM-0002"
+  },
+  {
+    "tipo_sujeto": "Comunidad / lugar poblado",
+    "id_sujeto": "COM-0001",
+    "nombre_sujeto": "Nuevo Progreso",
+    "descripcion": "Lugar poblado receptor/de seguimiento",
+    "zona": "Zona 1",
+    "id_hogar": "",
+    "id_comunidad": "COM-0001"
+  },
+  {
+    "tipo_sujeto": "Comunidad / lugar poblado",
+    "id_sujeto": "COM-0002",
+    "nombre_sujeto": "El Progreso",
+    "descripcion": "Lugar poblado de origen",
+    "zona": "Zona 2",
+    "id_hogar": "",
+    "id_comunidad": "COM-0002"
+  },
+  {
+    "tipo_sujeto": "Comunidad receptora",
+    "id_sujeto": "REC-0001",
+    "nombre_sujeto": "Nuevo Progreso receptor",
+    "descripcion": "Comunidad receptora vinculada a integración social",
+    "zona": "Zona 1",
+    "id_hogar": "",
+    "id_comunidad": "COM-0001"
+  },
+  {
+    "tipo_sujeto": "Comunidad receptora",
+    "id_sujeto": "REC-0002",
+    "nombre_sujeto": "Santa Rosa receptora",
+    "descripcion": "Comunidad receptora en validación",
+    "zona": "Zona 3",
+    "id_hogar": "",
+    "id_comunidad": "COM-0003"
+  },
+  {
+    "tipo_sujeto": "Conflicto / caso comunitario",
+    "id_sujeto": "CON-0001",
+    "nombre_sujeto": "Caso comunitario 001",
+    "descripcion": "Conflicto comunitario en seguimiento",
+    "zona": "Zona 1",
+    "id_hogar": "",
+    "id_comunidad": "COM-0001"
+  },
+  {
+    "tipo_sujeto": "Conflicto / caso comunitario",
+    "id_sujeto": "CON-0002",
+    "nombre_sujeto": "Caso comunitario 002",
+    "descripcion": "Conflicto comunitario cerrado",
+    "zona": "Zona 2",
+    "id_hogar": "",
+    "id_comunidad": "COM-0002"
+  },
+  {
+    "tipo_sujeto": "Hogar / familia",
+    "id_sujeto": "HOG-0001",
+    "nombre_sujeto": "Hogar María López",
+    "descripcion": "Hogar afectado físico · Zona 1",
+    "zona": "Zona 1",
+    "id_hogar": "HOG-0001",
+    "id_comunidad": "COM-0001"
+  },
+  {
+    "tipo_sujeto": "Hogar / familia",
+    "id_sujeto": "HOG-0002",
+    "nombre_sujeto": "Hogar Carlos Mendoza",
+    "descripcion": "Hogar afectado económico · Zona 2",
+    "zona": "Zona 2",
+    "id_hogar": "HOG-0002",
+    "id_comunidad": "COM-0002"
+  },
+  {
+    "tipo_sujeto": "Hogar / familia",
+    "id_sujeto": "HOG-0003",
+    "nombre_sujeto": "Hogar Rosa Martínez",
+    "descripcion": "Hogar con seguimiento social · Zona 3",
+    "zona": "Zona 3",
+    "id_hogar": "HOG-0003",
+    "id_comunidad": "COM-0003"
+  },
+  {
+    "tipo_sujeto": "Hogar / unidad productiva",
+    "id_sujeto": "UPR-0001",
+    "nombre_sujeto": "Unidad productiva HOG-0001",
+    "descripcion": "Unidad agrícola vinculada al hogar HOG-0001",
+    "zona": "Zona 1",
+    "id_hogar": "HOG-0001",
+    "id_comunidad": "COM-0001"
+  },
+  {
+    "tipo_sujeto": "Hogar / unidad productiva",
+    "id_sujeto": "UPR-0002",
+    "nombre_sujeto": "Unidad productiva HOG-0002",
+    "descripcion": "Unidad productiva familiar · Zona 2",
+    "zona": "Zona 2",
+    "id_hogar": "HOG-0002",
+    "id_comunidad": "COM-0002"
+  },
+  {
+    "tipo_sujeto": "Infraestructura comunitaria",
+    "id_sujeto": "INF-0001",
+    "nombre_sujeto": "Centro comunitario Nuevo Progreso",
+    "descripcion": "Infraestructura comunitaria en reposición",
+    "zona": "Zona 1",
+    "id_hogar": "",
+    "id_comunidad": "COM-0001"
+  },
+  {
+    "tipo_sujeto": "Infraestructura comunitaria",
+    "id_sujeto": "INF-0002",
+    "nombre_sujeto": "Sistema de agua Santa Rosa",
+    "descripcion": "Infraestructura comunitaria de servicio",
+    "zona": "Zona 3",
+    "id_hogar": "",
+    "id_comunidad": "COM-0003"
+  },
+  {
+    "tipo_sujeto": "Mecanismo / espacio comunitario",
+    "id_sujeto": "MEC-0001",
+    "nombre_sujeto": "Mesa comunitaria mensual",
+    "descripcion": "Mecanismo de consulta y participación",
+    "zona": "Zona 1",
+    "id_hogar": "",
+    "id_comunidad": "COM-0001"
+  },
+  {
+    "tipo_sujeto": "Mecanismo / espacio comunitario",
+    "id_sujeto": "MEC-0002",
+    "nombre_sujeto": "Espacio de seguimiento OBC",
+    "descripcion": "Mecanismo comunitario de seguimiento",
+    "zona": "Zona 2",
+    "id_hogar": "",
+    "id_comunidad": "COM-0002"
+  },
+  {
+    "tipo_sujeto": "Organización comunitaria / OBC",
+    "id_sujeto": "OBC-0001",
+    "nombre_sujeto": "Comité de Reasentamiento Nuevo Progreso",
+    "descripcion": "OBC asociada a COM-0001",
+    "zona": "Zona 1",
+    "id_hogar": "",
+    "id_comunidad": "COM-0001"
+  },
+  {
+    "tipo_sujeto": "Organización comunitaria / OBC",
+    "id_sujeto": "OBC-0002",
+    "nombre_sujeto": "Asociación Productiva El Progreso",
+    "descripcion": "OBC asociada a COM-0002",
+    "zona": "Zona 2",
+    "id_hogar": "",
+    "id_comunidad": "COM-0002"
+  },
+  {
+    "tipo_sujeto": "Persona",
+    "id_sujeto": "PER-0001",
+    "nombre_sujeto": "María López",
+    "descripcion": "Persona registrada en HOG-0001",
+    "zona": "Zona 1",
+    "id_hogar": "HOG-0001",
+    "id_comunidad": "COM-0001"
+  },
+  {
+    "tipo_sujeto": "Persona",
+    "id_sujeto": "PER-0002",
+    "nombre_sujeto": "Carlos Mendoza",
+    "descripcion": "Persona registrada en HOG-0002",
+    "zona": "Zona 2",
+    "id_hogar": "HOG-0002",
+    "id_comunidad": "COM-0002"
+  },
+  {
+    "tipo_sujeto": "Persona / trabajador",
+    "id_sujeto": "TRA-0001",
+    "nombre_sujeto": "Trabajador 001",
+    "descripcion": "Trabajador vinculado a actividad productiva",
+    "zona": "Zona 1",
+    "id_hogar": "HOG-0001",
+    "id_comunidad": "COM-0001"
+  },
+  {
+    "tipo_sujeto": "Persona / trabajador",
+    "id_sujeto": "TRA-0002",
+    "nombre_sujeto": "Trabajador 002",
+    "descripcion": "Trabajador vinculado a capacitación",
+    "zona": "Zona 2",
+    "id_hogar": "HOG-0002",
+    "id_comunidad": "COM-0002"
+  },
+  {
+    "tipo_sujeto": "Persona vulnerable",
+    "id_sujeto": "PVU-0001",
+    "nombre_sujeto": "Rosa Martínez",
+    "descripcion": "Persona vulnerable con medida diferencial",
+    "zona": "Zona 3",
+    "id_hogar": "HOG-0003",
+    "id_comunidad": "COM-0003"
+  },
+  {
+    "tipo_sujeto": "Persona vulnerable",
+    "id_sujeto": "PVU-0002",
+    "nombre_sujeto": "Luis García",
+    "descripcion": "Persona vulnerable en seguimiento",
+    "zona": "Zona 1",
+    "id_hogar": "HOG-0001",
+    "id_comunidad": "COM-0001"
+  }
 ]
 
 COLUMNAS_MEDICIONES = [
     "id_medicion", "id_levantamiento", "formulario", "tipo_sujeto", "id_sujeto", "nombre_sujeto",
-    "descripcion_sujeto", "zona", "id_hogar", "id_comunidad", "id_pregunta", "codigo_indicador",
-    "capital", "categoria", "subcategoria", "indicador", "pregunta", "tipo_respuesta",
-    "resultado_esperado", "resultado_obtenido", "estado_cumplimiento", "valor_numerico",
-    "fecha_medicion", "periodo_medicion", "periodicidad", "fuente_informacion",
-    "evidencia_soporte", "evidencia_url", "observaciones", "registrado_por", "fecha_registro",
-    "actualizado_por", "fecha_actualizacion", "activo",
+    "descripcion_sujeto", "zona", "id_hogar", "id_comunidad", "id_pregunta", "referencia_indicador",
+    "codigo_indicador", "fuente", "hoja_origen", "fila_origen", "capital", "categoria", "subcategoria",
+    "impacto_asociado", "indicador", "formula_meta", "medicion_periodicidad", "pregunta", "tipo_respuesta",
+    "catalogo_valores", "resultado_esperado", "cuando_se_llena", "modulos_disparan", "numerador_base",
+    "denominador_base", "resultado_obtenido", "estado_cumplimiento", "valor_numerico", "fecha_medicion",
+    "periodo_medicion", "fuente_informacion", "evidencia_url", "observaciones", "registrado_por",
+    "fecha_registro", "actualizado_por", "fecha_actualizacion", "activo",
 ]
 
 # ============================================================
@@ -146,7 +2607,7 @@ def aplicar_estilos():
             }}
             .question-kicker {{ color: var(--sir-accent); font-weight: 900; text-transform: uppercase; font-size: .70rem; letter-spacing: .08em; }}
             .question-title {{ font-weight: 900; font-size: 1rem; margin: .1rem 0 .35rem 0; }}
-            .question-meta {{ opacity: .70; font-size: .82rem; }}
+            .question-meta {{ opacity: .78; font-size: .82rem; line-height: 1.45; }}
             .chip {{
                 display:inline-block; padding:.25rem .65rem; border-radius:999px; font-size:.82rem; font-weight:800;
                 border:1px solid var(--sir-border); margin-right:.35rem; margin-bottom:.35rem;
@@ -181,7 +2642,7 @@ def aplicar_estilos():
 
 def mostrar_encabezado():
     st.markdown('<div class="main-title">Módulo D · Indicadores por sujeto de medición</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-title">SIR ACP · Captura dinámica, edición, trazabilidad e indicadores PAR–PRMV · Enfoque de cinco capitales</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-title">SIR ACP · Formularios dinámicos validados contra indicadores oficiales PRMV y M&E por capital</div>', unsafe_allow_html=True)
 
 
 def crear_chip(texto, tipo="default"):
@@ -190,15 +2651,24 @@ def crear_chip(texto, tipo="default"):
 
 
 def normalizar_texto(valor):
-    return str(valor or "").strip()
+    if valor is None:
+        return ""
+    return str(valor).strip()
 
 
 def catalogo_df():
     df = pd.DataFrame(CATALOGO_FORMULARIOS)
-    for col in ["id_pregunta", "tipo_sujeto", "capital", "categoria", "subcategoria", "indicador", "pregunta"]:
+    columnas = [
+        "id_pregunta", "referencia_indicador", "codigo_indicador", "fuente", "hoja_origen", "fila_origen",
+        "tipo_sujeto", "capital", "categoria", "subcategoria", "impacto_asociado", "indicador",
+        "formula_meta", "medicion_periodicidad", "periodicidad", "pregunta", "tipo_respuesta",
+        "catalogo_valores", "resultado_esperado", "cuando_se_llena", "modulos_disparan", "numerador_base",
+        "denominador_base", "formulario",
+    ]
+    for col in columnas:
         if col not in df.columns:
             df[col] = ""
-    return df
+    return df[columnas].copy()
 
 
 def sujetos_df():
@@ -217,16 +2687,21 @@ def obtener_sujetos_por_tipo(tipo_sujeto):
 def obtener_preguntas_por_tipo(tipo_sujeto):
     df = catalogo_df()
     df = df[df["tipo_sujeto"].astype(str) == str(tipo_sujeto)].copy()
-    return df.sort_values(["capital", "categoria", "subcategoria", "codigo_indicador", "id_pregunta"])
+    return df.sort_values(["capital", "categoria", "referencia_indicador", "id_pregunta"])
 
 
 def opciones_catalogo(row):
     texto = normalizar_texto(row.get("catalogo_valores"))
+    tipo = normalizar_texto(row.get("tipo_respuesta"))
+    if "Numérico" in tipo or "Número" in tipo or "Porcentaje" in tipo:
+        return ["Sin dato"]
     if not texto:
-        tipo = normalizar_texto(row.get("tipo_respuesta"))
-        if "Sí" in tipo or "No" in tipo:
-            texto = tipo.replace(" / ", ", ").replace("/", ",")
-    opciones = [o.strip() for o in texto.split(",") if o.strip()]
+        texto = tipo
+    # El Excel usa punto y coma. Aceptamos también coma o slash cuando aplique.
+    partes = re.split(r"\s*;\s*|\s*,\s*|\s*/\s*", texto)
+    opciones = [o.strip() for o in partes if o.strip()]
+    # Evitar que descriptores técnicos se comporten como catálogo cuando no son valores cerrados.
+    opciones = [o for o in opciones if len(o) <= 60]
     if not opciones:
         opciones = ["Sin dato"]
     if "Sin dato" not in opciones:
@@ -234,23 +2709,31 @@ def opciones_catalogo(row):
     return opciones
 
 
-def estado_sugerido(respuesta, esperado):
-    r = normalizar_texto(respuesta).lower()
+def estado_sugerido(respuesta, esperado=""):
+    r = normalizar_texto(respuesta)
+    rl = r.lower()
     e = normalizar_texto(esperado).lower()
-    if r in ["", "sin dato"]:
+    if rl in ["", "sin dato"]:
         return "Sin dato"
-    if r in ["no aplica", "n/a", "na"]:
+    if rl in ["no aplica", "n/a", "na"]:
         return "No aplica"
-    if r in ["parcial", "cumple parcialmente", "en construcción", "en proceso"]:
-        return "Parcial"
-    if e and r == e:
+    if rl in ["sí", "si", "cumple", "completo", "realizado", "entregado", "activo", "activa"]:
         return "Cumple"
-    if e == "sí" and r in ["si", "sí"]:
-        return "Cumple"
-    if r in ["sí", "si", "activa", "entregado", "completo", "mejora"]:
-        return "Cumple"
-    if r in ["no", "inactivo", "incompleto", "empeora"]:
+    if rl in ["no", "no cumple", "incompleto", "inactivo", "inactiva"]:
         return "No cumple"
+    if rl in ["parcial", "cumple parcialmente"]:
+        return "Parcial"
+    try:
+        val = float(str(respuesta).replace("%", ""))
+        if "100%" in e and val >= 100:
+            return "Cumple"
+        minimo = re.search(r"mínimo\s+(\d+(?:\.\d+)?)", e)
+        if minimo and val >= float(minimo.group(1)):
+            return "Cumple"
+        if val > 0:
+            return "En proceso"
+    except Exception:
+        pass
     return "En proceso"
 
 
@@ -279,7 +2762,7 @@ def serializar_df(df):
             valor = fila[col]
             if isinstance(valor, (date, datetime)):
                 item[col] = valor.isoformat()
-            elif pd.isna(valor) if isinstance(valor, float) else False:
+            elif isinstance(valor, float) and pd.isna(valor):
                 item[col] = None
             else:
                 item[col] = valor
@@ -319,7 +2802,7 @@ def filtrar_mediciones(df, filtros):
     if df.empty:
         return df
     out = df.copy()
-    for campo in ["tipo_sujeto", "capital", "categoria", "estado_cumplimiento", "periodo_medicion", "zona"]:
+    for campo in ["tipo_sujeto", "capital", "categoria", "estado_cumplimiento", "periodo_medicion", "zona", "fuente"]:
         valores = filtros.get(campo, [])
         if valores and campo in out.columns:
             out = out[out[campo].astype(str).isin(valores)]
@@ -328,7 +2811,7 @@ def filtrar_mediciones(df, filtros):
         mascara = out.astype(str).apply(lambda col: col.str.lower().str.contains(texto, na=False)).any(axis=1)
         out = out[mascara]
     if "activo" in out.columns:
-        out = out[out["activo"].astype(str).isin(["1", "True", "true", ""]) | (out["activo"] == 1)]
+        out = out[out["activo"].astype(str).isin(["1", "True", "true", ""] ) | (out["activo"] == 1)]
     return out
 
 
@@ -366,7 +2849,7 @@ def mostrar_sidebar():
     st.session_state.usuario_md = st.sidebar.text_input(
         "Usuario activo",
         value=st.session_state.usuario_md,
-        help="En el SIR real este dato debe venir de la sesión autenticada. En este prototipo queda visible para pruebas.",
+        help="En el SIR real este dato vendrá de la sesión autenticada.",
     )
     seccion = st.sidebar.radio(
         "Sección de trabajo",
@@ -378,9 +2861,11 @@ def mostrar_sidebar():
     st.sidebar.subheader("Filtros globales")
 
     df = st.session_state.data_md
+    cat = catalogo_df()
     filtros = {}
     filtros["tipo_sujeto"] = multiselect_con_todos("Tipo de sujeto", obtener_tipos_sujeto(), "f_tipo_sujeto_md")
-    filtros["capital"] = multiselect_con_todos("Capital", catalogo_df()["capital"].dropna().unique().tolist(), "f_capital_md")
+    filtros["capital"] = multiselect_con_todos("Capital", cat["capital"].dropna().unique().tolist(), "f_capital_md")
+    filtros["fuente"] = multiselect_con_todos("Fuente oficial", cat["fuente"].dropna().unique().tolist(), "f_fuente_md")
     filtros["estado_cumplimiento"] = multiselect_con_todos("Estado", ESTADOS_CUMPLIMIENTO, "f_estado_md")
     filtros["zona"] = multiselect_con_todos("Zona", sujetos_df()["zona"].dropna().unique().tolist(), "f_zona_md")
     if not df.empty:
@@ -402,7 +2887,7 @@ def mostrar_sidebar():
         st.session_state.reset_md += 1
         st.sidebar.success("Mediciones reiniciadas.")
         st.rerun()
-    st.sidebar.caption("El catálogo de preguntas está embebido en este archivo. No requiere seed JSON ni schema SQL externo.")
+    st.sidebar.caption("Catálogo oficial embebido desde matriz validada. No requiere archivos externos para correr.")
     return seccion, filtros
 
 
@@ -411,7 +2896,7 @@ def mostrar_metricas(df_filtrado):
     levantamientos = df_total["id_levantamiento"].nunique() if not df_total.empty else 0
     mediciones = len(df_total)
     sujetos = df_total[["tipo_sujeto", "id_sujeto"]].drop_duplicates().shape[0] if not df_total.empty else 0
-    indicadores = df_total["codigo_indicador"].nunique() if not df_total.empty else 0
+    indicadores = df_total["indicador"].nunique() if not df_total.empty else 0
     visibles = len(df_filtrado)
     if not df_filtrado.empty:
         cumple = (df_filtrado["estado_cumplimiento"].astype(str) == "Cumple").sum()
@@ -423,7 +2908,7 @@ def mostrar_metricas(df_filtrado):
     c1.metric("Levantamientos", levantamientos)
     c2.metric("Mediciones", mediciones)
     c3.metric("Sujetos medidos", sujetos)
-    c4.metric("Indicadores", indicadores)
+    c4.metric("Indicadores oficiales", indicadores)
     c5.metric("Registros visibles", visibles)
     c6.metric("Cumplimiento visible", f"{porcentaje}%")
 
@@ -452,7 +2937,7 @@ def renderizar_respuesta(row, key_prefix, valor_actual=""):
     tipo = normalizar_texto(row.get("tipo_respuesta"))
     opciones = opciones_catalogo(row)
 
-    if "Número" in tipo or "Numérico" in tipo:
+    if "Numérico" in tipo or "Número" in tipo:
         try:
             valor_num = float(valor_actual) if valor_actual not in [None, ""] else 0.0
         except ValueError:
@@ -461,7 +2946,7 @@ def renderizar_respuesta(row, key_prefix, valor_actual=""):
 
     if "Porcentaje" in tipo or "%" in tipo:
         try:
-            valor_num = float(valor_actual) if valor_actual not in [None, ""] else 0.0
+            valor_num = float(str(valor_actual).replace("%", "")) if valor_actual not in [None, ""] else 0.0
         except ValueError:
             valor_num = 0.0
         return st.number_input("Resultado obtenido (%)", min_value=0.0, max_value=100.0, value=valor_num, step=1.0, key=f"{key_prefix}_resp_pct")
@@ -479,9 +2964,14 @@ def bloque_pregunta(row, key_prefix, valores_existentes=None):
     st.markdown(
         f"""
         <div class="question-card">
-            <div class="question-kicker">{escape(row.get('codigo_indicador', ''))} · {escape(row.get('capital', ''))} · {escape(row.get('categoria', ''))}</div>
+            <div class="question-kicker">Referencia oficial: {escape(row.get('referencia_indicador', row.get('codigo_indicador', '')))} · {escape(row.get('fuente', ''))} · {escape(row.get('capital', ''))}</div>
             <div class="question-title">{escape(row.get('pregunta', ''))}</div>
-            <div class="question-meta"><b>Indicador:</b> {escape(row.get('indicador', ''))} · <b>Esperado:</b> {escape(row.get('resultado_esperado', ''))} · <b>Periodicidad:</b> {escape(row.get('periodicidad', ''))}</div>
+            <div class="question-meta">
+                <b>Indicador oficial:</b> {escape(row.get('indicador', ''))}<br>
+                <b>Fórmula/meta:</b> {escape(row.get('formula_meta', '')) or 'No definida'} · <b>Medición:</b> {escape(row.get('medicion_periodicidad', row.get('periodicidad', '')) or 'No definida')}<br>
+                <b>Cuándo se llena:</b> {escape(row.get('cuando_se_llena', '')) or 'Según aplicabilidad del sujeto y módulo alimentador.'}<br>
+                <b>Módulo(s) que disparan o alimentan:</b> {escape(row.get('modulos_disparan', '')) or 'No especificado'}
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -497,7 +2987,7 @@ def bloque_pregunta(row, key_prefix, valores_existentes=None):
     with c3:
         obs = st.text_input("Observación específica", value=str(valores_existentes.get("observaciones", "") or ""), key=f"{key_prefix}_obs")
     try:
-        valor_num = float(resultado)
+        valor_num = float(str(resultado).replace("%", ""))
     except (TypeError, ValueError):
         valor_num = ""
     return {
@@ -512,10 +3002,36 @@ def bloque_pregunta(row, key_prefix, valores_existentes=None):
 # ============================================================
 
 
+def seleccionar_preguntas_aplicables(preguntas, tipo_sujeto):
+    st.markdown("##### Aplicabilidad del formulario")
+    modo = st.radio(
+        "¿Qué preguntas se van a levantar?",
+        ["Todas las preguntas aplicables al tipo de sujeto", "Seleccionar solo preguntas aplicables al caso"],
+        horizontal=True,
+        key=f"modo_aplicabilidad_{tipo_sujeto}_{st.session_state.reset_md}",
+        help="El filtro evita obligar a llenar indicadores que no pertenecen al denominador o condición del caso.",
+    )
+    if modo == "Todas las preguntas aplicables al tipo de sujeto":
+        return preguntas
+    opciones = preguntas["id_pregunta"].tolist()
+    etiquetas = {
+        row["id_pregunta"]: f"{row['id_pregunta']} · {row['capital']} · {row['indicador']}"
+        for _, row in preguntas.iterrows()
+    }
+    seleccion = st.multiselect(
+        "Selecciona preguntas/indicadores a diligenciar",
+        opciones,
+        default=opciones[: min(10, len(opciones))],
+        format_func=lambda x: etiquetas.get(x, x),
+        key=f"preguntas_sel_{tipo_sujeto}_{st.session_state.reset_md}",
+    )
+    return preguntas[preguntas["id_pregunta"].isin(seleccion)].copy()
+
+
 def mostrar_captura():
     st.markdown("#### Captura dinámica de formulario")
     st.markdown(
-        '<div class="screen-help">Primero selecciona el tipo de sujeto y el registro. Después se despliega el formulario aplicable con sus preguntas alineadas a indicadores. Al guardar, se genera un levantamiento y una medición por pregunta.</div>',
+        '<div class="screen-help">Primero selecciona el tipo de sujeto y el registro. El sistema muestra únicamente las preguntas formuladas desde indicadores oficiales para ese sujeto. Cada pregunta indica cuándo se llena y qué módulo la alimenta.</div>',
         unsafe_allow_html=True,
     )
 
@@ -535,21 +3051,24 @@ def mostrar_captura():
     sujeto = obtener_sujeto(tipo_sujeto, id_sujeto)
     mostrar_info_sujeto(sujeto)
 
-    preguntas = obtener_preguntas_por_tipo(tipo_sujeto)
-    if preguntas.empty:
+    preguntas_base = obtener_preguntas_por_tipo(tipo_sujeto)
+    if preguntas_base.empty:
         st.warning("No hay preguntas configuradas para este tipo de sujeto.")
         return
 
+    preguntas = seleccionar_preguntas_aplicables(preguntas_base, tipo_sujeto)
+    if preguntas.empty:
+        st.warning("Selecciona al menos una pregunta para guardar el levantamiento.")
+        return
+
     st.markdown("##### Datos generales del levantamiento")
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3 = st.columns(3)
     with c1:
         fecha_medicion = st.date_input("Fecha de realización / captura de la información", value=date.today(), key=f"captura_fecha_{st.session_state.reset_md}", help="La ingresa el usuario. No es la fecha automática de registro del sistema.")
     with c2:
         periodo = st.text_input("Periodo de medición", value=date.today().strftime("%Y-%m"), key=f"captura_periodo_{st.session_state.reset_md}")
     with c3:
-        periodicidad = st.selectbox("Periodicidad", PERIODICIDADES, key=f"captura_periodicidad_{st.session_state.reset_md}")
-    with c4:
-        fuente = st.selectbox("Fuente de información", FUENTES_INFORMACION, key=f"captura_fuente_{st.session_state.reset_md}")
+        fuente_registro = st.selectbox("Fuente usada para este levantamiento", FUENTES_INFORMACION, key=f"captura_fuente_{st.session_state.reset_md}")
 
     c5, c6 = st.columns([1, 1])
     with c5:
@@ -570,7 +3089,7 @@ def mostrar_captura():
     with col_guardar:
         guardar = st.button("Guardar formulario completo", type="primary", use_container_width=True)
     with col_info:
-        st.info("El sistema guardará fecha_registro y registrado_por automáticamente. La fecha de realización/captura es la que ingresaste arriba.")
+        st.info("fecha_registro y registrado_por se calculan automáticamente. fecha_medicion la ingresa el usuario.")
 
     if guardar:
         ahora = datetime.now().isoformat(timespec="seconds")
@@ -594,22 +3113,32 @@ def mostrar_captura():
                 "id_hogar": sujeto.get("id_hogar"),
                 "id_comunidad": sujeto.get("id_comunidad"),
                 "id_pregunta": q.get("id_pregunta"),
-                "codigo_indicador": q.get("codigo_indicador"),
+                "referencia_indicador": q.get("referencia_indicador"),
+                "codigo_indicador": q.get("referencia_indicador"),
+                "fuente": q.get("fuente"),
+                "hoja_origen": q.get("hoja_origen"),
+                "fila_origen": q.get("fila_origen"),
                 "capital": q.get("capital"),
                 "categoria": q.get("categoria"),
                 "subcategoria": q.get("subcategoria"),
+                "impacto_asociado": q.get("impacto_asociado"),
                 "indicador": q.get("indicador"),
+                "formula_meta": q.get("formula_meta"),
+                "medicion_periodicidad": q.get("medicion_periodicidad"),
                 "pregunta": q.get("pregunta"),
                 "tipo_respuesta": q.get("tipo_respuesta"),
+                "catalogo_valores": q.get("catalogo_valores"),
                 "resultado_esperado": q.get("resultado_esperado"),
+                "cuando_se_llena": q.get("cuando_se_llena"),
+                "modulos_disparan": q.get("modulos_disparan"),
+                "numerador_base": q.get("numerador_base"),
+                "denominador_base": q.get("denominador_base"),
                 "resultado_obtenido": r.get("resultado_obtenido", "Sin dato"),
                 "estado_cumplimiento": r.get("estado_cumplimiento", "Sin dato"),
                 "valor_numerico": r.get("valor_numerico", ""),
                 "fecha_medicion": fecha_medicion.isoformat(),
                 "periodo_medicion": periodo,
-                "periodicidad": periodicidad,
-                "fuente_informacion": fuente,
-                "evidencia_soporte": q.get("evidencia_soporte", ""),
+                "fuente_informacion": fuente_registro,
                 "evidencia_url": evidencia_url,
                 "observaciones": obs,
                 "registrado_por": st.session_state.usuario_md,
@@ -666,7 +3195,7 @@ def mostrar_edicion():
         key=f"edit_levantamiento_{id_sujeto}_{st.session_state.reset_md}",
     )
     df_lev = df_sujeto[df_sujeto["id_levantamiento"].astype(str) == str(id_levantamiento)].copy()
-    df_lev = df_lev.sort_values(["capital", "categoria", "codigo_indicador", "id_pregunta"])
+    df_lev = df_lev.sort_values(["capital", "categoria", "referencia_indicador", "id_pregunta"])
     base = df_lev.iloc[0].to_dict()
 
     sujeto = obtener_sujeto(tipo_sujeto, id_sujeto)
@@ -683,17 +3212,14 @@ def mostrar_edicion():
         fecha_inicial = date.fromisoformat(str(base.get("fecha_medicion"))[:10])
     except Exception:
         pass
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3 = st.columns(3)
     with c1:
         fecha_medicion = st.date_input("Fecha de realización / captura de la información", value=fecha_inicial, key=f"edit_fecha_{id_levantamiento}")
     with c2:
         periodo = st.text_input("Periodo de medición", value=str(base.get("periodo_medicion", "")), key=f"edit_periodo_{id_levantamiento}")
     with c3:
-        periodicidad_actual = base.get("periodicidad") if base.get("periodicidad") in PERIODICIDADES else PERIODICIDADES[0]
-        periodicidad = st.selectbox("Periodicidad", PERIODICIDADES, index=PERIODICIDADES.index(periodicidad_actual), key=f"edit_periodicidad_{id_levantamiento}")
-    with c4:
         fuente_actual = base.get("fuente_informacion") if base.get("fuente_informacion") in FUENTES_INFORMACION else FUENTES_INFORMACION[0]
-        fuente = st.selectbox("Fuente de información", FUENTES_INFORMACION, index=FUENTES_INFORMACION.index(fuente_actual), key=f"edit_fuente_{id_levantamiento}")
+        fuente_registro = st.selectbox("Fuente usada para este levantamiento", FUENTES_INFORMACION, index=FUENTES_INFORMACION.index(fuente_actual), key=f"edit_fuente_{id_levantamiento}")
     evidencia_url = st.text_input("URL / ruta de evidencia general", value=str(base.get("evidencia_url", "")), key=f"edit_evidencia_{id_levantamiento}")
 
     st.caption(f"Registrado por: {base.get('registrado_por')} · Fecha automática de registro: {base.get('fecha_registro')}")
@@ -729,8 +3255,7 @@ def mostrar_edicion():
             full.loc[mask, "observaciones"] = r.get("observaciones", "")
             full.loc[mask, "fecha_medicion"] = fecha_medicion.isoformat()
             full.loc[mask, "periodo_medicion"] = periodo
-            full.loc[mask, "periodicidad"] = periodicidad
-            full.loc[mask, "fuente_informacion"] = fuente
+            full.loc[mask, "fuente_informacion"] = fuente_registro
             full.loc[mask, "evidencia_url"] = evidencia_url
             full.loc[mask, "actualizado_por"] = st.session_state.usuario_md
             full.loc[mask, "fecha_actualizacion"] = ahora
@@ -770,10 +3295,17 @@ def tabla_resumen(df, grupo):
     return pivot.reset_index().sort_values("Total", ascending=False)
 
 
+def mostrar_catalogo_base_para_validacion():
+    df = catalogo_df()
+    resumen = df.groupby(["tipo_sujeto", "capital"]).size().reset_index(name="preguntas")
+    st.markdown("##### Catálogo base disponible")
+    st.dataframe(resumen, use_container_width=True, hide_index=True)
+
+
 def mostrar_tablero(df_filtrado):
     st.markdown("#### Tablero dinámico de indicadores")
     st.markdown(
-        '<div class="screen-help">Lectura rápida por capital, categoría, sujeto y estado. Usa los filtros globales del sidebar para acotar el tablero.</div>',
+        '<div class="screen-help">Lectura por capital, categoría, sujeto y estado. Usa los filtros globales para acotar el tablero.</div>',
         unsafe_allow_html=True,
     )
 
@@ -806,7 +3338,7 @@ def mostrar_tablero(df_filtrado):
         st.dataframe(resumen_sujeto, use_container_width=True, hide_index=True)
     with tab3:
         criticos = df_filtrado[df_filtrado["estado_cumplimiento"].astype(str).isin(["No cumple", "Parcial", "En proceso", "Sin dato"])]
-        cols = ["tipo_sujeto", "id_sujeto", "nombre_sujeto", "capital", "categoria", "codigo_indicador", "indicador", "estado_cumplimiento", "fecha_medicion"]
+        cols = ["tipo_sujeto", "id_sujeto", "nombre_sujeto", "capital", "categoria", "referencia_indicador", "indicador", "estado_cumplimiento", "fecha_medicion"]
         st.dataframe(criticos[cols].sort_values(["estado_cumplimiento", "capital"]) if not criticos.empty else pd.DataFrame(columns=cols), use_container_width=True, hide_index=True)
     with tab4:
         cols = ["id_levantamiento", "tipo_sujeto", "id_sujeto", "nombre_sujeto", "fecha_medicion", "fecha_registro", "registrado_por"]
@@ -817,7 +3349,7 @@ def mostrar_tablero(df_filtrado):
 def mostrar_historico(df_filtrado):
     st.markdown("#### Histórico y trazabilidad de mediciones")
     st.markdown(
-        '<div class="screen-help">Consulta todas las mediciones por levantamiento, sujeto, indicador, fecha de realización y fecha automática de registro.</div>',
+        '<div class="screen-help">Consulta las mediciones por levantamiento, sujeto, indicador, fecha de realización y fecha automática de registro.</div>',
         unsafe_allow_html=True,
     )
     if df_filtrado.empty:
@@ -825,9 +3357,10 @@ def mostrar_historico(df_filtrado):
         return
     cols = [
         "id_levantamiento", "id_medicion", "tipo_sujeto", "id_sujeto", "nombre_sujeto", "capital",
-        "categoria", "codigo_indicador", "indicador", "pregunta", "resultado_esperado", "resultado_obtenido",
-        "estado_cumplimiento", "fecha_medicion", "periodo_medicion", "fuente_informacion",
-        "registrado_por", "fecha_registro", "actualizado_por", "fecha_actualizacion", "observaciones",
+        "categoria", "referencia_indicador", "fuente", "hoja_origen", "fila_origen", "indicador", "formula_meta",
+        "pregunta", "resultado_obtenido", "estado_cumplimiento", "fecha_medicion", "periodo_medicion",
+        "cuando_se_llena", "modulos_disparan", "fuente_informacion", "registrado_por", "fecha_registro",
+        "actualizado_por", "fecha_actualizacion", "observaciones",
     ]
     st.dataframe(df_filtrado[cols].sort_values(["fecha_registro", "id_levantamiento"], ascending=False), use_container_width=True, hide_index=True)
     st.download_button(
@@ -839,17 +3372,10 @@ def mostrar_historico(df_filtrado):
     )
 
 
-def mostrar_catalogo_base_para_validacion():
-    df = catalogo_df()
-    resumen = df.groupby(["tipo_sujeto", "capital"]).size().reset_index(name="preguntas")
-    st.markdown("##### Catálogo base disponible")
-    st.dataframe(resumen, use_container_width=True, hide_index=True)
-
-
 def mostrar_catalogo():
-    st.markdown("#### Catálogo de formularios, preguntas e indicadores")
+    st.markdown("#### Catálogo de formularios, preguntas e indicadores oficiales")
     st.markdown(
-        '<div class="screen-help">Este catálogo está embebido en el código. Aquí puedes validar qué pregunta alimenta qué indicador y a qué sujeto/capital aplica.</div>',
+        '<div class="screen-help">Cada fila viene de indicadores PRMV o M&E por capital. No hay códigos de indicadores inventados; la referencia muestra hoja y fila de origen.</div>',
         unsafe_allow_html=True,
     )
     df = catalogo_df()
@@ -859,25 +3385,25 @@ def mostrar_catalogo():
     with c2:
         capital = st.multiselect("Capital", sorted(df["capital"].unique().tolist()), default=[])
     with c3:
-        prioridad = st.multiselect("Prioridad", sorted(df["prioridad"].dropna().unique().tolist()), default=[])
+        fuente = st.multiselect("Fuente oficial", sorted(df["fuente"].dropna().unique().tolist()), default=[])
     vista = df.copy()
     if tipo:
         vista = vista[vista["tipo_sujeto"].isin(tipo)]
     if capital:
         vista = vista[vista["capital"].isin(capital)]
-    if prioridad:
-        vista = vista[vista["prioridad"].isin(prioridad)]
+    if fuente:
+        vista = vista[vista["fuente"].isin(fuente)]
     cols = [
-        "id_pregunta", "tipo_sujeto", "capital", "categoria", "subcategoria", "codigo_indicador",
-        "indicador", "pregunta", "tipo_respuesta", "catalogo_valores", "resultado_esperado",
-        "fuente_informacion", "evidencia_soporte", "campos_existentes", "campos_nuevos",
-        "validacion_funcional", "prioridad",
+        "id_pregunta", "tipo_sujeto", "capital", "categoria", "referencia_indicador", "fuente",
+        "hoja_origen", "fila_origen", "indicador", "formula_meta", "medicion_periodicidad",
+        "pregunta", "tipo_respuesta", "catalogo_valores", "cuando_se_llena", "modulos_disparan",
+        "numerador_base", "denominador_base",
     ]
     st.dataframe(vista[cols], use_container_width=True, hide_index=True)
     st.download_button(
         "Descargar catálogo CSV",
         data=dataframe_descargable(vista[cols]),
-        file_name="catalogo_formularios_indicadores_modulo_d.csv",
+        file_name="catalogo_formularios_indicadores_modulo_d_validado.csv",
         mime="text/csv",
         use_container_width=True,
     )

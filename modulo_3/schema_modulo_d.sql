@@ -1,0 +1,57 @@
+-- Módulo D - Indicadores por sujeto de medición
+-- Tablas principales de la versión de prueba.
+
+CREATE TABLE IF NOT EXISTS catalogo_preguntas_indicadores (
+    id_pregunta TEXT PRIMARY KEY,
+    formulario TEXT NOT NULL,
+    tipo_sujeto TEXT NOT NULL,
+    tabla_base TEXT NOT NULL,
+    campo_llave_sujeto TEXT NOT NULL,
+    categoria TEXT NOT NULL,
+    subcategoria TEXT,
+    indicador TEXT NOT NULL,
+    codigo_indicador TEXT NOT NULL,
+    pregunta TEXT NOT NULL,
+    tipo_respuesta TEXT,
+    catalogo_valores TEXT,
+    resultado_esperado TEXT,
+    regla_cumplimiento TEXT,
+    periodicidad TEXT,
+    fuente_informacion TEXT,
+    evidencia_soporte TEXT,
+    campos_existentes TEXT,
+    campos_nuevos TEXT,
+    validacion_funcional TEXT,
+    prioridad TEXT,
+    capital TEXT DEFAULT 'Sin clasificar',
+    activo INTEGER DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS mediciones_indicadores (
+    id_medicion TEXT PRIMARY KEY,
+    tipo_sujeto TEXT NOT NULL,
+    id_sujeto TEXT NOT NULL,
+    nombre_sujeto TEXT,
+    id_pregunta TEXT NOT NULL,
+    codigo_indicador TEXT NOT NULL,
+    indicador TEXT NOT NULL,
+    pregunta TEXT NOT NULL,
+    categoria TEXT NOT NULL,
+    subcategoria TEXT,
+    capital TEXT,
+    resultado_esperado TEXT,
+    resultado_obtenido TEXT,
+    estado_cumplimiento TEXT,
+    valor_numerico REAL,
+    fecha_medicion TEXT NOT NULL,
+    periodo_medicion TEXT,
+    fuente_informacion TEXT,
+    evidencia_url TEXT,
+    observaciones TEXT,
+    registrado_por TEXT NOT NULL,
+    fecha_registro TEXT NOT NULL,
+    actualizado_por TEXT,
+    fecha_actualizacion TEXT,
+    activo INTEGER DEFAULT 1,
+    FOREIGN KEY (id_pregunta) REFERENCES catalogo_preguntas_indicadores (id_pregunta)
+);

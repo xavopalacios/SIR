@@ -1,1732 +1,1854 @@
-
 # -*- coding: utf-8 -*-
 """
-Módulo PRMV - Registro histórico de indicadores
-Versión v03 user-friendly
+Módulo PRMV - Captura histórica simple de indicadores
+Versión: v04_simple
 
 Objetivo:
-- Registrar indicadores PRMV por corte histórico.
-- Permitir dos tipos de captura:
-    1) Consolidada/global: numerador, denominador, avance.
-    2) Por entidad: hogar, persona, OBC, lugar poblado, infraestructura, etc.
-- Mantener trazabilidad de fecha, periodo, fuente, responsable y validación.
+- Catálogo completo de indicadores PRMV y M&E.
+- Selección por Categoría general -> Subcategoría -> Indicador.
+- Captura de valor esperado vs valor obtenido.
+- Trazabilidad de fecha de necesidad, periodo, responsable y auditoría.
+- Regla: solo un registro por indicador, entidad y fecha de captura. Si ya existe, se modifica.
 
 Ejecución:
     pip install streamlit pandas
-    streamlit run app_prmv_indicadores_v03_user_friendly.py
+    streamlit run app_prmv_indicadores_v04_simple.py
 """
 
 from __future__ import annotations
 
+import os
 import sqlite3
-import uuid
-from pathlib import Path
 from datetime import date, datetime
-from typing import Any, Dict, List, Optional, Tuple
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 import streamlit as st
 
-APP_TITLE = "Módulo PRMV · Indicadores históricos"
-DB_PATH = Path(__file__).with_name("prmv_indicadores_v03.sqlite3")
+APP_TITLE = "Módulo PRMV | Indicadores"
+DB_PATH = Path("prmv_indicadores_v04.sqlite3")
 
-INDICADORES_CATALOGO: List[Dict[str, Any]] = [
-    {
-        "id_indicador": "PRMV-S-001",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Gestión ambiental y servicios ecosistémicos",
-        "categoria_tematica": "Compensación socioec.",
-        "modalidad": "Individual y Colectivo",
-        "duracion": "(por definir)",
-        "capital": "Capital: Natural / Humano",
-        "impacto": "• Pérdida del acceso, disponibilidad y calidad de los servicios ecosistémicos basados en dinámicas culturales (madera, medicinas, alimentos, entorno natural) ubicados en el área del Lago",
-        "indicador": "% de familias que participan en el proyecto de capacitaciones en buenas prácticas ambientales",
-        "formula_original": "(# familias que participan en el proyecto formulado y validado / # total familias sujetas que aplican) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-002",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Fortalecimiento organizativo y OBC",
-        "categoria_tematica": "Compensación socioec.",
-        "modalidad": "Individual y Colectivo",
-        "duracion": "(por definir)",
-        "capital": "Capital: Natural / Humano",
-        "impacto": "• Pérdida del acceso, disponibilidad y calidad de los servicios ecosistémicos basados en dinámicas culturales (madera, medicinas, alimentos, entorno natural) ubicados en el área del Lago",
-        "indicador": "% de OBC que participan en las capacitaciones",
-        "formula_original": "(# OBC que participan / # total OBC sujetas que aplican) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "OBC",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo OBC. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-003",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Seguimiento PRMV general",
-        "categoria_tematica": "Compensación socioec.",
-        "modalidad": "Individual y Colectivo",
-        "duracion": "(por definir)",
-        "capital": "Capital: Natural / Humano",
-        "impacto": "• Pérdida del acceso, disponibilidad y calidad de los servicios ecosistémicos basados en dinámicas culturales (madera, medicinas, alimentos, entorno natural) ubicados en el área del Lago",
-        "indicador": "% de cumplimiento de visitas y encuentros de diálogo de saberes",
-        "formula_original": "(# visitas realizadas / # visitas previstas) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Actividad/Evento",
-        "nivel_captura_recomendado": "Consolidado",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador se registra como dato agregado del periodo: valor alcanzado y valor esperado. No exige seleccionar hogar/persona."
-    },
-    {
-        "id_indicador": "PRMV-S-004",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Seguimiento PRMV general",
-        "categoria_tematica": "Compensación socioec.",
-        "modalidad": "Individual y Colectivo",
-        "duracion": "(por definir)",
-        "capital": "Capital: Natural / Humano",
-        "impacto": "• Pérdida del acceso, disponibilidad y calidad de los servicios ecosistémicos basados en dinámicas culturales (madera, medicinas, alimentos, entorno natural) ubicados en el área del Lago",
-        "indicador": "% de avance en la ejecución de capacitaciones",
-        "formula_original": "(# capacitaciones implementadas / # programadas) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Actividad/Evento",
-        "nivel_captura_recomendado": "Consolidado",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador se registra como dato agregado del periodo: valor alcanzado y valor esperado. No exige seleccionar hogar/persona."
-    },
-    {
-        "id_indicador": "PRMV-S-005",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Gestión ambiental y servicios ecosistémicos",
-        "categoria_tematica": "Compensación socioec.",
-        "modalidad": "Individual y Colectivo",
-        "duracion": "(por definir)",
-        "capital": "Capital: Natural / Humano",
-        "impacto": "• Pérdida del acceso, disponibilidad y calidad de los servicios ecosistémicos basados en dinámicas culturales (madera, medicinas, alimentos, entorno natural) ubicados en el área del Lago",
-        "indicador": "% de familias que implementan buenas prácticas ambientales",
-        "formula_original": "(# familias que implementan BPA / # total familias sujetas que aplican) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-006",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Fortalecimiento organizativo y OBC",
-        "categoria_tematica": "Compensación socioec.",
-        "modalidad": "Individual y Colectivo",
-        "duracion": "(por definir)",
-        "capital": "Capital: Natural / Humano",
-        "impacto": "• Pérdida del acceso, disponibilidad y calidad de los servicios ecosistémicos basados en dinámicas culturales (madera, medicinas, alimentos, entorno natural) ubicados en el área del Lago",
-        "indicador": "% de OBC que implementan buenas prácticas ambientales",
-        "formula_original": "(# OBC que implementan BPA / # total OBC sujetas que aplican) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "OBC",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo OBC. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-007",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Infraestructura comunitaria y equipamiento",
-        "categoria_tematica": "Compensación socioec.",
-        "modalidad": "Colectivo",
-        "duracion": "36 meses",
-        "capital": "Capital: Social / Físico",
-        "impacto": "• Pérdida de los espacios públicos o comunitarios de equipamiento con significado cultural y social",
-        "indicador": "% de estructuras comunitarias restablecidas con vinculación de instituciones y/o OBC para su cuidado",
-        "formula_original": "(# estructuras con instituciones/OBC vinculadas / # estructuras comunitarias restablecidas) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "OBC",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo OBC. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-008",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Infraestructura comunitaria y equipamiento",
-        "categoria_tematica": "Compensación socioec.",
-        "modalidad": "Colectivo",
-        "duracion": "36 meses",
-        "capital": "Capital: Social / Físico",
-        "impacto": "• Pérdida de los espacios públicos o comunitarios de equipamiento con significado cultural y social",
-        "indicador": "% de OBC apropiadas del cuidado y preservación de las infraestructuras comunitarias",
-        "formula_original": "(# OBC con acciones sistemáticas de apropiación / # total OBC que participan) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "OBC",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo OBC. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-009",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Seguimiento PRMV general",
-        "categoria_tematica": "Compensación socioec.",
-        "modalidad": "Colectivo",
-        "duracion": "36 meses",
-        "capital": "Capital: Social / Físico",
-        "impacto": "• Pérdida de los espacios públicos o comunitarios de equipamiento con significado cultural y social",
-        "indicador": "% de cumplimiento de encuentros comunitarios de promoción",
-        "formula_original": "(# encuentros realizados / # encuentros previstos) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Actividad/Evento",
-        "nivel_captura_recomendado": "Consolidado",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador se registra como dato agregado del periodo: valor alcanzado y valor esperado. No exige seleccionar hogar/persona."
-    },
-    {
-        "id_indicador": "PRMV-S-010",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Comunicación, información y socialización",
-        "categoria_tematica": "Compensación socioec.",
-        "modalidad": "Colectivo",
-        "duracion": "36 meses",
-        "capital": "Capital: Social / Físico",
-        "impacto": "• Pérdida de los espacios públicos o comunitarios de equipamiento con significado cultural y social",
-        "indicador": "% de ejecución de actividades de socialización y promoción",
-        "formula_original": "(# acciones implementadas / # programadas) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Actividad/Evento",
-        "nivel_captura_recomendado": "Consolidado",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador se registra como dato agregado del periodo: valor alcanzado y valor esperado. No exige seleccionar hogar/persona."
-    },
-    {
-        "id_indicador": "PRMV-S-011",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Seguimiento PRMV general",
-        "categoria_tematica": "Compensación socioec.",
-        "modalidad": "Colectivo",
-        "duracion": "36 meses",
-        "capital": "Capital: Social / Físico",
-        "impacto": "• Pérdida de los espacios públicos o comunitarios de equipamiento con significado cultural y social",
-        "indicador": "% de hogares en reasentamiento colectivo que participan en actividades de cuidado/mantenimiento",
-        "formula_original": "(# hogares participantes / # hogares reasentados colectivamente) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-012",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Fortalecimiento organizativo y OBC",
-        "categoria_tematica": "Compensación socioec.",
-        "modalidad": "Colectivo",
-        "duracion": "36 meses",
-        "capital": "Capital: Social",
-        "impacto": "• Afectación de la composición y dinámica de organizaciones de base comunitaria (OBC) y comités conformados en el territorio",
-        "indicador": "% de OBC que participan en procesos orientados a su preservación y fortalecimiento",
-        "formula_original": "(# OBC que participan en procesos validados / # total OBC sujetas de acompañamiento) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "OBC",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo OBC. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-013",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Fortalecimiento organizativo y OBC",
-        "categoria_tematica": "Compensación socioec.",
-        "modalidad": "Colectivo",
-        "duracion": "36 meses",
-        "capital": "Capital: Social",
-        "impacto": "• Afectación de la composición y dinámica de organizaciones de base comunitaria (OBC) y comités conformados en el territorio",
-        "indicador": "% de OBC reconfiguradas que implementan iniciativas de beneficio comunitario",
-        "formula_original": "(# OBC en funcionamiento tras 3 años / # total OBC que participan) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "OBC",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo OBC. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-014",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Cultura, memoria e identidad",
-        "categoria_tematica": "Compensación socioec.",
-        "modalidad": "Colectivo",
-        "duracion": "36 meses",
-        "capital": "Capital: Social / Humano (cultural)",
-        "impacto": "• Afectación de las dinámicas o prácticas culturales y tradiciones",
-        "indicador": "% de familias que participan en actividades de preservación de identidad cultural y memoria",
-        "formula_original": "(# familias en reasentamiento colectivo que participan / # familias que optan por colectivo) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-015",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Cultura, memoria e identidad",
-        "categoria_tematica": "Compensación socioec.",
-        "modalidad": "Colectivo",
-        "duracion": "36 meses",
-        "capital": "Capital: Social / Humano (cultural)",
-        "impacto": "• Afectación de las dinámicas o prácticas culturales y tradiciones",
-        "indicador": "% de familias artesanas que retoman cultivo/elaboración como práctica tradicional",
-        "formula_original": "(# familias que retoman / # familias que antes elaboraban sombreros/artesanías) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-016",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Cultura, memoria e identidad",
-        "categoria_tematica": "Compensación socioec.",
-        "modalidad": "Colectivo",
-        "duracion": "36 meses",
-        "capital": "Capital: Social / Humano (cultural)",
-        "impacto": "• Afectación de las dinámicas o prácticas culturales y tradiciones",
-        "indicador": "% de lugares de reasentamiento con nueva identidad local y tradiciones implementadas",
-        "formula_original": "(# lugares con prácticas tradicionales / # lugares de reasentamiento colectivo) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Lugar poblado",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Lugar poblado. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-017",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Cultura, memoria e identidad",
-        "categoria_tematica": "Compensación socioec.",
-        "modalidad": "Colectivo",
-        "duracion": "36 meses",
-        "capital": "Capital: Social / Humano (cultural)",
-        "impacto": "• Afectación de las dinámicas o prácticas culturales y tradiciones",
-        "indicador": "% de lugares con levantamiento de memoria histórica y cultural local",
-        "formula_original": "(# lugares con levantamiento / # lugares de reasentamiento colectivo) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Lugar poblado",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Lugar poblado. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-018",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Cultura, memoria e identidad",
-        "categoria_tematica": "Compensación socioec.",
-        "modalidad": "Colectivo",
-        "duracion": "36 meses",
-        "capital": "Capital: Social / Humano (cultural)",
-        "impacto": "• Afectación de las dinámicas o prácticas culturales y tradiciones",
-        "indicador": "% de familias por grupo poblacional que participan en promoción/divulgación de la memoria",
-        "formula_original": "(# familias participantes / # familias que optan por colectivo) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-019",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Convivencia comunitaria y cohesión social",
-        "categoria_tematica": "Compensación socioec.",
-        "modalidad": "Colectivo",
-        "duracion": "36 meses",
-        "capital": "Capital: Social",
-        "impacto": "• Afectación de las relaciones comunitarias y la estructura social en el territorio",
-        "indicador": "% de familias reasentadas que participan en espacios de relacionamiento con población receptora",
-        "formula_original": "(# familias reasentadas colectivamente que participan / # familias de reasentamiento colectivo) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-020",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Convivencia comunitaria y cohesión social",
-        "categoria_tematica": "Compensación socioec.",
-        "modalidad": "Colectivo",
-        "duracion": "36 meses",
-        "capital": "Capital: Social",
-        "impacto": "• Afectación de las relaciones comunitarias y la estructura social en el territorio",
-        "indicador": "% de familias (reasentadas y receptoras) con percepciones positivas de convivencia",
-        "formula_original": "(# familias con percepción positiva / # familias participantes en encuesta) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-021",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Convivencia comunitaria y cohesión social",
-        "categoria_tematica": "Compensación socioec.",
-        "modalidad": "Colectivo",
-        "duracion": "36 meses",
-        "capital": "Capital: Social",
-        "impacto": "• Afectación de las relaciones comunitarias y la estructura social en el territorio",
-        "indicador": "% de lugares de reasentamiento con mecanismos locales de diálogo y convivencia",
-        "formula_original": "(# lugares con mecanismos establecidos / # lugares de reasentamiento colectivo) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Lugar poblado",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Lugar poblado. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-022",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Convivencia comunitaria y cohesión social",
-        "categoria_tematica": "Compensación socioec.",
-        "modalidad": "Colectivo",
-        "duracion": "36 meses",
-        "capital": "Capital: Social",
-        "impacto": "• Afectación de las relaciones comunitarias y la estructura social en el territorio",
-        "indicador": "% de OBC que participan en capacitación/fortalecimiento con organizaciones receptoras",
-        "formula_original": "(# OBC del reasentamiento que participan / # OBC del reasentamiento colectivo) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "OBC",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo OBC. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-023",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Convivencia comunitaria y cohesión social",
-        "categoria_tematica": "Compensación socioec.",
-        "modalidad": "Colectivo",
-        "duracion": "36 meses",
-        "capital": "Capital: Social",
-        "impacto": "• Afectación de las relaciones comunitarias y la estructura social en el territorio",
-        "indicador": "% de familias que participan en espacios de diálogo y convivencia comunitaria",
-        "formula_original": "(# familias participantes / # total familias en reasentamiento colectivo) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-024",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Convivencia comunitaria y cohesión social",
-        "categoria_tematica": "Compensación socioec.",
-        "modalidad": "Colectivo",
-        "duracion": "36 meses",
-        "capital": "Capital: Social",
-        "impacto": "• Afectación de las relaciones comunitarias y la estructura social en el territorio",
-        "indicador": "% de lugares de reasentamiento con espacios de diálogo y convivencia implementados",
-        "formula_original": "(# lugares con espacios implementados / # lugares de reasentamiento colectivo) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Lugar poblado",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Lugar poblado. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-025",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Convivencia comunitaria y cohesión social",
-        "categoria_tematica": "Compensación socioec.",
-        "modalidad": "Colectivo",
-        "duracion": "36 meses",
-        "capital": "Capital: Social",
-        "impacto": "• Afectación de las relaciones comunitarias y la estructura social en el territorio",
-        "indicador": "% de familias con percepciones favorables sobre la convivencia comunitaria",
-        "formula_original": "(# familias con percepción favorable / # familias participantes encuestadas) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-026",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Vivienda y hábitat",
-        "categoria_tematica": "Compensación",
-        "modalidad": "Colectivo",
-        "duracion": "36 meses",
-        "capital": "Capital: Físico",
-        "impacto": "• Pérdida de la vivienda e infraestructuras residenciales anexas",
-        "indicador": "% de familias en colectivo con vivienda restablecida según el marco de compensación",
-        "formula_original": "(# familias con reposición de vivienda / # familias de reasentamiento colectivo) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-027",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Vivienda y hábitat",
-        "categoria_tematica": "Compensación",
-        "modalidad": "Colectivo",
-        "duracion": "36 meses",
-        "capital": "Capital: Físico",
-        "impacto": "• Pérdida de la vivienda e infraestructuras residenciales anexas",
-        "indicador": "% de familias con título de propiedad inscrito en registro público",
-        "formula_original": "(# familias con título registrado / # familias con reposición de vivienda) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-028",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Vivienda y hábitat",
-        "categoria_tematica": "Compensación",
-        "modalidad": "Colectivo",
-        "duracion": "36 meses",
-        "capital": "Capital: Físico",
-        "impacto": "• Pérdida de la vivienda e infraestructuras residenciales anexas",
-        "indicador": "% de familias que participan en seguimiento al proceso de construcción",
-        "formula_original": "(# familias que participan / # familias con reposición de vivienda) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-029",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Vivienda y hábitat",
-        "categoria_tematica": "Compensación",
-        "modalidad": "Colectivo",
-        "duracion": "36 meses",
-        "capital": "Capital: Físico",
-        "impacto": "• Pérdida de la vivienda e infraestructuras residenciales anexas",
-        "indicador": "% de familias que reportaron daño o afectación en la vivienda (garantías)",
-        "formula_original": "(# familias que solicitaron arreglos por garantía / # familias con reposición) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-030",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Vivienda y hábitat",
-        "categoria_tematica": "Compensación",
-        "modalidad": "Colectivo",
-        "duracion": "36 meses",
-        "capital": "Capital: Físico",
-        "impacto": "• Pérdida de la vivienda e infraestructuras residenciales anexas",
-        "indicador": "% de familias que implementan prácticas de cuidado y manejo ambiental de la vivienda",
-        "formula_original": "(# familias que implementan / # familias con reposición de vivienda) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-031",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Vivienda y hábitat",
-        "categoria_tematica": "Compensación",
-        "modalidad": "Individual",
-        "duracion": "36 meses",
-        "capital": "Capital: Físico",
-        "impacto": "• Pérdida de la vivienda y estructuras residenciales anexas",
-        "indicador": "% de familias en individual con vivienda restablecida según el marco de compensación",
-        "formula_original": "(# familias reasentadas individualmente con vivienda restablecida / # familias elegibles que optan por individual) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-032",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Vivienda y hábitat",
-        "categoria_tematica": "Compensación",
-        "modalidad": "Individual",
-        "duracion": "36 meses",
-        "capital": "Capital: Físico",
-        "impacto": "• Pérdida de la vivienda y estructuras residenciales anexas",
-        "indicador": "% de familias con título de propiedad inscrito en registro público",
-        "formula_original": "(# familias con título registrado / # familias con reposición de vivienda individual) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-033",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Vivienda y hábitat",
-        "categoria_tematica": "Compensación",
-        "modalidad": "Individual",
-        "duracion": "36 meses",
-        "capital": "Capital: Físico",
-        "impacto": "• Pérdida de la vivienda y estructuras residenciales anexas",
-        "indicador": "% de familias que manifiestan satisfacción con la vivienda repuesta",
-        "formula_original": "(# familias satisfechas / # familias con reposición) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-034",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Vivienda y hábitat",
-        "categoria_tematica": "Compensación",
-        "modalidad": "Individual",
-        "duracion": "36 meses",
-        "capital": "Capital: Físico",
-        "impacto": "• Pérdida de la vivienda y estructuras residenciales anexas",
-        "indicador": "% de familias que implementan prácticas de cuidado y manejo ambiental de la vivienda",
-        "formula_original": "(# familias que implementan / # familias con reposición individual) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-035",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Vivienda y hábitat",
-        "categoria_tematica": "Compensación",
-        "modalidad": "Individual y Colectivo",
-        "duracion": "12 meses",
-        "capital": "Capital: Físico",
-        "impacto": "• Pérdida de la vivienda y estructuras residenciales anexas (viviendas adicionales y anexos no repuestos)",
-        "indicador": "% de familias que reciben pago a valor de reposición por viviendas adicionales",
-        "formula_original": "(# familias que reciben pago / # familias con más de una vivienda impactada) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-036",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Infraestructura comunitaria y equipamiento",
-        "categoria_tematica": "Compensación",
-        "modalidad": "Individual y Colectivo",
-        "duracion": "12 meses",
-        "capital": "Capital: Físico",
-        "impacto": "• Pérdida de la vivienda y estructuras residenciales anexas (viviendas adicionales y anexos no repuestos)",
-        "indicador": "% de familias que reciben pago por estructuras anexas no reemplazadas",
-        "formula_original": "(# familias que reciben pago / # familias con estructuras anexas no reemplazadas) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-037",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Vivienda y hábitat",
-        "categoria_tematica": "Compensación",
-        "modalidad": "Individual",
-        "duracion": "36 meses",
-        "capital": "Capital: Físico",
-        "impacto": "• Pérdida de vivienda en la que se reside en condición de arriendo, préstamo o cesión",
-        "indicador": "% de familias arrendatarias o en préstamo que acceden oportunamente a compensación de arriendo",
-        "formula_original": "(# familias que reciben pago oportuno / # familias arrendatarias o en préstamo) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-038",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Vivienda y hábitat",
-        "categoria_tematica": "Compensación",
-        "modalidad": "Individual",
-        "duracion": "36 meses",
-        "capital": "Capital: Físico",
-        "impacto": "• Pérdida de vivienda en la que se reside en condición de arriendo, préstamo o cesión",
-        "indicador": "% de familias arrendatarias con acceso a vivienda en transición de un año",
-        "formula_original": "(# familias que acceden a vivienda en arriendo / # familias arrendatarias o en préstamo) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-039",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Reposición de terreno",
-        "categoria_tematica": "Compensación",
-        "modalidad": "Colectivo",
-        "duracion": "12 meses",
-        "capital": "Capital: Natural / Físico",
-        "impacto": "• Pérdida del terreno • Pérdida del acceso, disponibilidad y calidad de los servicios ecosistémicos del área del Lago",
-        "indicador": "% de familias en colectivo con terreno restablecido según el marco de compensación",
-        "formula_original": "(# familias con reposición de terreno / # familias de reasentamiento colectivo) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-040",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Reposición de terreno",
-        "categoria_tematica": "Compensación",
-        "modalidad": "Colectivo",
-        "duracion": "12 meses",
-        "capital": "Capital: Natural / Físico",
-        "impacto": "• Pérdida del terreno • Pérdida del acceso, disponibilidad y calidad de los servicios ecosistémicos del área del Lago",
-        "indicador": "% de familias con título de propiedad del terreno inscrito en registro público",
-        "formula_original": "(# familias con título registrado / # familias con reposición de terreno colectivo) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-041",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Reposición de terreno",
-        "categoria_tematica": "Compensación",
-        "modalidad": "Individual",
-        "duracion": "30 meses",
-        "capital": "Capital: Natural / Físico",
-        "impacto": "• Pérdida del terreno",
-        "indicador": "% de familias en individual con terreno restablecido según el marco de compensación",
-        "formula_original": "(# familias con restablecimiento de terreno / # familias que optan por individual) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-042",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Reposición de terreno",
-        "categoria_tematica": "Compensación",
-        "modalidad": "Individual",
-        "duracion": "30 meses",
-        "capital": "Capital: Natural / Físico",
-        "impacto": "• Pérdida del terreno",
-        "indicador": "% de familias con título de propiedad del terreno inscrito en registro público",
-        "formula_original": "(# familias que reciben títulos / # familias que optan por individual) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-043",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Infraestructura comunitaria y equipamiento",
-        "categoria_tematica": "Compensación",
-        "modalidad": "Colectivo",
-        "duracion": "30 meses",
-        "capital": "Capital: Físico / Social",
-        "impacto": "• Cambio en el acceso/aseguramiento a servicios sociales de salud • Cambio en el acceso a servicios de educación • Cambio en el acceso a servicios de recreación • Pérdida de espacios públicos o comunitarios de equipamiento con significado cultural y social",
-        "indicador": "% de diseños de espacios públicos y estructuras comunitarias diseñados, socializados y aprobados",
-        "formula_original": "(# estructuras diseñadas/socializadas/aprobadas / # estructuras impactadas) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Infraestructura comunitaria",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Infraestructura comunitaria. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-044",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Infraestructura comunitaria y equipamiento",
-        "categoria_tematica": "Compensación",
-        "modalidad": "Colectivo",
-        "duracion": "30 meses",
-        "capital": "Capital: Físico / Social",
-        "impacto": "• Cambio en el acceso/aseguramiento a servicios sociales de salud • Cambio en el acceso a servicios de educación • Cambio en el acceso a servicios de recreación • Pérdida de espacios públicos o comunitarios de equipamiento con significado cultural y social",
-        "indicador": "% de estructuras de uso comunitario restablecidas",
-        "formula_original": "(# estructuras restablecidas / # estructuras impactadas) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Infraestructura comunitaria",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Infraestructura comunitaria. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-045",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Compensación económica y pagos",
-        "categoria_tematica": "Compensación",
-        "modalidad": "Individual y Colectivo",
-        "duracion": "36 meses",
-        "capital": "Capital: Económico",
-        "impacto": "• Pérdida de cultivos o especies vegetales • Pérdida de estructuras de aprovechamiento productivo/comercial no trasladable • Afectación de negocios vinculados al territorio",
-        "indicador": "% de familias con pago completo a cargo de ACP según el contrato de transacción notariado",
-        "formula_original": "(# familias con pago completo / # familias con contrato de transacción suscrito y notariado) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-046",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Empleo y formación para el trabajo",
-        "categoria_tematica": "Compensación",
-        "modalidad": "Individual y Colectivo",
-        "duracion": "60 meses",
-        "capital": "Capital: Económico",
-        "impacto": "• Pérdida de fuente de ingresos por trabajo remunerado (asalariados o jornaleros)",
-        "indicador": "% de trabajadores con pérdida de ingresos que participan en procesos de formación para el trabajo",
-        "formula_original": "(# trabajadores que participan en formación / # trabajadores con pérdida de ingresos) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "moneda",
-        "entidad_principal": "Persona",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Persona. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-047",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Empleo y formación para el trabajo",
-        "categoria_tematica": "Compensación",
-        "modalidad": "Individual y Colectivo",
-        "duracion": "60 meses",
-        "capital": "Capital: Económico",
-        "impacto": "• Pérdida de fuente de ingresos por trabajo remunerado (asalariados o jornaleros)",
-        "indicador": "% de trabajadores con pago completo de la compensación según contrato de transacción",
-        "formula_original": "(# trabajadores con pago completo consignado / # trabajadores con contrato suscrito y protocolizado) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Persona",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Persona. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-048",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Activos pecuarios y producción",
-        "categoria_tematica": "Compensación",
-        "modalidad": "Individual y Colectivo",
-        "duracion": "30 meses",
-        "capital": "Capital: Económico",
-        "impacto": "• Afectación por la necesidad de traslado de animales (activos pecuarios)",
-        "indicador": "% de familias con proceso de traslado de animales planificado y formalizado",
-        "formula_original": "(# familias con acta veterinaria previa e infraestructura verificada / # total familias con animales en línea base) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-049",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Activos pecuarios y producción",
-        "categoria_tematica": "Compensación",
-        "modalidad": "Individual y Colectivo",
-        "duracion": "30 meses",
-        "capital": "Capital: Económico",
-        "impacto": "• Afectación por la necesidad de traslado de animales (activos pecuarios)",
-        "indicador": "% de familias con traslado efectivo de animales de uso productivo",
-        "formula_original": "(# familias con animales trasladados / # total familias con animales en línea base) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-050",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Activos pecuarios y producción",
-        "categoria_tematica": "Compensación",
-        "modalidad": "Individual y Colectivo",
-        "duracion": "30 meses",
-        "capital": "Capital: Económico",
-        "impacto": "• Afectación por la necesidad de traslado de animales (activos pecuarios)",
-        "indicador": "% de familias con compensación por disminución temporal de producción/daño emergente pagada",
-        "formula_original": "(# familias con pago efectivo / # total familias con producción pecuaria) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-051",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Acompañamiento diferencial y vulnerabilidad",
-        "categoria_tematica": "RMV · Diferencial",
-        "modalidad": "Individual",
-        "duracion": "60 meses",
-        "capital": "Capital: Humano",
-        "impacto": "• Afectación del proyecto de vida de personas en condición de vulnerabilidad",
-        "indicador": "% de personas y familias vulnerables con acompañamiento psicosocial diferencial",
-        "formula_original": "(# vulnerables con acompañamiento / # vulnerables identificadas) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Persona",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Persona. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-052",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Acompañamiento diferencial y vulnerabilidad",
-        "categoria_tematica": "RMV · Diferencial",
-        "modalidad": "Individual",
-        "duracion": "60 meses",
-        "capital": "Capital: Humano",
-        "impacto": "• Afectación del proyecto de vida de personas en condición de vulnerabilidad",
-        "indicador": "% de vulnerables que desarrollan capacidades de afrontamiento y adaptación fortalecidas",
-        "formula_original": "(# vulnerables con capacidades fortalecidas / # vulnerables con acompañamiento) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Persona",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Persona. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-053",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Acompañamiento diferencial y vulnerabilidad",
-        "categoria_tematica": "RMV · Diferencial",
-        "modalidad": "Individual",
-        "duracion": "60 meses",
-        "capital": "Capital: Humano",
-        "impacto": "• Afectación del proyecto de vida de personas en condición de vulnerabilidad",
-        "indicador": "% de vulnerables que acceden a servicios de protección social a los que son elegibles",
-        "formula_original": "(# vulnerables que acceden / # vulnerables que cumplen requisitos) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Persona",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Persona. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-054",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Acompañamiento diferencial y vulnerabilidad",
-        "categoria_tematica": "RMV · Diferencial",
-        "modalidad": "Individual",
-        "duracion": "60 meses",
-        "capital": "Capital: Humano",
-        "impacto": "• Afectación del proyecto de vida de personas en condición de vulnerabilidad",
-        "indicador": "% de vulnerables con medidas de compensación y RMV articuladas a sus características",
-        "formula_original": "(# vulnerables con medidas articuladas / # vulnerables identificadas) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Persona",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Persona. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-055",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Acompañamiento diferencial y vulnerabilidad",
-        "categoria_tematica": "RMV · Diferencial",
-        "modalidad": "Individual y Colectivo",
-        "duracion": "12 meses",
-        "capital": "Capital: Económico",
-        "impacto": "• Pérdida de cultivos o especies vegetales • Pérdida de estructuras productivas/comerciales no trasladables • Afectación de negocios vinculados al territorio (en hogares sin capacidad de proyecto productivo)",
-        "indicador": "% de hogares vulnerables con opción sustitutiva de ingresos implementada y operativa",
-        "formula_original": "(# hogares con opción sustitutiva en funcionamiento / # total hogares vulnerables que cumplen criterios) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "moneda",
-        "entidad_principal": "Persona",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Persona. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-056",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Comunicación, información y socialización",
-        "categoria_tematica": "Transversal",
-        "modalidad": "Individual y Colectivo",
-        "duracion": "Toda la implementación",
-        "capital": "Capital: Social / Humano",
-        "impacto": "• Afectación emocional por desarraigo con el entorno • Afectación de las relaciones comunitarias y la estructura social • Afectación de las dinámicas o prácticas culturales y tradicionales",
-        "indicador": "% de acciones comunicativas implementadas",
-        "formula_original": "(# acciones implementadas / # acciones planificadas) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Actividad/Evento",
-        "nivel_captura_recomendado": "Consolidado",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador se registra como dato agregado del periodo: valor alcanzado y valor esperado. No exige seleccionar hogar/persona."
-    },
-    {
-        "id_indicador": "PRMV-S-057",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Comunicación, información y socialización",
-        "categoria_tematica": "Transversal",
-        "modalidad": "Individual y Colectivo",
-        "duracion": "Toda la implementación",
-        "capital": "Capital: Social / Humano",
-        "impacto": "• Afectación emocional por desarraigo con el entorno • Afectación de las relaciones comunitarias y la estructura social • Afectación de las dinámicas o prácticas culturales y tradicionales",
-        "indicador": "% de piezas comunicativas elaboradas y divulgadas",
-        "formula_original": "(# piezas divulgadas / # piezas proyectadas) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Actividad/Evento",
-        "nivel_captura_recomendado": "Consolidado",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador se registra como dato agregado del periodo: valor alcanzado y valor esperado. No exige seleccionar hogar/persona."
-    },
-    {
-        "id_indicador": "PRMV-S-058",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Comunicación, información y socialización",
-        "categoria_tematica": "Transversal",
-        "modalidad": "Individual y Colectivo",
-        "duracion": "Toda la implementación",
-        "capital": "Capital: Social / Humano",
-        "impacto": "• Afectación emocional por desarraigo con el entorno • Afectación de las relaciones comunitarias y la estructura social • Afectación de las dinámicas o prácticas culturales y tradicionales",
-        "indicador": "% de espacios de socialización realizados",
-        "formula_original": "(# espacios realizados / # espacios planificados) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Actividad/Evento",
-        "nivel_captura_recomendado": "Consolidado",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador se registra como dato agregado del periodo: valor alcanzado y valor esperado. No exige seleccionar hogar/persona."
-    },
-    {
-        "id_indicador": "PRMV-S-059",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Comunicación, información y socialización",
-        "categoria_tematica": "Transversal",
-        "modalidad": "Individual y Colectivo",
-        "duracion": "Toda la implementación",
-        "capital": "Capital: Social / Humano",
-        "impacto": "• Afectación emocional por desarraigo con el entorno • Afectación de las relaciones comunitarias y la estructura social • Afectación de las dinámicas o prácticas culturales y tradicionales",
-        "indicador": "% de familias que acceden a mecanismos de información acordes con sus características",
-        "formula_original": "(# familias que acceden / # familias reasentadas) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-060",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Convivencia comunitaria y cohesión social",
-        "categoria_tematica": "Transversal",
-        "modalidad": "Individual y Colectivo",
-        "duracion": "Toda la implementación",
-        "capital": "Capital: Social / Humano",
-        "impacto": "• Afectación emocional por desarraigo con el entorno • Afectación de las relaciones comunitarias y la estructura social • Afectación de las dinámicas o prácticas culturales y tradicionales",
-        "indicador": "% de comunidades receptoras que acceden a mecanismos de información",
-        "formula_original": "(# comunidades receptoras que acceden / total comunidades receptoras) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Lugar poblado",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Lugar poblado. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-061",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Comunicación, información y socialización",
-        "categoria_tematica": "Transversal",
-        "modalidad": "Individual y Colectivo",
-        "duracion": "Toda la implementación",
-        "capital": "Capital: Social / Humano",
-        "impacto": "• Afectación emocional por desarraigo con el entorno • Afectación de las relaciones comunitarias y la estructura social • Afectación de las dinámicas o prácticas culturales y tradicionales",
-        "indicador": "Nivel de comprensión de la información en espacios de socialización",
-        "formula_original": "(# familias que demuestran comprensión / # familias que participan) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Consolidado o por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador permite dos formas: captura consolidada del periodo o captura por entidad tipo Hogar. Usa por entidad cuando necesites trazabilidad individual."
-    },
-    {
-        "id_indicador": "PRMV-S-062",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Gestión CDQR y conflictividad",
-        "categoria_tematica": "Transversal",
-        "modalidad": "Individual y Colectivo",
-        "duracion": "Todo el ciclo de vida del proyecto",
-        "capital": "Capital: Social (gobernanza)",
-        "impacto": "• Riesgo de inconformidades, conflictos y desinformación asociados al proyecto (medida preventiva y de gestión, no atiende un impacto físico)",
-        "indicador": "% de CDQR registradas y atendidas dentro del plazo establecido",
-        "formula_original": "(# CDQR atendidas en plazo / # CDQR recibidas) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "CDQR",
-        "nivel_captura_recomendado": "Consolidado",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador se registra como dato agregado del periodo: valor alcanzado y valor esperado. No exige seleccionar hogar/persona."
-    },
-    {
-        "id_indicador": "PRMV-S-063",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Gestión CDQR y conflictividad",
-        "categoria_tematica": "Transversal",
-        "modalidad": "Individual y Colectivo",
-        "duracion": "Todo el ciclo de vida del proyecto",
-        "capital": "Capital: Social (gobernanza)",
-        "impacto": "• Riesgo de inconformidades, conflictos y desinformación asociados al proyecto (medida preventiva y de gestión, no atiende un impacto físico)",
-        "indicador": "% de CDQR resueltas a satisfacción del solicitante",
-        "formula_original": "(# CDQR resueltas a satisfacción / # CDQR cerradas) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "CDQR",
-        "nivel_captura_recomendado": "Consolidado",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador se registra como dato agregado del periodo: valor alcanzado y valor esperado. No exige seleccionar hogar/persona."
-    },
-    {
-        "id_indicador": "PRMV-S-064",
-        "tipo_indicador": "Seguimiento PAR/PRMV",
-        "grupo_funcional": "Gestión CDQR y conflictividad",
-        "categoria_tematica": "Transversal",
-        "modalidad": "Individual y Colectivo",
-        "duracion": "Todo el ciclo de vida del proyecto",
-        "capital": "Capital: Social (gobernanza)",
-        "impacto": "• Riesgo de inconformidades, conflictos y desinformación asociados al proyecto (medida preventiva y de gestión, no atiende un impacto físico)",
-        "indicador": "Cobertura de divulgación del mecanismo CDQR",
-        "formula_original": "(# espacios/piezas de divulgación realizados / # programados) × 100",
-        "meta": "",
-        "periodicidad": "",
-        "unidad": "porcentaje",
-        "entidad_principal": "CDQR",
-        "nivel_captura_recomendado": "Consolidado",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador se registra como dato agregado del periodo: valor alcanzado y valor esperado. No exige seleccionar hogar/persona."
-    },
-    {
-        "id_indicador": "PRMV-R-001",
-        "tipo_indicador": "Resultado M&E",
-        "grupo_funcional": "Resultado - Capital Humano",
-        "categoria_tematica": "Indicador de resultado M&E por capital",
-        "modalidad": "Individual / Hogar",
-        "duracion": "",
-        "capital": "Capital Humano",
-        "impacto": "",
-        "indicador": "Hogares con acceso a educación primaria completa",
-        "formula_original": "Medición contra línea base. Registrar valor de línea base y valor actual, o numerador/denominador cuando el indicador se mida como porcentaje.",
-        "meta": "≥95%",
-        "periodicidad": "Línea base + anual",
-        "unidad": "número",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador debe asociarse preferiblemente a una entidad tipo Hogar. Así permite análisis por hogar/persona/lugar/OBC y comparación histórica."
-    },
-    {
-        "id_indicador": "PRMV-R-002",
-        "tipo_indicador": "Resultado M&E",
-        "grupo_funcional": "Resultado - Capital Humano",
-        "categoria_tematica": "Indicador de resultado M&E por capital",
-        "modalidad": "Según entidad",
-        "duracion": "",
-        "capital": "Capital Humano",
-        "impacto": "",
-        "indicador": "Beneficiarios capacitados que aplican conocimientos",
-        "formula_original": "Medición contra línea base. Registrar valor de línea base y valor actual, o numerador/denominador cuando el indicador se mida como porcentaje.",
-        "meta": "≥80%",
-        "periodicidad": "Línea base + semestral",
-        "unidad": "número",
-        "entidad_principal": "Persona",
-        "nivel_captura_recomendado": "Por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador debe asociarse preferiblemente a una entidad tipo Persona. Así permite análisis por hogar/persona/lugar/OBC y comparación histórica."
-    },
-    {
-        "id_indicador": "PRMV-R-003",
-        "tipo_indicador": "Resultado M&E",
-        "grupo_funcional": "Resultado - Capital Humano",
-        "categoria_tematica": "Indicador de resultado M&E por capital",
-        "modalidad": "Individual / Hogar",
-        "duracion": "",
-        "capital": "Capital Humano",
-        "impacto": "",
-        "indicador": "Hogares con acceso a servicios de salud básicos",
-        "formula_original": "Medición contra línea base. Registrar valor de línea base y valor actual, o numerador/denominador cuando el indicador se mida como porcentaje.",
-        "meta": "≥90%",
-        "periodicidad": "Línea base + semestral",
-        "unidad": "número",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador debe asociarse preferiblemente a una entidad tipo Hogar. Así permite análisis por hogar/persona/lugar/OBC y comparación histórica."
-    },
-    {
-        "id_indicador": "PRMV-R-004",
-        "tipo_indicador": "Resultado M&E",
-        "grupo_funcional": "Resultado - Capital Humano",
-        "categoria_tematica": "Indicador de resultado M&E por capital",
-        "modalidad": "Individual / Hogar",
-        "duracion": "",
-        "capital": "Capital Humano",
-        "impacto": "",
-        "indicador": "Promedio de años de escolaridad en el hogar",
-        "formula_original": "Medición contra línea base. Registrar valor de línea base y valor actual, o numerador/denominador cuando el indicador se mida como porcentaje.",
-        "meta": "0.1",
-        "periodicidad": "Línea base + anual",
-        "unidad": "promedio",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Por entidad",
-        "tipo_valor_recomendado": "Línea base vs actual",
-        "ayuda_captura": "Este indicador debe asociarse preferiblemente a una entidad tipo Hogar. Así permite análisis por hogar/persona/lugar/OBC y comparación histórica."
-    },
-    {
-        "id_indicador": "PRMV-R-005",
-        "tipo_indicador": "Resultado M&E",
-        "grupo_funcional": "Resultado - Capital Social",
-        "categoria_tematica": "Indicador de resultado M&E por capital",
-        "modalidad": "Individual / Hogar",
-        "duracion": "",
-        "capital": "Capital Social",
-        "impacto": "",
-        "indicador": "Hogares en organizaciones o grupos comunitarios",
-        "formula_original": "Medición contra línea base. Registrar valor de línea base y valor actual, o numerador/denominador cuando el indicador se mida como porcentaje.",
-        "meta": "≥80%",
-        "periodicidad": "Línea base + anual",
-        "unidad": "número",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador debe asociarse preferiblemente a una entidad tipo Hogar. Así permite análisis por hogar/persona/lugar/OBC y comparación histórica."
-    },
-    {
-        "id_indicador": "PRMV-R-006",
-        "tipo_indicador": "Resultado M&E",
-        "grupo_funcional": "Resultado - Capital Social",
-        "categoria_tematica": "Indicador de resultado M&E por capital",
-        "modalidad": "Según entidad",
-        "duracion": "",
-        "capital": "Capital Social",
-        "impacto": "",
-        "indicador": "Espacios de diálogo funcionando regularmente",
-        "formula_original": "Medición contra línea base. Registrar valor de línea base y valor actual, o numerador/denominador cuando el indicador se mida como porcentaje.",
-        "meta": "1",
-        "periodicidad": "Línea base + continuo",
-        "unidad": "número",
-        "entidad_principal": "Actividad/Evento",
-        "nivel_captura_recomendado": "Consolidado",
-        "tipo_valor_recomendado": "Línea base vs actual",
-        "ayuda_captura": "Este indicador se registra como dato agregado del periodo: valor alcanzado y valor esperado. No exige seleccionar hogar/persona."
-    },
-    {
-        "id_indicador": "PRMV-R-007",
-        "tipo_indicador": "Resultado M&E",
-        "grupo_funcional": "Resultado - Capital Social",
-        "categoria_tematica": "Indicador de resultado M&E por capital",
-        "modalidad": "Individual / Hogar",
-        "duracion": "",
-        "capital": "Capital Social",
-        "impacto": "",
-        "indicador": "Satisfacción con calidad de relaciones comunitarias",
-        "formula_original": "Medición contra línea base. Registrar valor de línea base y valor actual, o numerador/denominador cuando el indicador se mida como porcentaje.",
-        "meta": "≥80%",
-        "periodicidad": "Línea base + semestral",
-        "unidad": "número",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador debe asociarse preferiblemente a una entidad tipo Hogar. Así permite análisis por hogar/persona/lugar/OBC y comparación histórica."
-    },
-    {
-        "id_indicador": "PRMV-R-008",
-        "tipo_indicador": "Resultado M&E",
-        "grupo_funcional": "Resultado - Capital Social",
-        "categoria_tematica": "Indicador de resultado M&E por capital",
-        "modalidad": "Individual / Hogar",
-        "duracion": "",
-        "capital": "Capital Social",
-        "impacto": "",
-        "indicador": "Conflictos resueltos en plazo de 30 días",
-        "formula_original": "Medición contra línea base. Registrar valor de línea base y valor actual, o numerador/denominador cuando el indicador se mida como porcentaje.",
-        "meta": "≥95%",
-        "periodicidad": "Línea base + mensual",
-        "unidad": "número",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador debe asociarse preferiblemente a una entidad tipo Hogar. Así permite análisis por hogar/persona/lugar/OBC y comparación histórica."
-    },
-    {
-        "id_indicador": "PRMV-R-009",
-        "tipo_indicador": "Resultado M&E",
-        "grupo_funcional": "Resultado - Capital Económico",
-        "categoria_tematica": "Indicador de resultado M&E por capital",
-        "modalidad": "Individual / Hogar",
-        "duracion": "",
-        "capital": "Capital Económico",
-        "impacto": "",
-        "indicador": "Hogares que recuperan ingresos pre-reasentamiento",
-        "formula_original": "Medición contra línea base. Registrar valor de línea base y valor actual, o numerador/denominador cuando el indicador se mida como porcentaje.",
-        "meta": "≥90%",
-        "periodicidad": "Línea base + trimestral",
-        "unidad": "moneda",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Por entidad",
-        "tipo_valor_recomendado": "Monto / línea base",
-        "ayuda_captura": "Este indicador debe asociarse preferiblemente a una entidad tipo Hogar. Así permite análisis por hogar/persona/lugar/OBC y comparación histórica."
-    },
-    {
-        "id_indicador": "PRMV-R-010",
-        "tipo_indicador": "Resultado M&E",
-        "grupo_funcional": "Resultado - Capital Económico",
-        "categoria_tematica": "Indicador de resultado M&E por capital",
-        "modalidad": "Individual / Hogar",
-        "duracion": "",
-        "capital": "Capital Económico",
-        "impacto": "",
-        "indicador": "Ingreso mensual per cápita",
-        "formula_original": "Medición contra línea base. Registrar valor de línea base y valor actual, o numerador/denominador cuando el indicador se mida como porcentaje.",
-        "meta": "Igualar niveles previos",
-        "periodicidad": "Línea base + semestral",
-        "unidad": "moneda",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Por entidad",
-        "tipo_valor_recomendado": "Monto / línea base",
-        "ayuda_captura": "Este indicador debe asociarse preferiblemente a una entidad tipo Hogar. Así permite análisis por hogar/persona/lugar/OBC y comparación histórica."
-    },
-    {
-        "id_indicador": "PRMV-R-011",
-        "tipo_indicador": "Resultado M&E",
-        "grupo_funcional": "Resultado - Capital Económico",
-        "categoria_tematica": "Indicador de resultado M&E por capital",
-        "modalidad": "Individual / Hogar",
-        "duracion": "",
-        "capital": "Capital Económico",
-        "impacto": "",
-        "indicador": "Hogares con acceso a crédito productivo formalizado",
-        "formula_original": "Medición contra línea base. Registrar valor de línea base y valor actual, o numerador/denominador cuando el indicador se mida como porcentaje.",
-        "meta": "≥75%",
-        "periodicidad": "Línea base + anual",
-        "unidad": "número",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador debe asociarse preferiblemente a una entidad tipo Hogar. Así permite análisis por hogar/persona/lugar/OBC y comparación histórica."
-    },
-    {
-        "id_indicador": "PRMV-R-012",
-        "tipo_indicador": "Resultado M&E",
-        "grupo_funcional": "Resultado - Capital Económico",
-        "categoria_tematica": "Indicador de resultado M&E por capital",
-        "modalidad": "Individual / Hogar",
-        "duracion": "",
-        "capital": "Capital Económico",
-        "impacto": "",
-        "indicador": "Fuentes de ingreso diversificadas",
-        "formula_original": "Medición contra línea base. Registrar valor de línea base y valor actual, o numerador/denominador cuando el indicador se mida como porcentaje.",
-        "meta": "Mínimo 2",
-        "periodicidad": "Línea base + anual",
-        "unidad": "moneda",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Por entidad",
-        "tipo_valor_recomendado": "Monto / línea base",
-        "ayuda_captura": "Este indicador debe asociarse preferiblemente a una entidad tipo Hogar. Así permite análisis por hogar/persona/lugar/OBC y comparación histórica."
-    },
-    {
-        "id_indicador": "PRMV-R-013",
-        "tipo_indicador": "Resultado M&E",
-        "grupo_funcional": "Resultado - Capital Económico",
-        "categoria_tematica": "Indicador de resultado M&E por capital",
-        "modalidad": "Según entidad",
-        "duracion": "",
-        "capital": "Capital Económico",
-        "impacto": "",
-        "indicador": "Beneficiarios con inversiones en activos productivos",
-        "formula_original": "Medición contra línea base. Registrar valor de línea base y valor actual, o numerador/denominador cuando el indicador se mida como porcentaje.",
-        "meta": "≥70%",
-        "periodicidad": "Línea base + anual",
-        "unidad": "número",
-        "entidad_principal": "Persona",
-        "nivel_captura_recomendado": "Por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador debe asociarse preferiblemente a una entidad tipo Persona. Así permite análisis por hogar/persona/lugar/OBC y comparación histórica."
-    },
-    {
-        "id_indicador": "PRMV-R-014",
-        "tipo_indicador": "Resultado M&E",
-        "grupo_funcional": "Resultado - Capital Físico",
-        "categoria_tematica": "Indicador de resultado M&E por capital",
-        "modalidad": "Individual / Hogar",
-        "duracion": "",
-        "capital": "Capital Físico",
-        "impacto": "",
-        "indicador": "Viviendas en condición aceptable post-reasentamiento",
-        "formula_original": "Medición contra línea base. Registrar valor de línea base y valor actual, o numerador/denominador cuando el indicador se mida como porcentaje.",
-        "meta": "≥95%",
-        "periodicidad": "Línea base + anual",
-        "unidad": "número",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador debe asociarse preferiblemente a una entidad tipo Hogar. Así permite análisis por hogar/persona/lugar/OBC y comparación histórica."
-    },
-    {
-        "id_indicador": "PRMV-R-015",
-        "tipo_indicador": "Resultado M&E",
-        "grupo_funcional": "Resultado - Capital Físico",
-        "categoria_tematica": "Indicador de resultado M&E por capital",
-        "modalidad": "Individual / Hogar",
-        "duracion": "",
-        "capital": "Capital Físico",
-        "impacto": "",
-        "indicador": "Hogares con acceso a servicios básicos",
-        "formula_original": "Medición contra línea base. Registrar valor de línea base y valor actual, o numerador/denominador cuando el indicador se mida como porcentaje.",
-        "meta": "≥95%",
-        "periodicidad": "Línea base + semestral",
-        "unidad": "número",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador debe asociarse preferiblemente a una entidad tipo Hogar. Así permite análisis por hogar/persona/lugar/OBC y comparación histórica."
-    },
-    {
-        "id_indicador": "PRMV-R-016",
-        "tipo_indicador": "Resultado M&E",
-        "grupo_funcional": "Resultado - Capital Físico",
-        "categoria_tematica": "Indicador de resultado M&E por capital",
-        "modalidad": "Según entidad",
-        "duracion": "",
-        "capital": "Capital Físico",
-        "impacto": "",
-        "indicador": "Infraestructura comunitaria en buen estado",
-        "formula_original": "Medición contra línea base. Registrar valor de línea base y valor actual, o numerador/denominador cuando el indicador se mida como porcentaje.",
-        "meta": "≥90%",
-        "periodicidad": "Línea base + anual",
-        "unidad": "número",
-        "entidad_principal": "Infraestructura comunitaria",
-        "nivel_captura_recomendado": "Por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador debe asociarse preferiblemente a una entidad tipo Infraestructura comunitaria. Así permite análisis por hogar/persona/lugar/OBC y comparación histórica."
-    },
-    {
-        "id_indicador": "PRMV-R-017",
-        "tipo_indicador": "Resultado M&E",
-        "grupo_funcional": "Resultado - Capital Físico",
-        "categoria_tematica": "Indicador de resultado M&E por capital",
-        "modalidad": "Individual / Hogar",
-        "duracion": "",
-        "capital": "Capital Físico",
-        "impacto": "",
-        "indicador": "Disponibilidad de herramientas/equipos productivos",
-        "formula_original": "Medición contra línea base. Registrar valor de línea base y valor actual, o numerador/denominador cuando el indicador se mida como porcentaje.",
-        "meta": "Niveles previos",
-        "periodicidad": "Línea base + anual",
-        "unidad": "número",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Por entidad",
-        "tipo_valor_recomendado": "Línea base vs actual",
-        "ayuda_captura": "Este indicador debe asociarse preferiblemente a una entidad tipo Hogar. Así permite análisis por hogar/persona/lugar/OBC y comparación histórica."
-    },
-    {
-        "id_indicador": "PRMV-R-018",
-        "tipo_indicador": "Resultado M&E",
-        "grupo_funcional": "Resultado - Capital Natural",
-        "categoria_tematica": "Indicador de resultado M&E por capital",
-        "modalidad": "Individual / Hogar",
-        "duracion": "",
-        "capital": "Capital Natural",
-        "impacto": "",
-        "indicador": "Hogares agrícolas con acceso a tierra productiva",
-        "formula_original": "Medición contra línea base. Registrar valor de línea base y valor actual, o numerador/denominador cuando el indicador se mida como porcentaje.",
-        "meta": "1",
-        "periodicidad": "Línea base + anual",
-        "unidad": "número",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador debe asociarse preferiblemente a una entidad tipo Hogar. Así permite análisis por hogar/persona/lugar/OBC y comparación histórica."
-    },
-    {
-        "id_indicador": "PRMV-R-019",
-        "tipo_indicador": "Resultado M&E",
-        "grupo_funcional": "Resultado - Capital Natural",
-        "categoria_tematica": "Indicador de resultado M&E por capital",
-        "modalidad": "Individual / Hogar",
-        "duracion": "",
-        "capital": "Capital Natural",
-        "impacto": "",
-        "indicador": "Rendimiento agrícola por hectárea",
-        "formula_original": "Medición contra línea base. Registrar valor de línea base y valor actual, o numerador/denominador cuando el indicador se mida como porcentaje.",
-        "meta": "Igualar previo",
-        "periodicidad": "Línea base + anual",
-        "unidad": "valor por hectárea",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Por entidad",
-        "tipo_valor_recomendado": "Línea base vs actual",
-        "ayuda_captura": "Este indicador debe asociarse preferiblemente a una entidad tipo Hogar. Así permite análisis por hogar/persona/lugar/OBC y comparación histórica."
-    },
-    {
-        "id_indicador": "PRMV-R-020",
-        "tipo_indicador": "Resultado M&E",
-        "grupo_funcional": "Resultado - Capital Natural",
-        "categoria_tematica": "Indicador de resultado M&E por capital",
-        "modalidad": "Individual / Hogar",
-        "duracion": "",
-        "capital": "Capital Natural",
-        "impacto": "",
-        "indicador": "Cultivos principales diversificados",
-        "formula_original": "Medición contra línea base. Registrar valor de línea base y valor actual, o numerador/denominador cuando el indicador se mida como porcentaje.",
-        "meta": "Mínimo 3",
-        "periodicidad": "Línea base + anual",
-        "unidad": "número",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Por entidad",
-        "tipo_valor_recomendado": "Línea base vs actual",
-        "ayuda_captura": "Este indicador debe asociarse preferiblemente a una entidad tipo Hogar. Así permite análisis por hogar/persona/lugar/OBC y comparación histórica."
-    },
-    {
-        "id_indicador": "PRMV-R-021",
-        "tipo_indicador": "Resultado M&E",
-        "grupo_funcional": "Resultado - Capital Natural",
-        "categoria_tematica": "Indicador de resultado M&E por capital",
-        "modalidad": "Según entidad",
-        "duracion": "",
-        "capital": "Capital Natural",
-        "impacto": "",
-        "indicador": "Índice de salud del suelo/ecosistema",
-        "formula_original": "Medición contra línea base. Registrar valor de línea base y valor actual, o numerador/denominador cuando el indicador se mida como porcentaje.",
-        "meta": "Mantener o mejorar",
-        "periodicidad": "Línea base + anual",
-        "unidad": "índice",
-        "entidad_principal": "Global",
-        "nivel_captura_recomendado": "Consolidado",
-        "tipo_valor_recomendado": "Línea base vs actual",
-        "ayuda_captura": "Este indicador se registra como dato agregado del periodo: valor alcanzado y valor esperado. No exige seleccionar hogar/persona."
-    },
-    {
-        "id_indicador": "PRMV-R-022",
-        "tipo_indicador": "Resultado M&E",
-        "grupo_funcional": "Resultado - Capital Natural",
-        "categoria_tematica": "Indicador de resultado M&E por capital",
-        "modalidad": "Individual / Hogar",
-        "duracion": "",
-        "capital": "Capital Natural",
-        "impacto": "",
-        "indicador": "Acceso a agua para uso productivo agrícola",
-        "formula_original": "Medición contra línea base. Registrar valor de línea base y valor actual, o numerador/denominador cuando el indicador se mida como porcentaje.",
-        "meta": "100% lluvia / ≥80% seco",
-        "periodicidad": "Línea base + trimestral",
-        "unidad": "número",
-        "entidad_principal": "Hogar",
-        "nivel_captura_recomendado": "Por entidad",
-        "tipo_valor_recomendado": "Numerador / denominador",
-        "ayuda_captura": "Este indicador debe asociarse preferiblemente a una entidad tipo Hogar. Así permite análisis por hogar/persona/lugar/OBC y comparación histórica."
-    }
+INDICADORES: List[Dict[str, str]] = [
+  {
+    "id_indicador": "PRMV-S-001",
+    "categoria_general": "Ambiente, territorio y servicios ecosistémicos",
+    "subcategoria": "Gestión ambiental y servicios ecosistémicos",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias que participan en el proyecto de capacitaciones en buenas prácticas ambientales",
+    "formula_original": "(# familias que participan en el proyecto formulado y validado / # total familias sujetas que aplican) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación socioec.",
+    "modalidad": "Individual y Colectivo",
+    "duracion": "(por definir)",
+    "capital": "Capital: Natural / Humano",
+    "impacto": "• Pérdida del acceso, disponibilidad y calidad de los servicios ecosistémicos basados en dinámicas culturales (madera, medicinas, alimentos, entorno natural) ubicados en el área del Lago",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-002",
+    "categoria_general": "Comunidad, cultura, organización e infraestructura",
+    "subcategoria": "Fortalecimiento organizativo y OBC",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de OBC que participan en las capacitaciones",
+    "formula_original": "(# OBC que participan / # total OBC sujetas que aplican) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "OBC",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación socioec.",
+    "modalidad": "Individual y Colectivo",
+    "duracion": "(por definir)",
+    "capital": "Capital: Natural / Humano",
+    "impacto": "• Pérdida del acceso, disponibilidad y calidad de los servicios ecosistémicos basados en dinámicas culturales (madera, medicinas, alimentos, entorno natural) ubicados en el área del Lago",
+    "ayuda_indicador": "Recomendado por OBC: permite seguimiento a organizaciones de base comunitaria."
+  },
+  {
+    "id_indicador": "PRMV-S-003",
+    "categoria_general": "Gestión operativa, comunicación y participación",
+    "subcategoria": "Seguimiento PRMV general",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de cumplimiento de visitas y encuentros de diálogo de saberes",
+    "formula_original": "(# visitas realizadas / # visitas previstas) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Actividad/Evento",
+    "requiere_entidad": "No",
+    "requiere_planificacion": "Sí",
+    "categoria_tematica_original": "Compensación socioec.",
+    "modalidad": "Individual y Colectivo",
+    "duracion": "(por definir)",
+    "capital": "Capital: Natural / Humano",
+    "impacto": "• Pérdida del acceso, disponibilidad y calidad de los servicios ecosistémicos basados en dinámicas culturales (madera, medicinas, alimentos, entorno natural) ubicados en el área del Lago",
+    "ayuda_indicador": "Registro global/consolidado: no exige seleccionar hogar, persona u otra entidad."
+  },
+  {
+    "id_indicador": "PRMV-S-004",
+    "categoria_general": "Gestión operativa, comunicación y participación",
+    "subcategoria": "Seguimiento PRMV general",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de avance en la ejecución de capacitaciones",
+    "formula_original": "(# capacitaciones implementadas / # programadas) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Actividad/Evento",
+    "requiere_entidad": "No",
+    "requiere_planificacion": "Sí",
+    "categoria_tematica_original": "Compensación socioec.",
+    "modalidad": "Individual y Colectivo",
+    "duracion": "(por definir)",
+    "capital": "Capital: Natural / Humano",
+    "impacto": "• Pérdida del acceso, disponibilidad y calidad de los servicios ecosistémicos basados en dinámicas culturales (madera, medicinas, alimentos, entorno natural) ubicados en el área del Lago",
+    "ayuda_indicador": "Registro global/consolidado: no exige seleccionar hogar, persona u otra entidad."
+  },
+  {
+    "id_indicador": "PRMV-S-005",
+    "categoria_general": "Ambiente, territorio y servicios ecosistémicos",
+    "subcategoria": "Gestión ambiental y servicios ecosistémicos",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias que implementan buenas prácticas ambientales",
+    "formula_original": "(# familias que implementan BPA / # total familias sujetas que aplican) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación socioec.",
+    "modalidad": "Individual y Colectivo",
+    "duracion": "(por definir)",
+    "capital": "Capital: Natural / Humano",
+    "impacto": "• Pérdida del acceso, disponibilidad y calidad de los servicios ecosistémicos basados en dinámicas culturales (madera, medicinas, alimentos, entorno natural) ubicados en el área del Lago",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-006",
+    "categoria_general": "Comunidad, cultura, organización e infraestructura",
+    "subcategoria": "Fortalecimiento organizativo y OBC",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de OBC que implementan buenas prácticas ambientales",
+    "formula_original": "(# OBC que implementan BPA / # total OBC sujetas que aplican) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "OBC",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación socioec.",
+    "modalidad": "Individual y Colectivo",
+    "duracion": "(por definir)",
+    "capital": "Capital: Natural / Humano",
+    "impacto": "• Pérdida del acceso, disponibilidad y calidad de los servicios ecosistémicos basados en dinámicas culturales (madera, medicinas, alimentos, entorno natural) ubicados en el área del Lago",
+    "ayuda_indicador": "Recomendado por OBC: permite seguimiento a organizaciones de base comunitaria."
+  },
+  {
+    "id_indicador": "PRMV-S-007",
+    "categoria_general": "Comunidad, cultura, organización e infraestructura",
+    "subcategoria": "Infraestructura comunitaria y equipamiento",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de estructuras comunitarias restablecidas con vinculación de instituciones y/o OBC para su cuidado",
+    "formula_original": "(# estructuras con instituciones/OBC vinculadas / # estructuras comunitarias restablecidas) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "OBC",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación socioec.",
+    "modalidad": "Colectivo",
+    "duracion": "36 meses",
+    "capital": "Capital: Social / Físico",
+    "impacto": "• Pérdida de los espacios públicos o comunitarios de equipamiento con significado cultural y social",
+    "ayuda_indicador": "Recomendado por OBC: permite seguimiento a organizaciones de base comunitaria."
+  },
+  {
+    "id_indicador": "PRMV-S-008",
+    "categoria_general": "Comunidad, cultura, organización e infraestructura",
+    "subcategoria": "Infraestructura comunitaria y equipamiento",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de OBC apropiadas del cuidado y preservación de las infraestructuras comunitarias",
+    "formula_original": "(# OBC con acciones sistemáticas de apropiación / # total OBC que participan) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "OBC",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación socioec.",
+    "modalidad": "Colectivo",
+    "duracion": "36 meses",
+    "capital": "Capital: Social / Físico",
+    "impacto": "• Pérdida de los espacios públicos o comunitarios de equipamiento con significado cultural y social",
+    "ayuda_indicador": "Recomendado por OBC: permite seguimiento a organizaciones de base comunitaria."
+  },
+  {
+    "id_indicador": "PRMV-S-009",
+    "categoria_general": "Gestión operativa, comunicación y participación",
+    "subcategoria": "Seguimiento PRMV general",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de cumplimiento de encuentros comunitarios de promoción",
+    "formula_original": "(# encuentros realizados / # encuentros previstos) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Actividad/Evento",
+    "requiere_entidad": "No",
+    "requiere_planificacion": "Sí",
+    "categoria_tematica_original": "Compensación socioec.",
+    "modalidad": "Colectivo",
+    "duracion": "36 meses",
+    "capital": "Capital: Social / Físico",
+    "impacto": "• Pérdida de los espacios públicos o comunitarios de equipamiento con significado cultural y social",
+    "ayuda_indicador": "Registro global/consolidado: no exige seleccionar hogar, persona u otra entidad."
+  },
+  {
+    "id_indicador": "PRMV-S-010",
+    "categoria_general": "Gestión operativa, comunicación y participación",
+    "subcategoria": "Comunicación, información y socialización",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de ejecución de actividades de socialización y promoción",
+    "formula_original": "(# acciones implementadas / # programadas) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Actividad/Evento",
+    "requiere_entidad": "No",
+    "requiere_planificacion": "Sí",
+    "categoria_tematica_original": "Compensación socioec.",
+    "modalidad": "Colectivo",
+    "duracion": "36 meses",
+    "capital": "Capital: Social / Físico",
+    "impacto": "• Pérdida de los espacios públicos o comunitarios de equipamiento con significado cultural y social",
+    "ayuda_indicador": "Registro global/consolidado: no exige seleccionar hogar, persona u otra entidad."
+  },
+  {
+    "id_indicador": "PRMV-S-011",
+    "categoria_general": "Gestión operativa, comunicación y participación",
+    "subcategoria": "Seguimiento PRMV general",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de hogares en reasentamiento colectivo que participan en actividades de cuidado/mantenimiento",
+    "formula_original": "(# hogares participantes / # hogares reasentados colectivamente) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación socioec.",
+    "modalidad": "Colectivo",
+    "duracion": "36 meses",
+    "capital": "Capital: Social / Físico",
+    "impacto": "• Pérdida de los espacios públicos o comunitarios de equipamiento con significado cultural y social",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-012",
+    "categoria_general": "Comunidad, cultura, organización e infraestructura",
+    "subcategoria": "Fortalecimiento organizativo y OBC",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de OBC que participan en procesos orientados a su preservación y fortalecimiento",
+    "formula_original": "(# OBC que participan en procesos validados / # total OBC sujetas de acompañamiento) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "OBC",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación socioec.",
+    "modalidad": "Colectivo",
+    "duracion": "36 meses",
+    "capital": "Capital: Social",
+    "impacto": "• Afectación de la composición y dinámica de organizaciones de base comunitaria (OBC) y comités conformados en el territorio",
+    "ayuda_indicador": "Recomendado por OBC: permite seguimiento a organizaciones de base comunitaria."
+  },
+  {
+    "id_indicador": "PRMV-S-013",
+    "categoria_general": "Comunidad, cultura, organización e infraestructura",
+    "subcategoria": "Fortalecimiento organizativo y OBC",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de OBC reconfiguradas que implementan iniciativas de beneficio comunitario",
+    "formula_original": "(# OBC en funcionamiento tras 3 años / # total OBC que participan) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "OBC",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación socioec.",
+    "modalidad": "Colectivo",
+    "duracion": "36 meses",
+    "capital": "Capital: Social",
+    "impacto": "• Afectación de la composición y dinámica de organizaciones de base comunitaria (OBC) y comités conformados en el territorio",
+    "ayuda_indicador": "Recomendado por OBC: permite seguimiento a organizaciones de base comunitaria."
+  },
+  {
+    "id_indicador": "PRMV-S-014",
+    "categoria_general": "Comunidad, cultura, organización e infraestructura",
+    "subcategoria": "Cultura, memoria e identidad",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias que participan en actividades de preservación de identidad cultural y memoria",
+    "formula_original": "(# familias en reasentamiento colectivo que participan / # familias que optan por colectivo) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación socioec.",
+    "modalidad": "Colectivo",
+    "duracion": "36 meses",
+    "capital": "Capital: Social / Humano (cultural)",
+    "impacto": "• Afectación de las dinámicas o prácticas culturales y tradiciones",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-015",
+    "categoria_general": "Comunidad, cultura, organización e infraestructura",
+    "subcategoria": "Cultura, memoria e identidad",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias artesanas que retoman cultivo/elaboración como práctica tradicional",
+    "formula_original": "(# familias que retoman / # familias que antes elaboraban sombreros/artesanías) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación socioec.",
+    "modalidad": "Colectivo",
+    "duracion": "36 meses",
+    "capital": "Capital: Social / Humano (cultural)",
+    "impacto": "• Afectación de las dinámicas o prácticas culturales y tradiciones",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-016",
+    "categoria_general": "Comunidad, cultura, organización e infraestructura",
+    "subcategoria": "Cultura, memoria e identidad",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de lugares de reasentamiento con nueva identidad local y tradiciones implementadas",
+    "formula_original": "(# lugares con prácticas tradicionales / # lugares de reasentamiento colectivo) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Lugar poblado",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación socioec.",
+    "modalidad": "Colectivo",
+    "duracion": "36 meses",
+    "capital": "Capital: Social / Humano (cultural)",
+    "impacto": "• Afectación de las dinámicas o prácticas culturales y tradiciones",
+    "ayuda_indicador": "Recomendado por lugar poblado/reasentamiento/comunidad."
+  },
+  {
+    "id_indicador": "PRMV-S-017",
+    "categoria_general": "Comunidad, cultura, organización e infraestructura",
+    "subcategoria": "Cultura, memoria e identidad",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de lugares con levantamiento de memoria histórica y cultural local",
+    "formula_original": "(# lugares con levantamiento / # lugares de reasentamiento colectivo) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Lugar poblado",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación socioec.",
+    "modalidad": "Colectivo",
+    "duracion": "36 meses",
+    "capital": "Capital: Social / Humano (cultural)",
+    "impacto": "• Afectación de las dinámicas o prácticas culturales y tradiciones",
+    "ayuda_indicador": "Recomendado por lugar poblado/reasentamiento/comunidad."
+  },
+  {
+    "id_indicador": "PRMV-S-018",
+    "categoria_general": "Comunidad, cultura, organización e infraestructura",
+    "subcategoria": "Cultura, memoria e identidad",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias por grupo poblacional que participan en promoción/divulgación de la memoria",
+    "formula_original": "(# familias participantes / # familias que optan por colectivo) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación socioec.",
+    "modalidad": "Colectivo",
+    "duracion": "36 meses",
+    "capital": "Capital: Social / Humano (cultural)",
+    "impacto": "• Afectación de las dinámicas o prácticas culturales y tradiciones",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-019",
+    "categoria_general": "Comunidad, cultura, organización e infraestructura",
+    "subcategoria": "Convivencia comunitaria y cohesión social",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias reasentadas que participan en espacios de relacionamiento con población receptora",
+    "formula_original": "(# familias reasentadas colectivamente que participan / # familias de reasentamiento colectivo) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación socioec.",
+    "modalidad": "Colectivo",
+    "duracion": "36 meses",
+    "capital": "Capital: Social",
+    "impacto": "• Afectación de las relaciones comunitarias y la estructura social en el territorio",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-020",
+    "categoria_general": "Comunidad, cultura, organización e infraestructura",
+    "subcategoria": "Convivencia comunitaria y cohesión social",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias (reasentadas y receptoras) con percepciones positivas de convivencia",
+    "formula_original": "(# familias con percepción positiva / # familias participantes en encuesta) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación socioec.",
+    "modalidad": "Colectivo",
+    "duracion": "36 meses",
+    "capital": "Capital: Social",
+    "impacto": "• Afectación de las relaciones comunitarias y la estructura social en el territorio",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-021",
+    "categoria_general": "Comunidad, cultura, organización e infraestructura",
+    "subcategoria": "Convivencia comunitaria y cohesión social",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de lugares de reasentamiento con mecanismos locales de diálogo y convivencia",
+    "formula_original": "(# lugares con mecanismos establecidos / # lugares de reasentamiento colectivo) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Lugar poblado",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación socioec.",
+    "modalidad": "Colectivo",
+    "duracion": "36 meses",
+    "capital": "Capital: Social",
+    "impacto": "• Afectación de las relaciones comunitarias y la estructura social en el territorio",
+    "ayuda_indicador": "Recomendado por lugar poblado/reasentamiento/comunidad."
+  },
+  {
+    "id_indicador": "PRMV-S-022",
+    "categoria_general": "Comunidad, cultura, organización e infraestructura",
+    "subcategoria": "Convivencia comunitaria y cohesión social",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de OBC que participan en capacitación/fortalecimiento con organizaciones receptoras",
+    "formula_original": "(# OBC del reasentamiento que participan / # OBC del reasentamiento colectivo) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "OBC",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación socioec.",
+    "modalidad": "Colectivo",
+    "duracion": "36 meses",
+    "capital": "Capital: Social",
+    "impacto": "• Afectación de las relaciones comunitarias y la estructura social en el territorio",
+    "ayuda_indicador": "Recomendado por OBC: permite seguimiento a organizaciones de base comunitaria."
+  },
+  {
+    "id_indicador": "PRMV-S-023",
+    "categoria_general": "Comunidad, cultura, organización e infraestructura",
+    "subcategoria": "Convivencia comunitaria y cohesión social",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias que participan en espacios de diálogo y convivencia comunitaria",
+    "formula_original": "(# familias participantes / # total familias en reasentamiento colectivo) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación socioec.",
+    "modalidad": "Colectivo",
+    "duracion": "36 meses",
+    "capital": "Capital: Social",
+    "impacto": "• Afectación de las relaciones comunitarias y la estructura social en el territorio",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-024",
+    "categoria_general": "Comunidad, cultura, organización e infraestructura",
+    "subcategoria": "Convivencia comunitaria y cohesión social",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de lugares de reasentamiento con espacios de diálogo y convivencia implementados",
+    "formula_original": "(# lugares con espacios implementados / # lugares de reasentamiento colectivo) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Lugar poblado",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación socioec.",
+    "modalidad": "Colectivo",
+    "duracion": "36 meses",
+    "capital": "Capital: Social",
+    "impacto": "• Afectación de las relaciones comunitarias y la estructura social en el territorio",
+    "ayuda_indicador": "Recomendado por lugar poblado/reasentamiento/comunidad."
+  },
+  {
+    "id_indicador": "PRMV-S-025",
+    "categoria_general": "Comunidad, cultura, organización e infraestructura",
+    "subcategoria": "Convivencia comunitaria y cohesión social",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias con percepciones favorables sobre la convivencia comunitaria",
+    "formula_original": "(# familias con percepción favorable / # familias participantes encuestadas) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación socioec.",
+    "modalidad": "Colectivo",
+    "duracion": "36 meses",
+    "capital": "Capital: Social",
+    "impacto": "• Afectación de las relaciones comunitarias y la estructura social en el territorio",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-026",
+    "categoria_general": "Hogares, vivienda, predios y compensaciones",
+    "subcategoria": "Vivienda y hábitat",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias en colectivo con vivienda restablecida según el marco de compensación",
+    "formula_original": "(# familias con reposición de vivienda / # familias de reasentamiento colectivo) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación",
+    "modalidad": "Colectivo",
+    "duracion": "36 meses",
+    "capital": "Capital: Físico",
+    "impacto": "• Pérdida de la vivienda e infraestructuras residenciales anexas",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-027",
+    "categoria_general": "Hogares, vivienda, predios y compensaciones",
+    "subcategoria": "Vivienda y hábitat",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias con título de propiedad inscrito en registro público",
+    "formula_original": "(# familias con título registrado / # familias con reposición de vivienda) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación",
+    "modalidad": "Colectivo",
+    "duracion": "36 meses",
+    "capital": "Capital: Físico",
+    "impacto": "• Pérdida de la vivienda e infraestructuras residenciales anexas",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-028",
+    "categoria_general": "Hogares, vivienda, predios y compensaciones",
+    "subcategoria": "Vivienda y hábitat",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias que participan en seguimiento al proceso de construcción",
+    "formula_original": "(# familias que participan / # familias con reposición de vivienda) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación",
+    "modalidad": "Colectivo",
+    "duracion": "36 meses",
+    "capital": "Capital: Físico",
+    "impacto": "• Pérdida de la vivienda e infraestructuras residenciales anexas",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-029",
+    "categoria_general": "Hogares, vivienda, predios y compensaciones",
+    "subcategoria": "Vivienda y hábitat",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias que reportaron daño o afectación en la vivienda (garantías)",
+    "formula_original": "(# familias que solicitaron arreglos por garantía / # familias con reposición) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación",
+    "modalidad": "Colectivo",
+    "duracion": "36 meses",
+    "capital": "Capital: Físico",
+    "impacto": "• Pérdida de la vivienda e infraestructuras residenciales anexas",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-030",
+    "categoria_general": "Hogares, vivienda, predios y compensaciones",
+    "subcategoria": "Vivienda y hábitat",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias que implementan prácticas de cuidado y manejo ambiental de la vivienda",
+    "formula_original": "(# familias que implementan / # familias con reposición de vivienda) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación",
+    "modalidad": "Colectivo",
+    "duracion": "36 meses",
+    "capital": "Capital: Físico",
+    "impacto": "• Pérdida de la vivienda e infraestructuras residenciales anexas",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-031",
+    "categoria_general": "Hogares, vivienda, predios y compensaciones",
+    "subcategoria": "Vivienda y hábitat",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias en individual con vivienda restablecida según el marco de compensación",
+    "formula_original": "(# familias reasentadas individualmente con vivienda restablecida / # familias elegibles que optan por individual) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación",
+    "modalidad": "Individual",
+    "duracion": "36 meses",
+    "capital": "Capital: Físico",
+    "impacto": "• Pérdida de la vivienda y estructuras residenciales anexas",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-032",
+    "categoria_general": "Hogares, vivienda, predios y compensaciones",
+    "subcategoria": "Vivienda y hábitat",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias con título de propiedad inscrito en registro público",
+    "formula_original": "(# familias con título registrado / # familias con reposición de vivienda individual) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación",
+    "modalidad": "Individual",
+    "duracion": "36 meses",
+    "capital": "Capital: Físico",
+    "impacto": "• Pérdida de la vivienda y estructuras residenciales anexas",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-033",
+    "categoria_general": "Hogares, vivienda, predios y compensaciones",
+    "subcategoria": "Vivienda y hábitat",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias que manifiestan satisfacción con la vivienda repuesta",
+    "formula_original": "(# familias satisfechas / # familias con reposición) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación",
+    "modalidad": "Individual",
+    "duracion": "36 meses",
+    "capital": "Capital: Físico",
+    "impacto": "• Pérdida de la vivienda y estructuras residenciales anexas",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-034",
+    "categoria_general": "Hogares, vivienda, predios y compensaciones",
+    "subcategoria": "Vivienda y hábitat",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias que implementan prácticas de cuidado y manejo ambiental de la vivienda",
+    "formula_original": "(# familias que implementan / # familias con reposición individual) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación",
+    "modalidad": "Individual",
+    "duracion": "36 meses",
+    "capital": "Capital: Físico",
+    "impacto": "• Pérdida de la vivienda y estructuras residenciales anexas",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-035",
+    "categoria_general": "Hogares, vivienda, predios y compensaciones",
+    "subcategoria": "Vivienda y hábitat",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias que reciben pago a valor de reposición por viviendas adicionales",
+    "formula_original": "(# familias que reciben pago / # familias con más de una vivienda impactada) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "moneda",
+    "tipo_valor": "Monto / valor numérico",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación",
+    "modalidad": "Individual y Colectivo",
+    "duracion": "12 meses",
+    "capital": "Capital: Físico",
+    "impacto": "• Pérdida de la vivienda y estructuras residenciales anexas (viviendas adicionales y anexos no repuestos)",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-036",
+    "categoria_general": "Comunidad, cultura, organización e infraestructura",
+    "subcategoria": "Infraestructura comunitaria y equipamiento",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias que reciben pago por estructuras anexas no reemplazadas",
+    "formula_original": "(# familias que reciben pago / # familias con estructuras anexas no reemplazadas) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "moneda",
+    "tipo_valor": "Monto / valor numérico",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación",
+    "modalidad": "Individual y Colectivo",
+    "duracion": "12 meses",
+    "capital": "Capital: Físico",
+    "impacto": "• Pérdida de la vivienda y estructuras residenciales anexas (viviendas adicionales y anexos no repuestos)",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-037",
+    "categoria_general": "Hogares, vivienda, predios y compensaciones",
+    "subcategoria": "Vivienda y hábitat",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias arrendatarias o en préstamo que acceden oportunamente a compensación de arriendo",
+    "formula_original": "(# familias que reciben pago oportuno / # familias arrendatarias o en préstamo) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "moneda",
+    "tipo_valor": "Monto / valor numérico",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación",
+    "modalidad": "Individual",
+    "duracion": "36 meses",
+    "capital": "Capital: Físico",
+    "impacto": "• Pérdida de vivienda en la que se reside en condición de arriendo, préstamo o cesión",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-038",
+    "categoria_general": "Hogares, vivienda, predios y compensaciones",
+    "subcategoria": "Vivienda y hábitat",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias arrendatarias con acceso a vivienda en transición de un año",
+    "formula_original": "(# familias que acceden a vivienda en arriendo / # familias arrendatarias o en préstamo) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación",
+    "modalidad": "Individual",
+    "duracion": "36 meses",
+    "capital": "Capital: Físico",
+    "impacto": "• Pérdida de vivienda en la que se reside en condición de arriendo, préstamo o cesión",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-039",
+    "categoria_general": "Hogares, vivienda, predios y compensaciones",
+    "subcategoria": "Reposición de terreno",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias en colectivo con terreno restablecido según el marco de compensación",
+    "formula_original": "(# familias con reposición de terreno / # familias de reasentamiento colectivo) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación",
+    "modalidad": "Colectivo",
+    "duracion": "12 meses",
+    "capital": "Capital: Natural / Físico",
+    "impacto": "• Pérdida del terreno • Pérdida del acceso, disponibilidad y calidad de los servicios ecosistémicos del área del Lago",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-040",
+    "categoria_general": "Hogares, vivienda, predios y compensaciones",
+    "subcategoria": "Reposición de terreno",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias con título de propiedad del terreno inscrito en registro público",
+    "formula_original": "(# familias con título registrado / # familias con reposición de terreno colectivo) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación",
+    "modalidad": "Colectivo",
+    "duracion": "12 meses",
+    "capital": "Capital: Natural / Físico",
+    "impacto": "• Pérdida del terreno • Pérdida del acceso, disponibilidad y calidad de los servicios ecosistémicos del área del Lago",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-041",
+    "categoria_general": "Hogares, vivienda, predios y compensaciones",
+    "subcategoria": "Reposición de terreno",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias en individual con terreno restablecido según el marco de compensación",
+    "formula_original": "(# familias con restablecimiento de terreno / # familias que optan por individual) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación",
+    "modalidad": "Individual",
+    "duracion": "30 meses",
+    "capital": "Capital: Natural / Físico",
+    "impacto": "• Pérdida del terreno",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-042",
+    "categoria_general": "Hogares, vivienda, predios y compensaciones",
+    "subcategoria": "Reposición de terreno",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias con título de propiedad del terreno inscrito en registro público",
+    "formula_original": "(# familias que reciben títulos / # familias que optan por individual) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación",
+    "modalidad": "Individual",
+    "duracion": "30 meses",
+    "capital": "Capital: Natural / Físico",
+    "impacto": "• Pérdida del terreno",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-043",
+    "categoria_general": "Comunidad, cultura, organización e infraestructura",
+    "subcategoria": "Infraestructura comunitaria y equipamiento",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de diseños de espacios públicos y estructuras comunitarias diseñados, socializados y aprobados",
+    "formula_original": "(# estructuras diseñadas/socializadas/aprobadas / # estructuras impactadas) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Infraestructura comunitaria",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación",
+    "modalidad": "Colectivo",
+    "duracion": "30 meses",
+    "capital": "Capital: Físico / Social",
+    "impacto": "• Cambio en el acceso/aseguramiento a servicios sociales de salud • Cambio en el acceso a servicios de educación • Cambio en el acceso a servicios de recreación • Pérdida de espacios públicos o comunitarios de equipamiento con significado cultural y social",
+    "ayuda_indicador": "Recomendado por infraestructura/estructura comunitaria."
+  },
+  {
+    "id_indicador": "PRMV-S-044",
+    "categoria_general": "Comunidad, cultura, organización e infraestructura",
+    "subcategoria": "Infraestructura comunitaria y equipamiento",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de estructuras de uso comunitario restablecidas",
+    "formula_original": "(# estructuras restablecidas / # estructuras impactadas) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Infraestructura comunitaria",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación",
+    "modalidad": "Colectivo",
+    "duracion": "30 meses",
+    "capital": "Capital: Físico / Social",
+    "impacto": "• Cambio en el acceso/aseguramiento a servicios sociales de salud • Cambio en el acceso a servicios de educación • Cambio en el acceso a servicios de recreación • Pérdida de espacios públicos o comunitarios de equipamiento con significado cultural y social",
+    "ayuda_indicador": "Recomendado por infraestructura/estructura comunitaria."
+  },
+  {
+    "id_indicador": "PRMV-S-045",
+    "categoria_general": "Hogares, vivienda, predios y compensaciones",
+    "subcategoria": "Compensación económica y pagos",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias con pago completo a cargo de ACP según el contrato de transacción notariado",
+    "formula_original": "(# familias con pago completo / # familias con contrato de transacción suscrito y notariado) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "moneda",
+    "tipo_valor": "Monto / valor numérico",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación",
+    "modalidad": "Individual y Colectivo",
+    "duracion": "36 meses",
+    "capital": "Capital: Económico",
+    "impacto": "• Pérdida de cultivos o especies vegetales • Pérdida de estructuras de aprovechamiento productivo/comercial no trasladable • Afectación de negocios vinculados al territorio",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-046",
+    "categoria_general": "Medios de vida, empleo y producción",
+    "subcategoria": "Empleo y formación para el trabajo",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de trabajadores con pérdida de ingresos que participan en procesos de formación para el trabajo",
+    "formula_original": "(# trabajadores que participan en formación / # trabajadores con pérdida de ingresos) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "moneda",
+    "tipo_valor": "Monto / valor numérico",
+    "entidad_recomendada": "Persona",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación",
+    "modalidad": "Individual y Colectivo",
+    "duracion": "60 meses",
+    "capital": "Capital: Económico",
+    "impacto": "• Pérdida de fuente de ingresos por trabajo remunerado (asalariados o jornaleros)",
+    "ayuda_indicador": "Recomendado por persona: útil para beneficiarios, trabajadores o población vulnerable."
+  },
+  {
+    "id_indicador": "PRMV-S-047",
+    "categoria_general": "Medios de vida, empleo y producción",
+    "subcategoria": "Empleo y formación para el trabajo",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de trabajadores con pago completo de la compensación según contrato de transacción",
+    "formula_original": "(# trabajadores con pago completo consignado / # trabajadores con contrato suscrito y protocolizado) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "moneda",
+    "tipo_valor": "Monto / valor numérico",
+    "entidad_recomendada": "Persona",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación",
+    "modalidad": "Individual y Colectivo",
+    "duracion": "60 meses",
+    "capital": "Capital: Económico",
+    "impacto": "• Pérdida de fuente de ingresos por trabajo remunerado (asalariados o jornaleros)",
+    "ayuda_indicador": "Recomendado por persona: útil para beneficiarios, trabajadores o población vulnerable."
+  },
+  {
+    "id_indicador": "PRMV-S-048",
+    "categoria_general": "Medios de vida, empleo y producción",
+    "subcategoria": "Activos pecuarios y producción",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias con proceso de traslado de animales planificado y formalizado",
+    "formula_original": "(# familias con acta veterinaria previa e infraestructura verificada / # total familias con animales en línea base) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación",
+    "modalidad": "Individual y Colectivo",
+    "duracion": "30 meses",
+    "capital": "Capital: Económico",
+    "impacto": "• Afectación por la necesidad de traslado de animales (activos pecuarios)",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-049",
+    "categoria_general": "Medios de vida, empleo y producción",
+    "subcategoria": "Activos pecuarios y producción",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias con traslado efectivo de animales de uso productivo",
+    "formula_original": "(# familias con animales trasladados / # total familias con animales en línea base) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación",
+    "modalidad": "Individual y Colectivo",
+    "duracion": "30 meses",
+    "capital": "Capital: Económico",
+    "impacto": "• Afectación por la necesidad de traslado de animales (activos pecuarios)",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-050",
+    "categoria_general": "Medios de vida, empleo y producción",
+    "subcategoria": "Activos pecuarios y producción",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias con compensación por disminución temporal de producción/daño emergente pagada",
+    "formula_original": "(# familias con pago efectivo / # total familias con producción pecuaria) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "moneda",
+    "tipo_valor": "Monto / valor numérico",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Compensación",
+    "modalidad": "Individual y Colectivo",
+    "duracion": "30 meses",
+    "capital": "Capital: Económico",
+    "impacto": "• Afectación por la necesidad de traslado de animales (activos pecuarios)",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-051",
+    "categoria_general": "Acompañamiento diferencial y vulnerabilidad",
+    "subcategoria": "Acompañamiento diferencial y vulnerabilidad",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de personas y familias vulnerables con acompañamiento psicosocial diferencial",
+    "formula_original": "(# vulnerables con acompañamiento / # vulnerables identificadas) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Persona",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "RMV · Diferencial",
+    "modalidad": "Individual",
+    "duracion": "60 meses",
+    "capital": "Capital: Humano",
+    "impacto": "• Afectación del proyecto de vida de personas en condición de vulnerabilidad",
+    "ayuda_indicador": "Recomendado por persona: útil para beneficiarios, trabajadores o población vulnerable."
+  },
+  {
+    "id_indicador": "PRMV-S-052",
+    "categoria_general": "Acompañamiento diferencial y vulnerabilidad",
+    "subcategoria": "Acompañamiento diferencial y vulnerabilidad",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de vulnerables que desarrollan capacidades de afrontamiento y adaptación fortalecidas",
+    "formula_original": "(# vulnerables con capacidades fortalecidas / # vulnerables con acompañamiento) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Persona",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "RMV · Diferencial",
+    "modalidad": "Individual",
+    "duracion": "60 meses",
+    "capital": "Capital: Humano",
+    "impacto": "• Afectación del proyecto de vida de personas en condición de vulnerabilidad",
+    "ayuda_indicador": "Recomendado por persona: útil para beneficiarios, trabajadores o población vulnerable."
+  },
+  {
+    "id_indicador": "PRMV-S-053",
+    "categoria_general": "Acompañamiento diferencial y vulnerabilidad",
+    "subcategoria": "Acompañamiento diferencial y vulnerabilidad",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de vulnerables que acceden a servicios de protección social a los que son elegibles",
+    "formula_original": "(# vulnerables que acceden / # vulnerables que cumplen requisitos) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Persona",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "RMV · Diferencial",
+    "modalidad": "Individual",
+    "duracion": "60 meses",
+    "capital": "Capital: Humano",
+    "impacto": "• Afectación del proyecto de vida de personas en condición de vulnerabilidad",
+    "ayuda_indicador": "Recomendado por persona: útil para beneficiarios, trabajadores o población vulnerable."
+  },
+  {
+    "id_indicador": "PRMV-S-054",
+    "categoria_general": "Acompañamiento diferencial y vulnerabilidad",
+    "subcategoria": "Acompañamiento diferencial y vulnerabilidad",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de vulnerables con medidas de compensación y RMV articuladas a sus características",
+    "formula_original": "(# vulnerables con medidas articuladas / # vulnerables identificadas) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Persona",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "RMV · Diferencial",
+    "modalidad": "Individual",
+    "duracion": "60 meses",
+    "capital": "Capital: Humano",
+    "impacto": "• Afectación del proyecto de vida de personas en condición de vulnerabilidad",
+    "ayuda_indicador": "Recomendado por persona: útil para beneficiarios, trabajadores o población vulnerable."
+  },
+  {
+    "id_indicador": "PRMV-S-055",
+    "categoria_general": "Acompañamiento diferencial y vulnerabilidad",
+    "subcategoria": "Acompañamiento diferencial y vulnerabilidad",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de hogares vulnerables con opción sustitutiva de ingresos implementada y operativa",
+    "formula_original": "(# hogares con opción sustitutiva en funcionamiento / # total hogares vulnerables que cumplen criterios) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "moneda",
+    "tipo_valor": "Monto / valor numérico",
+    "entidad_recomendada": "Persona",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "RMV · Diferencial",
+    "modalidad": "Individual y Colectivo",
+    "duracion": "12 meses",
+    "capital": "Capital: Económico",
+    "impacto": "• Pérdida de cultivos o especies vegetales • Pérdida de estructuras productivas/comerciales no trasladables • Afectación de negocios vinculados al territorio (en hogares sin capacidad de proyecto productivo)",
+    "ayuda_indicador": "Recomendado por persona: útil para beneficiarios, trabajadores o población vulnerable."
+  },
+  {
+    "id_indicador": "PRMV-S-056",
+    "categoria_general": "Gestión operativa, comunicación y participación",
+    "subcategoria": "Comunicación, información y socialización",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de acciones comunicativas implementadas",
+    "formula_original": "(# acciones implementadas / # acciones planificadas) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Actividad/Evento",
+    "requiere_entidad": "No",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Transversal",
+    "modalidad": "Individual y Colectivo",
+    "duracion": "Toda la implementación",
+    "capital": "Capital: Social / Humano",
+    "impacto": "• Afectación emocional por desarraigo con el entorno • Afectación de las relaciones comunitarias y la estructura social • Afectación de las dinámicas o prácticas culturales y tradicionales",
+    "ayuda_indicador": "Registro global/consolidado: no exige seleccionar hogar, persona u otra entidad."
+  },
+  {
+    "id_indicador": "PRMV-S-057",
+    "categoria_general": "Gestión operativa, comunicación y participación",
+    "subcategoria": "Comunicación, información y socialización",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de piezas comunicativas elaboradas y divulgadas",
+    "formula_original": "(# piezas divulgadas / # piezas proyectadas) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Actividad/Evento",
+    "requiere_entidad": "No",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Transversal",
+    "modalidad": "Individual y Colectivo",
+    "duracion": "Toda la implementación",
+    "capital": "Capital: Social / Humano",
+    "impacto": "• Afectación emocional por desarraigo con el entorno • Afectación de las relaciones comunitarias y la estructura social • Afectación de las dinámicas o prácticas culturales y tradicionales",
+    "ayuda_indicador": "Registro global/consolidado: no exige seleccionar hogar, persona u otra entidad."
+  },
+  {
+    "id_indicador": "PRMV-S-058",
+    "categoria_general": "Gestión operativa, comunicación y participación",
+    "subcategoria": "Comunicación, información y socialización",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de espacios de socialización realizados",
+    "formula_original": "(# espacios realizados / # espacios planificados) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Actividad/Evento",
+    "requiere_entidad": "No",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Transversal",
+    "modalidad": "Individual y Colectivo",
+    "duracion": "Toda la implementación",
+    "capital": "Capital: Social / Humano",
+    "impacto": "• Afectación emocional por desarraigo con el entorno • Afectación de las relaciones comunitarias y la estructura social • Afectación de las dinámicas o prácticas culturales y tradicionales",
+    "ayuda_indicador": "Registro global/consolidado: no exige seleccionar hogar, persona u otra entidad."
+  },
+  {
+    "id_indicador": "PRMV-S-059",
+    "categoria_general": "Gestión operativa, comunicación y participación",
+    "subcategoria": "Comunicación, información y socialización",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de familias que acceden a mecanismos de información acordes con sus características",
+    "formula_original": "(# familias que acceden / # familias reasentadas) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Transversal",
+    "modalidad": "Individual y Colectivo",
+    "duracion": "Toda la implementación",
+    "capital": "Capital: Social / Humano",
+    "impacto": "• Afectación emocional por desarraigo con el entorno • Afectación de las relaciones comunitarias y la estructura social • Afectación de las dinámicas o prácticas culturales y tradicionales",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-060",
+    "categoria_general": "Comunidad, cultura, organización e infraestructura",
+    "subcategoria": "Convivencia comunitaria y cohesión social",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de comunidades receptoras que acceden a mecanismos de información",
+    "formula_original": "(# comunidades receptoras que acceden / total comunidades receptoras) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Lugar poblado",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Transversal",
+    "modalidad": "Individual y Colectivo",
+    "duracion": "Toda la implementación",
+    "capital": "Capital: Social / Humano",
+    "impacto": "• Afectación emocional por desarraigo con el entorno • Afectación de las relaciones comunitarias y la estructura social • Afectación de las dinámicas o prácticas culturales y tradicionales",
+    "ayuda_indicador": "Recomendado por lugar poblado/reasentamiento/comunidad."
+  },
+  {
+    "id_indicador": "PRMV-S-061",
+    "categoria_general": "Gestión operativa, comunicación y participación",
+    "subcategoria": "Comunicación, información y socialización",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "Nivel de comprensión de la información en espacios de socialización",
+    "formula_original": "(# familias que demuestran comprensión / # familias que participan) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Transversal",
+    "modalidad": "Individual y Colectivo",
+    "duracion": "Toda la implementación",
+    "capital": "Capital: Social / Humano",
+    "impacto": "• Afectación emocional por desarraigo con el entorno • Afectación de las relaciones comunitarias y la estructura social • Afectación de las dinámicas o prácticas culturales y tradicionales",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-S-062",
+    "categoria_general": "Gestión operativa, comunicación y participación",
+    "subcategoria": "Gestión CDQR y conflictividad",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de CDQR registradas y atendidas dentro del plazo establecido",
+    "formula_original": "(# CDQR atendidas en plazo / # CDQR recibidas) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "CDQR",
+    "requiere_entidad": "No",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Transversal",
+    "modalidad": "Individual y Colectivo",
+    "duracion": "Todo el ciclo de vida del proyecto",
+    "capital": "Capital: Social (gobernanza)",
+    "impacto": "• Riesgo de inconformidades, conflictos y desinformación asociados al proyecto (medida preventiva y de gestión, no atiende un impacto físico)",
+    "ayuda_indicador": "Registro consolidado asociado a casos CDQR del periodo."
+  },
+  {
+    "id_indicador": "PRMV-S-063",
+    "categoria_general": "Gestión operativa, comunicación y participación",
+    "subcategoria": "Gestión CDQR y conflictividad",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "% de CDQR resueltas a satisfacción del solicitante",
+    "formula_original": "(# CDQR resueltas a satisfacción / # CDQR cerradas) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "CDQR",
+    "requiere_entidad": "No",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Transversal",
+    "modalidad": "Individual y Colectivo",
+    "duracion": "Todo el ciclo de vida del proyecto",
+    "capital": "Capital: Social (gobernanza)",
+    "impacto": "• Riesgo de inconformidades, conflictos y desinformación asociados al proyecto (medida preventiva y de gestión, no atiende un impacto físico)",
+    "ayuda_indicador": "Registro consolidado asociado a casos CDQR del periodo."
+  },
+  {
+    "id_indicador": "PRMV-S-064",
+    "categoria_general": "Gestión operativa, comunicación y participación",
+    "subcategoria": "Gestión CDQR y conflictividad",
+    "tipo_indicador": "Seguimiento PRMV",
+    "indicador": "Cobertura de divulgación del mecanismo CDQR",
+    "formula_original": "(# espacios/piezas de divulgación realizados / # programados) × 100",
+    "meta_referencia": "",
+    "periodicidad_referencial": "",
+    "unidad": "porcentaje",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "CDQR",
+    "requiere_entidad": "No",
+    "requiere_planificacion": "Sí",
+    "categoria_tematica_original": "Transversal",
+    "modalidad": "Individual y Colectivo",
+    "duracion": "Todo el ciclo de vida del proyecto",
+    "capital": "Capital: Social (gobernanza)",
+    "impacto": "• Riesgo de inconformidades, conflictos y desinformación asociados al proyecto (medida preventiva y de gestión, no atiende un impacto físico)",
+    "ayuda_indicador": "Registro consolidado asociado a casos CDQR del periodo."
+  },
+  {
+    "id_indicador": "PRMV-R-001",
+    "categoria_general": "Resultados M&E por capital",
+    "subcategoria": "Capital Humano",
+    "tipo_indicador": "Resultado M&E",
+    "indicador": "Hogares con acceso a educación primaria completa",
+    "formula_original": "Medición contra línea base o meta. Registrar valor obtenido del periodo y valor esperado/meta comparable.",
+    "meta_referencia": "≥95%",
+    "periodicidad_referencial": "Línea base + anual",
+    "unidad": "número",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Indicador de resultado M&E por capital",
+    "modalidad": "Individual / Hogar",
+    "duracion": "",
+    "capital": "Capital Humano",
+    "impacto": "",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-R-002",
+    "categoria_general": "Resultados M&E por capital",
+    "subcategoria": "Capital Humano",
+    "tipo_indicador": "Resultado M&E",
+    "indicador": "Beneficiarios capacitados que aplican conocimientos",
+    "formula_original": "Medición contra línea base o meta. Registrar valor obtenido del periodo y valor esperado/meta comparable.",
+    "meta_referencia": "≥80%",
+    "periodicidad_referencial": "Línea base + semestral",
+    "unidad": "número",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Persona",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Indicador de resultado M&E por capital",
+    "modalidad": "Según entidad",
+    "duracion": "",
+    "capital": "Capital Humano",
+    "impacto": "",
+    "ayuda_indicador": "Recomendado por persona: útil para beneficiarios, trabajadores o población vulnerable."
+  },
+  {
+    "id_indicador": "PRMV-R-003",
+    "categoria_general": "Resultados M&E por capital",
+    "subcategoria": "Capital Humano",
+    "tipo_indicador": "Resultado M&E",
+    "indicador": "Hogares con acceso a servicios de salud básicos",
+    "formula_original": "Medición contra línea base o meta. Registrar valor obtenido del periodo y valor esperado/meta comparable.",
+    "meta_referencia": "≥90%",
+    "periodicidad_referencial": "Línea base + semestral",
+    "unidad": "número",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Indicador de resultado M&E por capital",
+    "modalidad": "Individual / Hogar",
+    "duracion": "",
+    "capital": "Capital Humano",
+    "impacto": "",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-R-004",
+    "categoria_general": "Resultados M&E por capital",
+    "subcategoria": "Capital Humano",
+    "tipo_indicador": "Resultado M&E",
+    "indicador": "Promedio de años de escolaridad en el hogar",
+    "formula_original": "Medición contra línea base o meta. Registrar valor obtenido del periodo y valor esperado/meta comparable.",
+    "meta_referencia": "0.1",
+    "periodicidad_referencial": "Línea base + anual",
+    "unidad": "promedio",
+    "tipo_valor": "Valor actual vs esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Indicador de resultado M&E por capital",
+    "modalidad": "Individual / Hogar",
+    "duracion": "",
+    "capital": "Capital Humano",
+    "impacto": "",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-R-005",
+    "categoria_general": "Resultados M&E por capital",
+    "subcategoria": "Capital Social",
+    "tipo_indicador": "Resultado M&E",
+    "indicador": "Hogares en organizaciones o grupos comunitarios",
+    "formula_original": "Medición contra línea base o meta. Registrar valor obtenido del periodo y valor esperado/meta comparable.",
+    "meta_referencia": "≥80%",
+    "periodicidad_referencial": "Línea base + anual",
+    "unidad": "número",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Indicador de resultado M&E por capital",
+    "modalidad": "Individual / Hogar",
+    "duracion": "",
+    "capital": "Capital Social",
+    "impacto": "",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-R-006",
+    "categoria_general": "Resultados M&E por capital",
+    "subcategoria": "Capital Social",
+    "tipo_indicador": "Resultado M&E",
+    "indicador": "Espacios de diálogo funcionando regularmente",
+    "formula_original": "Medición contra línea base o meta. Registrar valor obtenido del periodo y valor esperado/meta comparable.",
+    "meta_referencia": "1",
+    "periodicidad_referencial": "Línea base + continuo",
+    "unidad": "número",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Actividad/Evento",
+    "requiere_entidad": "No",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Indicador de resultado M&E por capital",
+    "modalidad": "Según entidad",
+    "duracion": "",
+    "capital": "Capital Social",
+    "impacto": "",
+    "ayuda_indicador": "Registro global/consolidado: no exige seleccionar hogar, persona u otra entidad."
+  },
+  {
+    "id_indicador": "PRMV-R-007",
+    "categoria_general": "Resultados M&E por capital",
+    "subcategoria": "Capital Social",
+    "tipo_indicador": "Resultado M&E",
+    "indicador": "Satisfacción con calidad de relaciones comunitarias",
+    "formula_original": "Medición contra línea base o meta. Registrar valor obtenido del periodo y valor esperado/meta comparable.",
+    "meta_referencia": "≥80%",
+    "periodicidad_referencial": "Línea base + semestral",
+    "unidad": "número",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Indicador de resultado M&E por capital",
+    "modalidad": "Individual / Hogar",
+    "duracion": "",
+    "capital": "Capital Social",
+    "impacto": "",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-R-008",
+    "categoria_general": "Resultados M&E por capital",
+    "subcategoria": "Capital Social",
+    "tipo_indicador": "Resultado M&E",
+    "indicador": "Conflictos resueltos en plazo de 30 días",
+    "formula_original": "Medición contra línea base o meta. Registrar valor obtenido del periodo y valor esperado/meta comparable.",
+    "meta_referencia": "≥95%",
+    "periodicidad_referencial": "Línea base + mensual",
+    "unidad": "número",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Indicador de resultado M&E por capital",
+    "modalidad": "Individual / Hogar",
+    "duracion": "",
+    "capital": "Capital Social",
+    "impacto": "",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-R-009",
+    "categoria_general": "Resultados M&E por capital",
+    "subcategoria": "Capital Económico",
+    "tipo_indicador": "Resultado M&E",
+    "indicador": "Hogares que recuperan ingresos pre-reasentamiento",
+    "formula_original": "Medición contra línea base o meta. Registrar valor obtenido del periodo y valor esperado/meta comparable.",
+    "meta_referencia": "≥90%",
+    "periodicidad_referencial": "Línea base + trimestral",
+    "unidad": "moneda",
+    "tipo_valor": "Monto / valor numérico",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Indicador de resultado M&E por capital",
+    "modalidad": "Individual / Hogar",
+    "duracion": "",
+    "capital": "Capital Económico",
+    "impacto": "",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-R-010",
+    "categoria_general": "Resultados M&E por capital",
+    "subcategoria": "Capital Económico",
+    "tipo_indicador": "Resultado M&E",
+    "indicador": "Ingreso mensual per cápita",
+    "formula_original": "Medición contra línea base o meta. Registrar valor obtenido del periodo y valor esperado/meta comparable.",
+    "meta_referencia": "Igualar niveles previos",
+    "periodicidad_referencial": "Línea base + semestral",
+    "unidad": "moneda",
+    "tipo_valor": "Monto / valor numérico",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Indicador de resultado M&E por capital",
+    "modalidad": "Individual / Hogar",
+    "duracion": "",
+    "capital": "Capital Económico",
+    "impacto": "",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-R-011",
+    "categoria_general": "Resultados M&E por capital",
+    "subcategoria": "Capital Económico",
+    "tipo_indicador": "Resultado M&E",
+    "indicador": "Hogares con acceso a crédito productivo formalizado",
+    "formula_original": "Medición contra línea base o meta. Registrar valor obtenido del periodo y valor esperado/meta comparable.",
+    "meta_referencia": "≥75%",
+    "periodicidad_referencial": "Línea base + anual",
+    "unidad": "número",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Indicador de resultado M&E por capital",
+    "modalidad": "Individual / Hogar",
+    "duracion": "",
+    "capital": "Capital Económico",
+    "impacto": "",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-R-012",
+    "categoria_general": "Resultados M&E por capital",
+    "subcategoria": "Capital Económico",
+    "tipo_indicador": "Resultado M&E",
+    "indicador": "Fuentes de ingreso diversificadas",
+    "formula_original": "Medición contra línea base o meta. Registrar valor obtenido del periodo y valor esperado/meta comparable.",
+    "meta_referencia": "Mínimo 2",
+    "periodicidad_referencial": "Línea base + anual",
+    "unidad": "moneda",
+    "tipo_valor": "Valor actual vs esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Indicador de resultado M&E por capital",
+    "modalidad": "Individual / Hogar",
+    "duracion": "",
+    "capital": "Capital Económico",
+    "impacto": "",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-R-013",
+    "categoria_general": "Resultados M&E por capital",
+    "subcategoria": "Capital Económico",
+    "tipo_indicador": "Resultado M&E",
+    "indicador": "Beneficiarios con inversiones en activos productivos",
+    "formula_original": "Medición contra línea base o meta. Registrar valor obtenido del periodo y valor esperado/meta comparable.",
+    "meta_referencia": "≥70%",
+    "periodicidad_referencial": "Línea base + anual",
+    "unidad": "número",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Persona",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Indicador de resultado M&E por capital",
+    "modalidad": "Según entidad",
+    "duracion": "",
+    "capital": "Capital Económico",
+    "impacto": "",
+    "ayuda_indicador": "Recomendado por persona: útil para beneficiarios, trabajadores o población vulnerable."
+  },
+  {
+    "id_indicador": "PRMV-R-014",
+    "categoria_general": "Resultados M&E por capital",
+    "subcategoria": "Capital Físico",
+    "tipo_indicador": "Resultado M&E",
+    "indicador": "Viviendas en condición aceptable post-reasentamiento",
+    "formula_original": "Medición contra línea base o meta. Registrar valor obtenido del periodo y valor esperado/meta comparable.",
+    "meta_referencia": "≥95%",
+    "periodicidad_referencial": "Línea base + anual",
+    "unidad": "número",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Indicador de resultado M&E por capital",
+    "modalidad": "Individual / Hogar",
+    "duracion": "",
+    "capital": "Capital Físico",
+    "impacto": "",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-R-015",
+    "categoria_general": "Resultados M&E por capital",
+    "subcategoria": "Capital Físico",
+    "tipo_indicador": "Resultado M&E",
+    "indicador": "Hogares con acceso a servicios básicos",
+    "formula_original": "Medición contra línea base o meta. Registrar valor obtenido del periodo y valor esperado/meta comparable.",
+    "meta_referencia": "≥95%",
+    "periodicidad_referencial": "Línea base + semestral",
+    "unidad": "número",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Indicador de resultado M&E por capital",
+    "modalidad": "Individual / Hogar",
+    "duracion": "",
+    "capital": "Capital Físico",
+    "impacto": "",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-R-016",
+    "categoria_general": "Resultados M&E por capital",
+    "subcategoria": "Capital Físico",
+    "tipo_indicador": "Resultado M&E",
+    "indicador": "Infraestructura comunitaria en buen estado",
+    "formula_original": "Medición contra línea base o meta. Registrar valor obtenido del periodo y valor esperado/meta comparable.",
+    "meta_referencia": "≥90%",
+    "periodicidad_referencial": "Línea base + anual",
+    "unidad": "número",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Infraestructura comunitaria",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Indicador de resultado M&E por capital",
+    "modalidad": "Según entidad",
+    "duracion": "",
+    "capital": "Capital Físico",
+    "impacto": "",
+    "ayuda_indicador": "Recomendado por infraestructura/estructura comunitaria."
+  },
+  {
+    "id_indicador": "PRMV-R-017",
+    "categoria_general": "Resultados M&E por capital",
+    "subcategoria": "Capital Físico",
+    "tipo_indicador": "Resultado M&E",
+    "indicador": "Disponibilidad de herramientas/equipos productivos",
+    "formula_original": "Medición contra línea base o meta. Registrar valor obtenido del periodo y valor esperado/meta comparable.",
+    "meta_referencia": "Niveles previos",
+    "periodicidad_referencial": "Línea base + anual",
+    "unidad": "número",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Indicador de resultado M&E por capital",
+    "modalidad": "Individual / Hogar",
+    "duracion": "",
+    "capital": "Capital Físico",
+    "impacto": "",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-R-018",
+    "categoria_general": "Resultados M&E por capital",
+    "subcategoria": "Capital Natural",
+    "tipo_indicador": "Resultado M&E",
+    "indicador": "Hogares agrícolas con acceso a tierra productiva",
+    "formula_original": "Medición contra línea base o meta. Registrar valor obtenido del periodo y valor esperado/meta comparable.",
+    "meta_referencia": "1",
+    "periodicidad_referencial": "Línea base + anual",
+    "unidad": "número",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Indicador de resultado M&E por capital",
+    "modalidad": "Individual / Hogar",
+    "duracion": "",
+    "capital": "Capital Natural",
+    "impacto": "",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-R-019",
+    "categoria_general": "Resultados M&E por capital",
+    "subcategoria": "Capital Natural",
+    "tipo_indicador": "Resultado M&E",
+    "indicador": "Rendimiento agrícola por hectárea",
+    "formula_original": "Medición contra línea base o meta. Registrar valor obtenido del periodo y valor esperado/meta comparable.",
+    "meta_referencia": "Igualar previo",
+    "periodicidad_referencial": "Línea base + anual",
+    "unidad": "valor por hectárea",
+    "tipo_valor": "Valor actual vs esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Indicador de resultado M&E por capital",
+    "modalidad": "Individual / Hogar",
+    "duracion": "",
+    "capital": "Capital Natural",
+    "impacto": "",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-R-020",
+    "categoria_general": "Resultados M&E por capital",
+    "subcategoria": "Capital Natural",
+    "tipo_indicador": "Resultado M&E",
+    "indicador": "Cultivos principales diversificados",
+    "formula_original": "Medición contra línea base o meta. Registrar valor obtenido del periodo y valor esperado/meta comparable.",
+    "meta_referencia": "Mínimo 3",
+    "periodicidad_referencial": "Línea base + anual",
+    "unidad": "número",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Indicador de resultado M&E por capital",
+    "modalidad": "Individual / Hogar",
+    "duracion": "",
+    "capital": "Capital Natural",
+    "impacto": "",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  },
+  {
+    "id_indicador": "PRMV-R-021",
+    "categoria_general": "Resultados M&E por capital",
+    "subcategoria": "Capital Natural",
+    "tipo_indicador": "Resultado M&E",
+    "indicador": "Índice de salud del suelo/ecosistema",
+    "formula_original": "Medición contra línea base o meta. Registrar valor obtenido del periodo y valor esperado/meta comparable.",
+    "meta_referencia": "Mantener o mejorar",
+    "periodicidad_referencial": "Línea base + anual",
+    "unidad": "índice",
+    "tipo_valor": "Valor actual vs esperado",
+    "entidad_recomendada": "Global",
+    "requiere_entidad": "No",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Indicador de resultado M&E por capital",
+    "modalidad": "Según entidad",
+    "duracion": "",
+    "capital": "Capital Natural",
+    "impacto": "",
+    "ayuda_indicador": "Registro global/consolidado: no exige seleccionar hogar, persona u otra entidad."
+  },
+  {
+    "id_indicador": "PRMV-R-022",
+    "categoria_general": "Resultados M&E por capital",
+    "subcategoria": "Capital Natural",
+    "tipo_indicador": "Resultado M&E",
+    "indicador": "Acceso a agua para uso productivo agrícola",
+    "formula_original": "Medición contra línea base o meta. Registrar valor obtenido del periodo y valor esperado/meta comparable.",
+    "meta_referencia": "100% lluvia / ≥80% seco",
+    "periodicidad_referencial": "Línea base + trimestral",
+    "unidad": "número",
+    "tipo_valor": "Obtenido / esperado",
+    "entidad_recomendada": "Hogar",
+    "requiere_entidad": "Sí",
+    "requiere_planificacion": "No",
+    "categoria_tematica_original": "Indicador de resultado M&E por capital",
+    "modalidad": "Individual / Hogar",
+    "duracion": "",
+    "capital": "Capital Natural",
+    "impacto": "",
+    "ayuda_indicador": "Recomendado por hogar: permite ver el resultado de cada familia/hogar y luego consolidar."
+  }
 ]
 
-TIPOS_ENTIDAD = [
-    "Hogar",
-    "Persona",
-    "OBC",
-    "Lugar poblado",
-    "Infraestructura comunitaria",
-    "Predio/Bien",
-    "Actividad/Evento",
-    "CDQR",
-    "Global",
-]
+ENTIDADES_DEMO = {
+    "Hogar": ["HOG-001 | Familia Rodríguez", "HOG-002 | Familia Martínez", "HOG-003 | Familia Gómez"],
+    "Persona": ["PER-001 | Ana Rodríguez", "PER-002 | Luis Martínez", "PER-003 | Carmen Gómez"],
+    "OBC": ["OBC-001 | Junta de Acción Comunitaria", "OBC-002 | Asociación Productiva"],
+    "Lugar poblado": ["LP-001 | Lugar poblado A", "LP-002 | Lugar poblado B"],
+    "Infraestructura comunitaria": ["INF-001 | Centro comunitario", "INF-002 | Cancha múltiple"],
+    "CDQR": ["CDQR | Consolidado del periodo"],
+    "Actividad/Evento": ["GLOBAL | Consolidado de actividades del periodo"],
+    "Global": ["GLOBAL | Registro consolidado del periodo"],
+}
 
-ESTADOS_VALIDACION = ["Borrador", "En revisión", "Validado", "Observado", "Anulado"]
-FUENTES_DATO = [
-    "Encuesta / línea base",
-    "Seguimiento de campo",
-    "Reporte técnico PRMV",
-    "Módulo Hogares",
-    "Módulo Personas",
-    "Módulo Predial/Bienes",
-    "Módulo Documental",
-    "Módulo CDQR",
-    "Consolidado externo",
-    "Otra fuente",
-]
-
-# -----------------------------------------------------------------------------
-# Configuración visual
-# -----------------------------------------------------------------------------
-
-st.set_page_config(page_title=APP_TITLE, layout="wide", initial_sidebar_state="expanded")
-
-st.markdown(
-    """
-    <style>
-        .main .block-container {padding-top: 1.4rem; padding-bottom: 2rem;}
-        .prmv-card {
-            border: 1px solid rgba(49, 51, 63, .12);
-            border-radius: 16px;
-            padding: 1rem 1.1rem;
-            background: rgba(250, 250, 252, .75);
-            margin-bottom: .8rem;
-        }
-        .prmv-soft {
-            border-left: 4px solid rgba(49, 51, 63, .35);
-            padding: .8rem 1rem;
-            border-radius: 10px;
-            background: rgba(250, 250, 252, .85);
-        }
-        .small-muted {font-size: .88rem; color: rgba(49, 51, 63, .72);}
-        .big-number {font-size: 1.8rem; font-weight: 700; line-height: 1.1;}
-        .section-title {font-weight: 700; font-size: 1.15rem; margin: .25rem 0 .55rem 0;}
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-# -----------------------------------------------------------------------------
-# Utilidades
-# -----------------------------------------------------------------------------
 
 def get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
@@ -1734,940 +1856,660 @@ def get_conn() -> sqlite3.Connection:
     return conn
 
 
-def run_query(sql: str, params: Tuple[Any, ...] = ()) -> pd.DataFrame:
-    with get_conn() as conn:
-        return pd.read_sql_query(sql, conn, params=params)
-
-
-def execute(sql: str, params: Tuple[Any, ...] = ()) -> None:
-    with get_conn() as conn:
-        conn.execute(sql, params)
-        conn.commit()
-
-
-def pct(n: Optional[float], d: Optional[float]) -> Optional[float]:
-    try:
-        if d is None or float(d) == 0:
-            return None
-        return round((float(n or 0) / float(d)) * 100, 2)
-    except Exception:
-        return None
-
-
-def variation(base: Optional[float], actual: Optional[float]) -> Optional[float]:
-    try:
-        if base is None or float(base) == 0:
-            return None
-        return round(((float(actual or 0) - float(base)) / float(base)) * 100, 2)
-    except Exception:
-        return None
-
-
-def safe_float(value: Any) -> Optional[float]:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except Exception:
-        return None
-
-
-def rerun() -> None:
-    try:
-        st.rerun()
-    except Exception:
-        st.experimental_rerun()
-
-
-def card(title: str, value: Any, caption: str = "") -> None:
-    st.markdown(
-        f"""
-        <div class="prmv-card">
-            <div class="small-muted">{title}</div>
-            <div class="big-number">{value}</div>
-            <div class="small-muted">{caption}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def indicator_label(row: Dict[str, Any]) -> str:
-    text = row["indicador"]
-    if len(text) > 115:
-        text = text[:112] + "..."
-    return f'{row["id_indicador"]} · {text}'
-
-
-def info_box(title: str, body: str) -> None:
-    st.markdown(
-        f"""
-        <div class="prmv-soft">
-            <div class="section-title">{title}</div>
-            <div>{body}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-# -----------------------------------------------------------------------------
-# Base de datos
-# -----------------------------------------------------------------------------
-
 def init_db() -> None:
-    with get_conn() as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS prmv_indicadores_catalogo (
-                id_indicador TEXT PRIMARY KEY,
-                tipo_indicador TEXT,
-                grupo_funcional TEXT,
-                categoria_tematica TEXT,
-                modalidad TEXT,
-                duracion TEXT,
-                capital TEXT,
-                impacto TEXT,
-                indicador TEXT NOT NULL,
-                formula_original TEXT,
-                meta TEXT,
-                periodicidad TEXT,
-                unidad TEXT,
-                entidad_principal TEXT,
-                nivel_captura_recomendado TEXT,
-                tipo_valor_recomendado TEXT,
-                ayuda_captura TEXT,
-                activo INTEGER DEFAULT 1
-            )
-            """
-        )
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS prmv_entidades_relacion (
-                id_entidad TEXT PRIMARY KEY,
-                tipo_entidad TEXT NOT NULL,
-                nombre_etiqueta TEXT NOT NULL,
-                id_hogar TEXT,
-                id_persona TEXT,
-                id_predio_bien TEXT,
-                lugar_poblado TEXT,
-                descripcion TEXT,
-                activo INTEGER DEFAULT 1,
-                created_at TEXT NOT NULL
-            )
-            """
-        )
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS prmv_registros_historicos (
-                id_registro TEXT PRIMARY KEY,
-                id_indicador TEXT NOT NULL,
-                fecha_registro TEXT NOT NULL,
-                periodo_inicio TEXT,
-                periodo_fin TEXT,
-                periodo_corte TEXT,
-                tipo_registro TEXT NOT NULL,
-                entidad_tipo TEXT,
-                entidad_id TEXT,
-                entidad_nombre TEXT,
-                valor_realizado REAL,
-                valor_esperado REAL,
-                resultado_porcentaje REAL,
-                valor_linea_base REAL,
-                valor_actual REAL,
-                variacion_linea_base REAL,
-                unidad_valor TEXT,
-                fuente_dato TEXT,
-                responsable_registro TEXT,
-                estado_validacion TEXT,
-                soporte_documental TEXT,
-                observaciones TEXT,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY(id_indicador) REFERENCES prmv_indicadores_catalogo(id_indicador)
-            )
-            """
-        )
-        for item in INDICADORES_CATALOGO:
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO prmv_indicadores_catalogo (
-                    id_indicador, tipo_indicador, grupo_funcional, categoria_tematica,
-                    modalidad, duracion, capital, impacto, indicador, formula_original,
-                    meta, periodicidad, unidad, entidad_principal, nivel_captura_recomendado,
-                    tipo_valor_recomendado, ayuda_captura, activo
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-                """,
-                (
-                    item.get("id_indicador"), item.get("tipo_indicador"), item.get("grupo_funcional"),
-                    item.get("categoria_tematica"), item.get("modalidad"), item.get("duracion"),
-                    item.get("capital"), item.get("impacto"), item.get("indicador"),
-                    item.get("formula_original"), item.get("meta"), item.get("periodicidad"),
-                    item.get("unidad"), item.get("entidad_principal"), item.get("nivel_captura_recomendado"),
-                    item.get("tipo_valor_recomendado"), item.get("ayuda_captura"),
-                ),
-            )
-        conn.commit()
-
-
-@st.cache_data(show_spinner=False)
-def load_catalog() -> pd.DataFrame:
-    return run_query("SELECT * FROM prmv_indicadores_catalogo WHERE activo = 1 ORDER BY grupo_funcional, id_indicador")
-
-
-def load_records() -> pd.DataFrame:
-    return run_query(
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
         """
-        SELECT r.*, c.indicador, c.grupo_funcional, c.tipo_indicador, c.entidad_principal,
-               c.tipo_valor_recomendado, c.meta, c.periodicidad
-        FROM prmv_registros_historicos r
+        CREATE TABLE IF NOT EXISTS prmv_indicadores_catalogo (
+            id_indicador TEXT PRIMARY KEY,
+            categoria_general TEXT NOT NULL,
+            subcategoria TEXT NOT NULL,
+            tipo_indicador TEXT,
+            indicador TEXT NOT NULL,
+            formula_original TEXT,
+            meta_referencia TEXT,
+            periodicidad_referencial TEXT,
+            unidad TEXT,
+            tipo_valor TEXT,
+            entidad_recomendada TEXT,
+            requiere_entidad TEXT,
+            requiere_planificacion TEXT,
+            categoria_tematica_original TEXT,
+            modalidad TEXT,
+            duracion TEXT,
+            capital TEXT,
+            impacto TEXT,
+            ayuda_indicador TEXT
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS prmv_registros_indicadores (
+            id_registro INTEGER PRIMARY KEY AUTOINCREMENT,
+            id_indicador TEXT NOT NULL,
+            fecha_captura TEXT NOT NULL,
+            periodo_inicio TEXT,
+            periodo_fin TEXT,
+            fecha_necesidad TEXT,
+            tipo_entidad TEXT NOT NULL DEFAULT 'Global',
+            id_entidad TEXT NOT NULL DEFAULT 'GLOBAL',
+            valor_esperado REAL NOT NULL DEFAULT 0,
+            valor_obtenido REAL NOT NULL DEFAULT 0,
+            porcentaje_resultado REAL,
+            fuente_dato TEXT,
+            soporte_documental TEXT,
+            observaciones TEXT,
+            usuario_registro TEXT,
+            fecha_creacion TEXT,
+            usuario_actualizacion TEXT,
+            fecha_actualizacion TEXT,
+            UNIQUE(id_indicador, fecha_captura, tipo_entidad, id_entidad),
+            FOREIGN KEY(id_indicador) REFERENCES prmv_indicadores_catalogo(id_indicador)
+        )
+        """
+    )
+    # Sembrar/actualizar catálogo sin borrar registros históricos.
+    for item in INDICADORES:
+        cols = list(item.keys())
+        placeholders = ",".join(["?"] * len(cols))
+        update_clause = ", ".join([f"{c}=excluded.{c}" for c in cols if c != "id_indicador"])
+        sql = f"""
+            INSERT INTO prmv_indicadores_catalogo ({', '.join(cols)})
+            VALUES ({placeholders})
+            ON CONFLICT(id_indicador) DO UPDATE SET {update_clause}
+        """
+        cur.execute(sql, [item.get(c, "") for c in cols])
+    conn.commit()
+    conn.close()
+
+
+def read_table(query: str, params: Tuple = ()) -> pd.DataFrame:
+    conn = get_conn()
+    try:
+        return pd.read_sql_query(query, conn, params=params)
+    finally:
+        conn.close()
+
+
+def obtener_indicadores() -> pd.DataFrame:
+    return read_table("SELECT * FROM prmv_indicadores_catalogo ORDER BY categoria_general, subcategoria, indicador")
+
+
+def obtener_historial() -> pd.DataFrame:
+    return read_table(
+        """
+        SELECT
+            r.id_registro,
+            c.categoria_general,
+            c.subcategoria,
+            c.id_indicador,
+            c.indicador,
+            c.entidad_recomendada,
+            r.tipo_entidad,
+            r.id_entidad,
+            r.fecha_captura,
+            r.periodo_inicio,
+            r.periodo_fin,
+            r.fecha_necesidad,
+            r.valor_esperado,
+            r.valor_obtenido,
+            r.porcentaje_resultado,
+            r.fuente_dato,
+            r.soporte_documental,
+            r.observaciones,
+            r.usuario_registro,
+            r.fecha_creacion,
+            r.usuario_actualizacion,
+            r.fecha_actualizacion
+        FROM prmv_registros_indicadores r
         LEFT JOIN prmv_indicadores_catalogo c ON c.id_indicador = r.id_indicador
-        ORDER BY r.fecha_registro DESC, r.created_at DESC
+        ORDER BY r.fecha_captura DESC, c.categoria_general, c.subcategoria, c.indicador
         """
     )
 
 
-def load_entities(tipo: Optional[str] = None) -> pd.DataFrame:
-    if tipo and tipo != "Todos":
-        return run_query(
-            "SELECT * FROM prmv_entidades_relacion WHERE activo = 1 AND tipo_entidad = ? ORDER BY nombre_etiqueta",
-            (tipo,),
-        )
-    return run_query("SELECT * FROM prmv_entidades_relacion WHERE activo = 1 ORDER BY tipo_entidad, nombre_etiqueta")
-
-# -----------------------------------------------------------------------------
-# Pantallas
-# -----------------------------------------------------------------------------
-
-def page_inicio(catalog: pd.DataFrame, records: pd.DataFrame) -> None:
-    st.title("PRMV · Seguimiento histórico de indicadores")
-    st.caption("Captura consolidada o por hogar/persona/OBC/lugar, según corresponda al indicador.")
-
-    total_ind = len(catalog)
-    with_data = records["id_indicador"].nunique() if not records.empty else 0
-    last_date = records["fecha_registro"].max() if not records.empty else "Sin registros"
-    total_records = len(records)
-
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        card("Indicadores en catálogo", total_ind, "Base cargada desde el Excel PRMV")
-    with c2:
-        card("Indicadores con datos", with_data, "Ya tienen al menos un corte")
-    with c3:
-        card("Registros históricos", total_records, "Cada carga queda trazada")
-    with c4:
-        card("Último registro", last_date, "Fecha de captura más reciente")
-
-    st.markdown("### Cómo se usa este módulo")
-    col_a, col_b = st.columns([1.1, 1])
-    with col_a:
-        info_box(
-            "Flujo operativo",
-            """
-            <b>1.</b> Selecciona un grupo e indicador.<br>
-            <b>2.</b> El sistema te dice si conviene capturarlo globalmente o por hogar/persona/OBC/lugar.<br>
-            <b>3.</b> Ingresa el dato del periodo: alcanzado, esperado, línea base o valor actual.<br>
-            <b>4.</b> El sistema calcula avance o variación y guarda el histórico.
-            """,
-        )
-    with col_b:
-        info_box(
-            "Regla central",
-            """
-            <b>Consolidado/global:</b> se usa para visitas, acciones, piezas, espacios, CDQR u otros totales del periodo.<br><br>
-            <b>Por entidad:</b> se usa cuando necesitas ver el dato por hogar, persona, OBC, lugar poblado o infraestructura.
-            """,
-        )
-
-    st.markdown("### Indicadores por tipo de captura recomendada")
-    summary = (
-        catalog.groupby(["nivel_captura_recomendado", "entidad_principal"])
-        .size()
-        .reset_index(name="indicadores")
-        .sort_values(["nivel_captura_recomendado", "entidad_principal"])
-    )
-    st.dataframe(summary, use_container_width=True, hide_index=True)
-
-    if not records.empty:
-        st.markdown("### Últimos registros")
-        cols = ["fecha_registro", "periodo_corte", "grupo_funcional", "indicador", "tipo_registro", "entidad_tipo", "entidad_nombre", "resultado_porcentaje", "variacion_linea_base", "estado_validacion"]
-        st.dataframe(records[cols].head(10), use_container_width=True, hide_index=True)
-
-
-def select_indicator(catalog: pd.DataFrame) -> Dict[str, Any]:
-    grupos = ["Todos"] + sorted(catalog["grupo_funcional"].dropna().unique().tolist())
-    grupo = st.selectbox(
-        "Grupo funcional",
-        grupos,
-        help="Agrupa indicadores parecidos para que no tengas que buscar en una lista gigante.",
-    )
-    filtered = catalog if grupo == "Todos" else catalog[catalog["grupo_funcional"] == grupo]
-
-    tipos = ["Todos"] + sorted(filtered["tipo_indicador"].dropna().unique().tolist())
-    tipo = st.selectbox(
-        "Tipo de indicador",
-        tipos,
-        help="Seguimiento PAR/PRMV son indicadores de avance. Resultado M&E compara contra línea base.",
-    )
-    if tipo != "Todos":
-        filtered = filtered[filtered["tipo_indicador"] == tipo]
-
-    search = st.text_input(
-        "Buscar indicador",
-        "",
-        help="Puedes escribir palabras como vivienda, ingresos, CDQR, OBC, terreno, visitas o capacitación.",
-    ).strip().lower()
-    if search:
-        filtered = filtered[filtered["indicador"].str.lower().str.contains(search, na=False)]
-
-    if filtered.empty:
-        st.warning("No hay indicadores con esos filtros.")
-        st.stop()
-
-    options = filtered.to_dict("records")
-    selected_label = st.selectbox(
-        "Indicador",
-        [indicator_label(x) for x in options],
-        help="Selecciona el indicador que vas a reportar para el periodo.",
-    )
-    selected_idx = [indicator_label(x) for x in options].index(selected_label)
-    return options[selected_idx]
-
-
-def show_indicator_card(ind: Dict[str, Any]) -> None:
-    st.markdown("### Ficha rápida del indicador")
-    st.markdown(
-        f"""
-        <div class="prmv-card">
-            <div class="small-muted">{ind['id_indicador']} · {ind['tipo_indicador']}</div>
-            <h4 style="margin:.2rem 0 .6rem 0;">{ind['indicador']}</h4>
-            <b>Grupo:</b> {ind.get('grupo_funcional','')}<br>
-            <b>Captura recomendada:</b> {ind.get('nivel_captura_recomendado','')}<br>
-            <b>Entidad principal:</b> {ind.get('entidad_principal','')}<br>
-            <b>Tipo de dato:</b> {ind.get('tipo_valor_recomendado','')}<br>
-            <b>Fórmula / medición:</b> {ind.get('formula_original','')}<br>
-            <b>Meta:</b> {ind.get('meta','') or 'No definida en el archivo'}<br>
-            <b>Periodicidad:</b> {ind.get('periodicidad','') or 'No definida en el archivo'}
-            <p class="small-muted" style="margin-top:.7rem;">{ind.get('ayuda_captura','')}</p>
-        </div>
+def buscar_registro_existente(id_indicador: str, fecha_captura: str, tipo_entidad: str, id_entidad: str) -> Optional[sqlite3.Row]:
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT * FROM prmv_registros_indicadores
+        WHERE id_indicador = ? AND fecha_captura = ? AND tipo_entidad = ? AND id_entidad = ?
         """,
-        unsafe_allow_html=True,
+        (id_indicador, fecha_captura, tipo_entidad, id_entidad),
     )
+    row = cur.fetchone()
+    conn.close()
+    return row
 
 
-def entity_selector(entidad_sugerida: str) -> Tuple[str, str, str]:
-    entidad_tipo = st.selectbox(
-        "Tipo de entidad a relacionar",
-        TIPOS_ENTIDAD,
-        index=TIPOS_ENTIDAD.index(entidad_sugerida) if entidad_sugerida in TIPOS_ENTIDAD else 0,
-        help="El sistema propone una entidad según el indicador. Puedes cambiarla si el corte necesita otra relación.",
+def calcular_porcentaje(valor_obtenido: float, valor_esperado: float) -> Optional[float]:
+    if valor_esperado is None or float(valor_esperado) == 0:
+        return None
+    return round((float(valor_obtenido) / float(valor_esperado)) * 100, 2)
+
+
+def guardar_registro(data: Dict[str, object], usuario: str) -> Tuple[str, int]:
+    """Inserta o modifica según la regla única diaria."""
+    existente = buscar_registro_existente(
+        str(data["id_indicador"]),
+        str(data["fecha_captura"]),
+        str(data["tipo_entidad"]),
+        str(data["id_entidad"]),
     )
-    entities = load_entities(entidad_tipo)
-    options = ["Escribir manualmente"]
-    entity_map = {}
-    if not entities.empty:
-        for _, row in entities.iterrows():
-            label = f"{row['id_entidad']} · {row['nombre_etiqueta']}"
-            options.append(label)
-            entity_map[label] = row
+    ahora = datetime.now().isoformat(timespec="seconds")
+    conn = get_conn()
+    cur = conn.cursor()
+    porcentaje = calcular_porcentaje(float(data["valor_obtenido"]), float(data["valor_esperado"]))
 
-    selected = st.selectbox(
-        "Entidad del catálogo",
-        options,
-        help="Escoge una entidad registrada o usa escritura manual si aún no existe en el catálogo local.",
-    )
-    if selected != "Escribir manualmente":
-        row = entity_map[selected]
-        return entidad_tipo, row["id_entidad"], row["nombre_etiqueta"]
-
-    entidad_id = st.text_input(
-        "ID de entidad",
-        placeholder="Ej. HOG-0001, PER-0007, OBC-001",
-        help="Usa el ID real del hogar/persona/OBC/lugar cuando exista en el SIR. Si todavía no existe, usa un código temporal controlado.",
-    )
-    entidad_nombre = st.text_input(
-        "Nombre o etiqueta de la entidad",
-        placeholder="Ej. Hogar Pérez / Persona 123 / OBC Mujeres Productoras",
-        help="Etiqueta legible para que el histórico se entienda sin abrir otra tabla.",
-    )
-    return entidad_tipo, entidad_id, entidad_nombre
-
-
-def page_registrar(catalog: pd.DataFrame) -> None:
-    st.title("Registrar corte PRMV")
-    st.caption("Pantalla principal para cargar datos históricos por indicador.")
-
-    left, right = st.columns([.95, 1.35])
-    with left:
-        ind = select_indicator(catalog)
-    with right:
-        show_indicator_card(ind)
-
-    entidad_sugerida = ind.get("entidad_principal") or "Global"
-    recomendacion = ind.get("nivel_captura_recomendado") or "Consolidado"
-    tipo_valor_default = ind.get("tipo_valor_recomendado") or "Numerador / denominador"
-
-    if recomendacion == "Consolidado":
-        modos = ["Consolidado"]
-    elif recomendacion == "Por entidad":
-        modos = ["Por entidad", "Consolidado"]
-    else:
-        modos = ["Consolidado", "Por entidad"]
-
-    st.markdown("### Datos del corte")
-    with st.form("form_registro_prmv", clear_on_submit=False):
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            fecha_registro = st.date_input(
-                "Fecha de registro",
-                value=date.today(),
-                help="Fecha en la que se ingresa el dato al sistema, no necesariamente la fecha del evento.",
-            )
-        with c2:
-            periodo_inicio = st.date_input(
-                "Inicio del periodo reportado",
-                value=date(date.today().year, 1, 1),
-                help="Fecha inicial del periodo que cubre este dato.",
-            )
-        with c3:
-            periodo_fin = st.date_input(
-                "Fin del periodo reportado",
-                value=date.today(),
-                help="Fecha final del periodo que cubre este dato.",
-            )
-
-        periodo_corte = st.text_input(
-            "Nombre del corte",
-            value=f"Corte {date.today().strftime('%Y-%m')}",
-            help="Etiqueta sencilla para comparar cortes. Ejemplo: Junio 2026, Trimestre 2 2027, Línea base 2027.",
-        )
-
-        c4, c5 = st.columns(2)
-        with c4:
-            tipo_registro = st.selectbox(
-                "Forma de captura",
-                modos,
-                help="Consolidado guarda un total del periodo. Por entidad guarda el dato ligado a hogar/persona/OBC/lugar.",
-            )
-        with c5:
-            tipo_valor = st.selectbox(
-                "Tipo de dato a ingresar",
-                ["Numerador / denominador", "Línea base vs actual", "Monto / línea base", "Valor simple"],
-                index=["Numerador / denominador", "Línea base vs actual", "Monto / línea base", "Valor simple"].index(tipo_valor_default)
-                if tipo_valor_default in ["Numerador / denominador", "Línea base vs actual", "Monto / línea base", "Valor simple"] else 0,
-                help="El sistema propone el tipo según la fórmula. Puedes cambiarlo si el indicador se está reportando de otra forma.",
-            )
-
-        entidad_tipo = None
-        entidad_id = None
-        entidad_nombre = None
-        if tipo_registro == "Por entidad":
-            st.markdown("#### Relación del registro")
-            entidad_tipo, entidad_id, entidad_nombre = entity_selector(entidad_sugerida)
-        else:
-            entidad_tipo = "Global"
-            entidad_id = "GLOBAL"
-            entidad_nombre = "Registro consolidado del periodo"
-
-        st.markdown("#### Valores")
-        valor_realizado = None
-        valor_esperado = None
-        resultado_porcentaje = None
-        valor_linea_base = None
-        valor_actual = None
-        variacion_linea_base = None
-        unidad_valor = ind.get("unidad") or "número"
-
-        if tipo_valor == "Numerador / denominador" and tipo_registro == "Consolidado":
-            v1, v2, v3 = st.columns(3)
-            with v1:
-                valor_realizado = st.number_input(
-                    "Valor alcanzado / numerador",
-                    min_value=0.0,
-                    step=1.0,
-                    help="Cantidad que sí se logró en el periodo. Ejemplo: familias atendidas, visitas realizadas, CDQR cerradas.",
-                )
-            with v2:
-                valor_esperado = st.number_input(
-                    "Valor esperado / denominador",
-                    min_value=0.0,
-                    step=1.0,
-                    help="Universo o meta contra la que se compara. Ejemplo: total de familias sujetas, visitas previstas, CDQR recibidas.",
-                )
-            resultado_porcentaje = pct(valor_realizado, valor_esperado)
-            with v3:
-                st.metric("Resultado calculado", "—" if resultado_porcentaje is None else f"{resultado_porcentaje:.2f}%")
-
-        elif tipo_valor == "Numerador / denominador" and tipo_registro == "Por entidad":
-            v1, v2, v3 = st.columns(3)
-            with v1:
-                entidad_en_universo = st.checkbox(
-                    "Hace parte del universo esperado",
-                    value=True,
-                    help="Marca sí si este hogar/persona/OBC/lugar debe contarse dentro del denominador.",
-                )
-            with v2:
-                entidad_cumple = st.checkbox(
-                    "Cumple / aporta al numerador",
-                    value=True,
-                    help="Marca sí si esta entidad cumplió el criterio del indicador en este periodo.",
-                )
-            valor_esperado = 1.0 if entidad_en_universo else 0.0
-            valor_realizado = 1.0 if entidad_cumple else 0.0
-            resultado_porcentaje = pct(valor_realizado, valor_esperado)
-            with v3:
-                st.metric("Resultado de esta entidad", "—" if resultado_porcentaje is None else f"{resultado_porcentaje:.2f}%")
-
-        elif tipo_valor in ["Línea base vs actual", "Monto / línea base"]:
-            v1, v2, v3 = st.columns(3)
-            label_base = "Valor línea base"
-            label_actual = "Valor actual del periodo"
-            if tipo_valor == "Monto / línea base":
-                unidad_valor = "moneda"
-                label_base = "Monto línea base"
-                label_actual = "Monto actual del periodo"
-            with v1:
-                valor_linea_base = st.number_input(
-                    label_base,
-                    min_value=0.0,
-                    step=100.0 if tipo_valor == "Monto / línea base" else 1.0,
-                    help="Valor inicial contra el cual se comparará el seguimiento. Para ingresos, usa el monto de referencia del hogar/persona.",
-                )
-            with v2:
-                valor_actual = st.number_input(
-                    label_actual,
-                    min_value=0.0,
-                    step=100.0 if tipo_valor == "Monto / línea base" else 1.0,
-                    help="Valor medido en el periodo que estás reportando.",
-                )
-            variacion_linea_base = variation(valor_linea_base, valor_actual)
-            with v3:
-                st.metric("Variación calculada", "—" if variacion_linea_base is None else f"{variacion_linea_base:.2f}%")
-
-        else:
-            valor_actual = st.number_input(
-                "Valor reportado",
-                min_value=0.0,
-                step=1.0,
-                help="Usa este campo cuando el indicador no requiera denominador ni comparación con línea base.",
-            )
-
-        st.markdown("#### Trazabilidad")
-        c6, c7, c8 = st.columns(3)
-        with c6:
-            fuente_dato = st.selectbox(
-                "Fuente del dato",
-                FUENTES_DATO,
-                help="Indica de dónde salió la información reportada.",
-            )
-        with c7:
-            responsable = st.text_input(
-                "Responsable del registro",
-                placeholder="Nombre del usuario/equipo",
-                help="Persona o equipo que cargó o consolidó el dato.",
-            )
-        with c8:
-            estado = st.selectbox(
-                "Estado de validación",
-                ESTADOS_VALIDACION,
-                help="Borrador permite cargar datos preliminares; Validado indica que el dato ya fue revisado.",
-            )
-
-        soporte = st.text_input(
-            "Soporte documental / enlace",
-            placeholder="Ruta, URL, código documental o referencia del soporte",
-            help="Opcional. Permite ligar el dato a evidencia documental o reporte externo.",
-        )
-        observaciones = st.text_area(
-            "Observaciones",
-            placeholder="Notas metodológicas, supuestos, aclaraciones del cálculo o novedades del periodo.",
-            help="Útil cuando el dato proviene de encuestas, consolidaciones manuales o fuentes externas.",
-        )
-
-        submitted = st.form_submit_button("Guardar registro histórico", use_container_width=True)
-
-    if submitted:
-        if tipo_registro == "Por entidad" and not entidad_id:
-            st.error("Para guardar por entidad debes escribir o seleccionar un ID de entidad.")
-            return
-        if not responsable.strip():
-            st.error("Ingresa el responsable del registro.")
-            return
-        if tipo_valor == "Numerador / denominador" and tipo_registro == "Consolidado" and (valor_esperado is None or valor_esperado == 0):
-            st.warning("El denominador está en cero. Se guardará el registro, pero no se calculará porcentaje.")
-
-        id_registro = f"REG-PRMV-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6].upper()}"
-        execute(
+    if existente:
+        cur.execute(
             """
-            INSERT INTO prmv_registros_historicos (
-                id_registro, id_indicador, fecha_registro, periodo_inicio, periodo_fin, periodo_corte,
-                tipo_registro, entidad_tipo, entidad_id, entidad_nombre,
-                valor_realizado, valor_esperado, resultado_porcentaje,
-                valor_linea_base, valor_actual, variacion_linea_base, unidad_valor,
-                fuente_dato, responsable_registro, estado_validacion, soporte_documental, observaciones, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            UPDATE prmv_registros_indicadores
+            SET periodo_inicio = ?, periodo_fin = ?, fecha_necesidad = ?, valor_esperado = ?,
+                valor_obtenido = ?, porcentaje_resultado = ?, fuente_dato = ?, soporte_documental = ?,
+                observaciones = ?, usuario_actualizacion = ?, fecha_actualizacion = ?
+            WHERE id_registro = ?
             """,
             (
-                id_registro,
-                ind["id_indicador"],
-                str(fecha_registro),
-                str(periodo_inicio),
-                str(periodo_fin),
-                periodo_corte,
-                tipo_registro,
-                entidad_tipo,
-                entidad_id,
-                entidad_nombre,
-                safe_float(valor_realizado),
-                safe_float(valor_esperado),
-                safe_float(resultado_porcentaje),
-                safe_float(valor_linea_base),
-                safe_float(valor_actual),
-                safe_float(variacion_linea_base),
-                unidad_valor,
-                fuente_dato,
-                responsable.strip(),
-                estado,
-                soporte.strip(),
-                observaciones.strip(),
-                datetime.now().isoformat(timespec="seconds"),
+                data.get("periodo_inicio"),
+                data.get("periodo_fin"),
+                data.get("fecha_necesidad"),
+                float(data["valor_esperado"]),
+                float(data["valor_obtenido"]),
+                porcentaje,
+                data.get("fuente_dato", ""),
+                data.get("soporte_documental", ""),
+                data.get("observaciones", ""),
+                usuario,
+                ahora,
+                existente["id_registro"],
             ),
         )
-        st.success(f"Registro guardado: {id_registro}")
-        st.info("Puedes revisar el dato en Histórico o ver su efecto agregado en Tablero PRMV.")
+        conn.commit()
+        conn.close()
+        return "actualizado", int(existente["id_registro"])
+
+    cur.execute(
+        """
+        INSERT INTO prmv_registros_indicadores (
+            id_indicador, fecha_captura, periodo_inicio, periodo_fin, fecha_necesidad,
+            tipo_entidad, id_entidad, valor_esperado, valor_obtenido, porcentaje_resultado,
+            fuente_dato, soporte_documental, observaciones,
+            usuario_registro, fecha_creacion, usuario_actualizacion, fecha_actualizacion
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            data.get("id_indicador"),
+            data.get("fecha_captura"),
+            data.get("periodo_inicio"),
+            data.get("periodo_fin"),
+            data.get("fecha_necesidad"),
+            data.get("tipo_entidad"),
+            data.get("id_entidad"),
+            float(data["valor_esperado"]),
+            float(data["valor_obtenido"]),
+            porcentaje,
+            data.get("fuente_dato", ""),
+            data.get("soporte_documental", ""),
+            data.get("observaciones", ""),
+            usuario,
+            ahora,
+            usuario,
+            ahora,
+        ),
+    )
+    new_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return "creado", int(new_id)
 
 
-def page_historico(catalog: pd.DataFrame, records: pd.DataFrame) -> None:
-    st.title("Histórico de indicadores")
-    st.caption("Consulta, filtra y exporta todos los cortes registrados.")
+def normalizar_fecha(value) -> str:
+    if isinstance(value, date):
+        return value.isoformat()
+    return str(value or "")
 
-    if records.empty:
-        st.info("Todavía no hay registros históricos. Ve a 'Registrar corte'.")
-        return
 
+def texto_avance(porcentaje: Optional[float]) -> str:
+    if porcentaje is None:
+        return "Sin cálculo: el valor esperado está en cero."
+    if porcentaje >= 100:
+        return f"{porcentaje:.2f}% | Cumplido o por encima de lo esperado"
+    if porcentaje >= 80:
+        return f"{porcentaje:.2f}% | Avance alto"
+    if porcentaje >= 50:
+        return f"{porcentaje:.2f}% | Avance medio"
+    return f"{porcentaje:.2f}% | Avance bajo"
+
+
+def render_header(usuario: str) -> None:
+    st.title(APP_TITLE)
+    st.caption("Captura histórica simple: categoría general → subcategoría → indicador → esperado vs obtenido.")
+    st.caption(f"Responsable de sesión: {usuario}")
+
+
+def pantalla_inicio() -> None:
+    catalogo = obtener_indicadores()
+    hist = obtener_historial()
+
+    st.subheader("Inicio")
+    st.write(
+        "Este módulo está pensado para capturar indicadores PRMV de forma sencilla. "
+        "Cada registro guarda el valor esperado, el valor obtenido, el periodo reportado, "
+        "la fecha en que se necesitaba la información y la trazabilidad de captura."
+    )
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Indicadores en catálogo", len(catalogo))
+    col2.metric("Registros históricos", len(hist))
+    col3.metric("Categorías generales", catalogo["categoria_general"].nunique())
+    col4.metric("Subcategorías", catalogo["subcategoria"].nunique())
+
+    st.markdown("### Flujo operativo")
+    st.info(
+        "1. Escoge categoría general. 2. Escoge subcategoría. 3. Escoge indicador. "
+        "4. Registra esperado y obtenido. 5. El sistema calcula el avance. "
+        "6. Si el mismo indicador ya fue capturado hoy para la misma entidad, se modifica el registro existente."
+    )
+
+    st.markdown("### Ejemplo de uso")
+    st.write(
+        "Para el indicador **% de cumplimiento de visitas y encuentros de diálogo de saberes**, "
+        "se registra el dato del periodo así: esperado = visitas previstas, obtenido = visitas realizadas. "
+        "Si el equipo tenía 20 visitas previstas y realizó 15, el resultado queda en 75%."
+    )
+
+    st.markdown("### Clasificación rápida")
+    resumen = catalogo.groupby(["categoria_general", "subcategoria"], as_index=False).agg(
+        indicadores=("id_indicador", "count"),
+        requieren_planificacion=("requiere_planificacion", lambda s: int((s == "Sí").sum())),
+        requieren_entidad=("requiere_entidad", lambda s: int((s == "Sí").sum())),
+    )
+    st.dataframe(resumen, use_container_width=True, hide_index=True)
+
+
+def pantalla_registrar(usuario: str) -> None:
+    catalogo = obtener_indicadores()
+    st.subheader("Registrar o modificar indicador")
+    st.write("La captura es única por día para el mismo indicador y la misma entidad. Si ya existe, el sistema lo actualiza.")
+
+    col_a, col_b = st.columns(2)
+    with col_a:
+        categoria = st.selectbox(
+            "Categoría general",
+            sorted(catalogo["categoria_general"].dropna().unique()),
+            help="Primer nivel de clasificación para no buscar en una lista gigante de indicadores.",
+        )
+    sub_df = catalogo[catalogo["categoria_general"] == categoria]
+    with col_b:
+        subcategoria = st.selectbox(
+            "Subcategoría",
+            sorted(sub_df["subcategoria"].dropna().unique()),
+            help="Segundo nivel de clasificación. Agrupa indicadores por lógica operativa o temática.",
+        )
+
+    ind_df = sub_df[sub_df["subcategoria"] == subcategoria].copy()
+    ind_df["selector"] = ind_df["id_indicador"] + " | " + ind_df["indicador"]
+    seleccionado = st.selectbox(
+        "Indicador",
+        ind_df["selector"].tolist(),
+        help="Indicador específico que se va a reportar para el periodo.",
+    )
+    id_indicador = seleccionado.split(" | ", 1)[0]
+    ind = ind_df[ind_df["id_indicador"] == id_indicador].iloc[0].to_dict()
+
+    with st.expander("Ver fórmula y criterio de captura", expanded=True):
+        st.write(f"**Indicador:** {ind['indicador']}")
+        st.write(f"**Fórmula / criterio:** {ind['formula_original']}")
+        if ind.get("meta_referencia"):
+            st.write(f"**Meta de referencia:** {ind['meta_referencia']}")
+        if ind.get("periodicidad_referencial"):
+            st.write(f"**Periodicidad referencial:** {ind['periodicidad_referencial']}")
+        st.write(f"**Entidad recomendada:** {ind['entidad_recomendada']}")
+        st.write(f"**Ayuda:** {ind['ayuda_indicador']}")
+        if ind.get("requiere_planificacion") == "Sí":
+            st.warning("Este indicador necesita planificación previa para llenar el valor esperado, por ejemplo visitas previstas, encuentros previstos o actividades programadas.")
+
+    entidad_rec = ind.get("entidad_recomendada") or "Global"
+    requiere_entidad = ind.get("requiere_entidad") == "Sí"
+
+    st.markdown("### Datos de relación")
+    col1, col2 = st.columns(2)
+    with col1:
+        modo_relacion = st.radio(
+            "Forma de registro",
+            ["Consolidado/global", "Vinculado a entidad"],
+            index=1 if requiere_entidad else 0,
+            horizontal=True,
+            help="Usa 'Vinculado a entidad' cuando el indicador deba quedar asociado a un hogar, persona, OBC, lugar o infraestructura. Usa 'Consolidado/global' para totales del periodo.",
+        )
+    with col2:
+        tipo_entidad = "Global"
+        id_entidad = "GLOBAL | Registro consolidado del periodo"
+        if modo_relacion == "Vinculado a entidad":
+            tipo_entidad = st.selectbox(
+                "Tipo de entidad",
+                ["Hogar", "Persona", "OBC", "Lugar poblado", "Infraestructura comunitaria", "CDQR", "Actividad/Evento"],
+                index=["Hogar", "Persona", "OBC", "Lugar poblado", "Infraestructura comunitaria", "CDQR", "Actividad/Evento"].index(entidad_rec) if entidad_rec in ["Hogar", "Persona", "OBC", "Lugar poblado", "Infraestructura comunitaria", "CDQR", "Actividad/Evento"] else 0,
+                help="Catálogo puente. En la integración final se reemplaza por las tablas reales del SIR: hogares, personas, predios/bienes, OBC, lugares poblados, etc.",
+            )
+            id_entidad = st.selectbox(
+                "Entidad",
+                ENTIDADES_DEMO.get(tipo_entidad, ["GLOBAL | Registro consolidado"]),
+                help="Selecciona el hogar, persona u otra entidad a la que corresponde el dato. Por ahora son datos demo.",
+            )
+        else:
+            st.text_input("Entidad", value="GLOBAL | Registro consolidado del periodo", disabled=True, help="Los indicadores globales se guardan como consolidado del periodo.")
+
+    id_entidad_guardar = str(id_entidad).split(" | ", 1)[0]
+
+    st.markdown("### Periodo y fecha de necesidad")
     c1, c2, c3 = st.columns(3)
     with c1:
-        grupo = st.selectbox("Filtrar por grupo", ["Todos"] + sorted(records["grupo_funcional"].dropna().unique().tolist()))
+        fecha_captura = st.date_input(
+            "Fecha de captura",
+            value=date.today(),
+            help="Fecha del registro. La regla del sistema usa esta fecha para evitar duplicados diarios por indicador y entidad.",
+        )
     with c2:
-        tipo_registro = st.selectbox("Filtrar por forma", ["Todos"] + sorted(records["tipo_registro"].dropna().unique().tolist()))
+        periodo_inicio = st.date_input(
+            "Inicio del periodo reportado",
+            value=date.today(),
+            help="Inicio del periodo al que pertenece el dato. Ejemplo: inicio del mes, trimestre o corte.",
+        )
     with c3:
-        estado = st.selectbox("Filtrar por estado", ["Todos"] + sorted(records["estado_validacion"].dropna().unique().tolist()))
+        periodo_fin = st.date_input(
+            "Fin del periodo reportado",
+            value=date.today(),
+            help="Fin del periodo al que pertenece el dato. Puede ser el mismo día si es un registro diario.",
+        )
+    fecha_necesidad = st.date_input(
+        "Fecha en que se necesitaba / debía estar disponible este dato",
+        value=date.today(),
+        help="Sirve para trazabilidad: permite comparar cuándo se debía tener el dato frente a cuándo fue capturado o actualizado.",
+    )
 
-    filtered = records.copy()
-    if grupo != "Todos":
-        filtered = filtered[filtered["grupo_funcional"] == grupo]
-    if tipo_registro != "Todos":
-        filtered = filtered[filtered["tipo_registro"] == tipo_registro]
-    if estado != "Todos":
-        filtered = filtered[filtered["estado_validacion"] == estado]
+    fecha_captura_s = normalizar_fecha(fecha_captura)
+    existente = buscar_registro_existente(id_indicador, fecha_captura_s, tipo_entidad if modo_relacion == "Vinculado a entidad" else "Global", id_entidad_guardar if modo_relacion == "Vinculado a entidad" else "GLOBAL")
 
-    search = st.text_input(
-        "Buscar en indicador, entidad, periodo u observaciones",
-        help="Sirve para encontrar rápidamente un hogar, una persona, un indicador o un corte específico.",
-    ).strip().lower()
-    if search:
-        mask = pd.Series(False, index=filtered.index)
-        for col in ["indicador", "entidad_id", "entidad_nombre", "periodo_corte", "observaciones"]:
-            mask = mask | filtered[col].fillna("").astype(str).str.lower().str.contains(search, na=False)
-        filtered = filtered[mask]
+    if existente:
+        st.warning("Ya existe un registro para este indicador, entidad y fecha. Al guardar se modificará el registro existente, no se creará uno nuevo.")
+        default_esperado = float(existente["valor_esperado"] or 0)
+        default_obtenido = float(existente["valor_obtenido"] or 0)
+        default_fuente = existente["fuente_dato"] or ""
+        default_soporte = existente["soporte_documental"] or ""
+        default_obs = existente["observaciones"] or ""
+    else:
+        default_esperado = 0.0
+        default_obtenido = 0.0
+        default_fuente = ""
+        default_soporte = ""
+        default_obs = ""
 
-    st.markdown(f"**Registros encontrados:** {len(filtered)}")
-    cols = [
-        "id_registro", "fecha_registro", "periodo_corte", "grupo_funcional", "indicador",
-        "tipo_registro", "entidad_tipo", "entidad_id", "entidad_nombre",
-        "valor_realizado", "valor_esperado", "resultado_porcentaje",
-        "valor_linea_base", "valor_actual", "variacion_linea_base",
-        "fuente_dato", "responsable_registro", "estado_validacion", "observaciones",
-    ]
-    st.dataframe(filtered[cols], use_container_width=True, hide_index=True)
+    st.markdown("### Resultado del indicador")
+    c4, c5, c6 = st.columns(3)
+    with c4:
+        valor_esperado = st.number_input(
+            "Valor esperado",
+            min_value=0.0,
+            value=default_esperado,
+            step=1.0,
+            help="Denominador o meta del periodo. Ejemplo: visitas previstas, hogares esperados, personas elegibles, actividades programadas.",
+        )
+    with c5:
+        valor_obtenido = st.number_input(
+            "Valor obtenido",
+            min_value=0.0,
+            value=default_obtenido,
+            step=1.0,
+            help="Numerador o resultado logrado. Ejemplo: visitas realizadas, hogares atendidos, personas capacitadas, actividades ejecutadas.",
+        )
+    with c6:
+        porcentaje = calcular_porcentaje(valor_obtenido, valor_esperado)
+        st.metric("Resultado", texto_avance(porcentaje))
+        st.caption("El cálculo es obtenido / esperado × 100. Si esperado es 0, no se calcula porcentaje.")
 
-    csv = filtered[cols].to_csv(index=False).encode("utf-8-sig")
+    fuente = st.text_input(
+        "Fuente del dato",
+        value=default_fuente,
+        help="Origen del dato: encuesta, informe de campo, acta, reporte PRMV, matriz de visitas, base del SIR, etc.",
+    )
+    soporte = st.text_input(
+        "Soporte documental / enlace / código de evidencia",
+        value=default_soporte,
+        help="Referencia del documento, acta, encuesta, archivo o evidencia que soporta el dato.",
+    )
+    observaciones = st.text_area(
+        "Observaciones",
+        value=default_obs,
+        help="Notas técnicas, explicación de variaciones, aclaraciones del periodo o advertencias de calidad del dato.",
+    )
+
+    if st.button("Guardar indicador", type="primary", use_container_width=True):
+        data = {
+            "id_indicador": id_indicador,
+            "fecha_captura": fecha_captura_s,
+            "periodo_inicio": normalizar_fecha(periodo_inicio),
+            "periodo_fin": normalizar_fecha(periodo_fin),
+            "fecha_necesidad": normalizar_fecha(fecha_necesidad),
+            "tipo_entidad": tipo_entidad if modo_relacion == "Vinculado a entidad" else "Global",
+            "id_entidad": id_entidad_guardar if modo_relacion == "Vinculado a entidad" else "GLOBAL",
+            "valor_esperado": valor_esperado,
+            "valor_obtenido": valor_obtenido,
+            "fuente_dato": fuente,
+            "soporte_documental": soporte,
+            "observaciones": observaciones,
+        }
+        accion, rid = guardar_registro(data, usuario)
+        if accion == "actualizado":
+            st.success(f"Registro actualizado correctamente. ID interno: {rid}")
+        else:
+            st.success(f"Registro creado correctamente. ID interno: {rid}")
+        st.rerun()
+
+
+def pantalla_historial() -> None:
+    st.subheader("Historial de registros")
+    hist = obtener_historial()
+    if hist.empty:
+        st.info("Aún no hay registros históricos.")
+        return
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        cats = ["Todas"] + sorted(hist["categoria_general"].dropna().unique().tolist())
+        cat = st.selectbox("Filtrar por categoría", cats)
+    with col2:
+        subs = hist["subcategoria"].dropna().unique().tolist()
+        if cat != "Todas":
+            subs = hist[hist["categoria_general"] == cat]["subcategoria"].dropna().unique().tolist()
+        sub = st.selectbox("Filtrar por subcategoría", ["Todas"] + sorted(subs))
+    with col3:
+        tipos = ["Todos"] + sorted(hist["tipo_entidad"].dropna().unique().tolist())
+        tipo = st.selectbox("Filtrar por tipo de entidad", tipos)
+
+    filtrado = hist.copy()
+    if cat != "Todas":
+        filtrado = filtrado[filtrado["categoria_general"] == cat]
+    if sub != "Todas":
+        filtrado = filtrado[filtrado["subcategoria"] == sub]
+    if tipo != "Todos":
+        filtrado = filtrado[filtrado["tipo_entidad"] == tipo]
+
+    st.dataframe(filtrado, use_container_width=True, hide_index=True)
+
+    csv = filtrado.to_csv(index=False).encode("utf-8-sig")
     st.download_button(
-        "Descargar histórico filtrado CSV",
+        "Descargar historial filtrado CSV",
         data=csv,
-        file_name="prmv_historico_indicadores.csv",
+        file_name="prmv_historial_indicadores.csv",
         mime="text/csv",
         use_container_width=True,
     )
 
 
-def page_tablero(catalog: pd.DataFrame, records: pd.DataFrame) -> None:
-    st.title("Tablero PRMV")
-    st.caption("Resumen calculado a partir del histórico registrado.")
+def pantalla_catalogo() -> None:
+    st.subheader("Catálogo de indicadores")
+    catalogo = obtener_indicadores()
 
-    if records.empty:
-        st.info("Todavía no hay datos para graficar. Registra al menos un corte.")
-        return
+    col1, col2 = st.columns(2)
+    with col1:
+        cat = st.selectbox("Categoría general", ["Todas"] + sorted(catalogo["categoria_general"].unique().tolist()))
+    with col2:
+        plan = st.selectbox("Requiere planificación", ["Todos", "Sí", "No"])
 
-    valid = records[records["estado_validacion"] != "Anulado"].copy()
-    if valid.empty:
-        st.warning("Solo hay registros anulados.")
-        return
+    filtrado = catalogo.copy()
+    if cat != "Todas":
+        filtrado = filtrado[filtrado["categoria_general"] == cat]
+    if plan != "Todos":
+        filtrado = filtrado[filtrado["requiere_planificacion"] == plan]
 
-    indicadores_con_dato = valid["id_indicador"].nunique()
-    cobertura = round(indicadores_con_dato / max(len(catalog), 1) * 100, 2)
-    pct_rows = valid[valid["valor_esperado"].fillna(0) > 0]
-    avance_promedio = pct_rows["resultado_porcentaje"].mean() if not pct_rows.empty else None
-    variacion_promedio = valid["variacion_linea_base"].dropna().mean() if valid["variacion_linea_base"].notna().any() else None
-
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        card("Cobertura de indicadores", f"{cobertura:.1f}%", f"{indicadores_con_dato} de {len(catalog)} con datos")
-    with c2:
-        card("Avance promedio", "—" if pd.isna(avance_promedio) else f"{avance_promedio:.1f}%", "Con base en numerador/denominador")
-    with c3:
-        card("Variación promedio", "—" if pd.isna(variacion_promedio) else f"{variacion_promedio:.1f}%", "Contra línea base")
-    with c4:
-        card("Registros válidos", len(valid), "Excluye anulados")
-
-    st.markdown("### Avance agregado por grupo")
-    group_counts = (
-        valid.groupby("grupo_funcional", dropna=False)
-        .agg(valor_realizado=("valor_realizado", "sum"), valor_esperado=("valor_esperado", "sum"), registros=("id_registro", "count"))
-        .reset_index()
-    )
-    group_counts["avance_%"] = group_counts.apply(lambda r: pct(r["valor_realizado"], r["valor_esperado"]), axis=1)
-    chart_df = group_counts.dropna(subset=["avance_%"]).set_index("grupo_funcional")[["avance_%"]]
-    if not chart_df.empty:
-        st.bar_chart(chart_df)
-    st.dataframe(group_counts.sort_values("avance_%", ascending=True, na_position="last"), use_container_width=True, hide_index=True)
-
-    st.markdown("### Resultado agregado por indicador y corte")
-    agg = (
-        valid.groupby(["periodo_corte", "id_indicador", "indicador", "grupo_funcional"], dropna=False)
-        .agg(
-            valor_realizado=("valor_realizado", "sum"),
-            valor_esperado=("valor_esperado", "sum"),
-            valor_actual_promedio=("valor_actual", "mean"),
-            valor_linea_base_promedio=("valor_linea_base", "mean"),
-            registros=("id_registro", "count"),
-        )
-        .reset_index()
-    )
-    agg["avance_%"] = agg.apply(lambda r: pct(r["valor_realizado"], r["valor_esperado"]), axis=1)
-    agg["variacion_%"] = agg.apply(lambda r: variation(r["valor_linea_base_promedio"], r["valor_actual_promedio"]), axis=1)
-    st.dataframe(agg.sort_values(["periodo_corte", "grupo_funcional", "id_indicador"]), use_container_width=True, hide_index=True)
-
-    st.markdown("### Indicadores sin registros")
-    missing = catalog[~catalog["id_indicador"].isin(valid["id_indicador"].unique())]
-    st.dataframe(
-        missing[["id_indicador", "grupo_funcional", "indicador", "nivel_captura_recomendado", "entidad_principal"]],
-        use_container_width=True,
-        hide_index=True,
-    )
-
-
-def page_catalogo(catalog: pd.DataFrame) -> None:
-    st.title("Catálogo técnico de indicadores")
-    st.caption("Aquí se ve cómo quedó agrupado cada indicador y qué tipo de captura se recomienda.")
-
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        grupo = st.selectbox("Grupo", ["Todos"] + sorted(catalog["grupo_funcional"].dropna().unique().tolist()))
-    with c2:
-        entidad = st.selectbox("Entidad principal", ["Todos"] + sorted(catalog["entidad_principal"].dropna().unique().tolist()))
-    with c3:
-        captura = st.selectbox("Captura recomendada", ["Todos"] + sorted(catalog["nivel_captura_recomendado"].dropna().unique().tolist()))
-
-    filtered = catalog.copy()
-    if grupo != "Todos":
-        filtered = filtered[filtered["grupo_funcional"] == grupo]
-    if entidad != "Todos":
-        filtered = filtered[filtered["entidad_principal"] == entidad]
-    if captura != "Todos":
-        filtered = filtered[filtered["nivel_captura_recomendado"] == captura]
-
-    search = st.text_input("Buscar indicador", help="Filtra por cualquier palabra dentro del indicador.").strip().lower()
-    if search:
-        filtered = filtered[filtered["indicador"].str.lower().str.contains(search, na=False)]
-
-    cols = [
-        "id_indicador", "tipo_indicador", "grupo_funcional", "entidad_principal",
-        "nivel_captura_recomendado", "tipo_valor_recomendado", "indicador", "formula_original",
-        "meta", "periodicidad", "ayuda_captura",
+    columnas = [
+        "id_indicador", "categoria_general", "subcategoria", "indicador", "formula_original",
+        "entidad_recomendada", "requiere_entidad", "requiere_planificacion", "unidad",
+        "meta_referencia", "periodicidad_referencial"
     ]
-    st.dataframe(filtered[cols], use_container_width=True, hide_index=True)
+    st.dataframe(filtrado[columnas], use_container_width=True, hide_index=True)
 
+    csv = filtrado.to_csv(index=False).encode("utf-8-sig")
     st.download_button(
         "Descargar catálogo CSV",
-        data=filtered[cols].to_csv(index=False).encode("utf-8-sig"),
+        data=csv,
         file_name="prmv_catalogo_indicadores.csv",
         mime="text/csv",
         use_container_width=True,
     )
 
 
-def page_entidades() -> None:
-    st.title("Catálogos de relación")
-    st.caption("Catálogo local para poder seleccionar hogares, personas, OBC, lugares o infraestructuras al registrar datos por entidad.")
+def pantalla_tablero() -> None:
+    st.subheader("Tablero simple")
+    hist = obtener_historial()
+    if hist.empty:
+        st.info("El tablero se activará cuando existan registros históricos.")
+        return
 
-    info_box(
-        "Importante",
-        "Este catálogo no reemplaza las tablas reales del SIR. Sirve como puente local mientras el módulo se conecta con Hogares, Personas, Predios/Bienes, Documentos y CDQR.",
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Registros", len(hist))
+    c2.metric("Indicadores reportados", hist["id_indicador"].nunique())
+    c3.metric("Entidades reportadas", hist["id_entidad"].nunique())
+    promedio = hist["porcentaje_resultado"].dropna().mean()
+    c4.metric("Avance promedio", "N/A" if pd.isna(promedio) else f"{promedio:.2f}%")
+
+    resumen = hist.groupby(["categoria_general", "subcategoria"], as_index=False).agg(
+        registros=("id_registro", "count"),
+        avance_promedio=("porcentaje_resultado", "mean"),
+        esperado_total=("valor_esperado", "sum"),
+        obtenido_total=("valor_obtenido", "sum"),
     )
+    resumen["avance_promedio"] = resumen["avance_promedio"].round(2)
+    st.dataframe(resumen, use_container_width=True, hide_index=True)
 
-    with st.form("form_entidad"):
-        c1, c2 = st.columns(2)
-        with c1:
-            tipo_entidad = st.selectbox(
-                "Tipo de entidad",
-                TIPOS_ENTIDAD,
-                help="Tipo de objeto al que se podrá ligar el indicador.",
-            )
-            id_entidad = st.text_input(
-                "ID entidad",
-                placeholder="Ej. HOG-0001 / PER-0001 / OBC-001",
-                help="Debe coincidir con el ID usado por el SIR cuando ya exista.",
-            )
-            nombre = st.text_input(
-                "Nombre o etiqueta",
-                placeholder="Etiqueta fácil de leer",
-                help="Nombre visible en los formularios de captura.",
-            )
-        with c2:
-            id_hogar = st.text_input("ID hogar relacionado", help="Opcional. Útil cuando la entidad es una persona vinculada a un hogar.")
-            id_persona = st.text_input("ID persona relacionada", help="Opcional. Útil si la entidad principal es una persona.")
-            id_predio_bien = st.text_input("ID predio/bien relacionado", help="Opcional. Útil para indicadores de terreno, vivienda, activos o bienes.")
-            lugar_poblado = st.text_input("Lugar poblado", help="Opcional. Permite filtrar o interpretar territorialmente los datos.")
-        descripcion = st.text_area("Descripción", help="Notas adicionales de la entidad o referencia cruzada.")
-        submitted = st.form_submit_button("Guardar entidad", use_container_width=True)
-
-    if submitted:
-        if not id_entidad.strip() or not nombre.strip():
-            st.error("ID entidad y nombre/etiqueta son obligatorios.")
-        else:
-            execute(
-                """
-                INSERT OR REPLACE INTO prmv_entidades_relacion (
-                    id_entidad, tipo_entidad, nombre_etiqueta, id_hogar, id_persona,
-                    id_predio_bien, lugar_poblado, descripcion, activo, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
-                """,
-                (
-                    id_entidad.strip(), tipo_entidad, nombre.strip(), id_hogar.strip(), id_persona.strip(),
-                    id_predio_bien.strip(), lugar_poblado.strip(), descripcion.strip(),
-                    datetime.now().isoformat(timespec="seconds"),
-                ),
-            )
-            st.success("Entidad guardada en el catálogo local.")
-
-    st.markdown("### Entidades registradas")
-    df = load_entities()
-    if df.empty:
-        st.info("No hay entidades registradas todavía.")
+    st.markdown("### Indicadores con avance bajo")
+    bajos = hist[(hist["porcentaje_resultado"].notna()) & (hist["porcentaje_resultado"] < 80)].copy()
+    if bajos.empty:
+        st.success("No hay registros por debajo del 80%.")
     else:
-        st.dataframe(df, use_container_width=True, hide_index=True)
-        st.download_button(
-            "Descargar entidades CSV",
-            data=df.to_csv(index=False).encode("utf-8-sig"),
-            file_name="prmv_entidades_relacion.csv",
-            mime="text/csv",
+        st.dataframe(
+            bajos[["fecha_captura", "categoria_general", "subcategoria", "indicador", "tipo_entidad", "id_entidad", "porcentaje_resultado", "observaciones"]],
             use_container_width=True,
+            hide_index=True,
         )
 
 
-def page_modelo() -> None:
-    st.title("Modelo técnico simplificado")
-    st.caption("Estructura interna del módulo, explicada sin sobrecargar al usuario operativo.")
+def pantalla_modelo_tecnico() -> None:
+    st.subheader("Modelo técnico")
+    st.write("La interfaz es simple, pero por debajo guarda trazabilidad suficiente para auditoría y análisis histórico.")
 
-    st.markdown("### Tablas principales")
-    modelo = pd.DataFrame([
-        {
-            "tabla": "prmv_indicadores_catalogo",
-            "propósito": "Contiene los 86 indicadores del Excel, agrupados por tema, tipo de captura y entidad principal.",
-            "campos clave": "id_indicador, grupo_funcional, indicador, formula_original, entidad_principal, nivel_captura_recomendado",
-        },
-        {
-            "tabla": "prmv_registros_historicos",
-            "propósito": "Guarda cada dato reportado por periodo. Puede ser consolidado o ligado a una entidad.",
-            "campos clave": "id_registro, id_indicador, periodo_corte, tipo_registro, entidad_id, valor_realizado, valor_esperado, resultado_porcentaje, valor_linea_base, valor_actual",
-        },
-        {
-            "tabla": "prmv_entidades_relacion",
-            "propósito": "Catálogo local para seleccionar hogares, personas, OBC, lugares, infraestructuras u otros IDs mientras se conecta con el SIR.",
-            "campos clave": "id_entidad, tipo_entidad, nombre_etiqueta, id_hogar, id_persona, id_predio_bien, lugar_poblado",
-        },
-    ])
-    st.dataframe(modelo, use_container_width=True, hide_index=True)
-
-    st.markdown("### Reglas de cálculo")
+    st.markdown("#### Tabla: prmv_indicadores_catalogo")
     st.code(
         """
-# Indicadores de avance / cumplimiento
-resultado_porcentaje = (valor_realizado / valor_esperado) * 100
-
-# Indicadores contra línea base
-variacion_linea_base = ((valor_actual - valor_linea_base) / valor_linea_base) * 100
-
-# Registro por entidad tipo Sí/No
-valor_esperado = 1 si la entidad pertenece al universo esperado
-valor_realizado = 1 si la entidad cumple el criterio del indicador
-        """.strip(),
-        language="python",
+id_indicador PK
+categoria_general
+subcategoria
+tipo_indicador
+indicador
+formula_original
+meta_referencia
+periodicidad_referencial
+unidad
+tipo_valor
+entidad_recomendada
+requiere_entidad
+requiere_planificacion
+categoria_tematica_original
+modalidad
+duracion
+capital
+impacto
+ayuda_indicador
+        """.strip()
     )
 
-    st.markdown("### Cómo interpretar la separación global vs. entidad")
-    st.markdown(
+    st.markdown("#### Tabla: prmv_registros_indicadores")
+    st.code(
         """
-- **Global/consolidado:** visitas realizadas, capacitaciones implementadas, piezas comunicativas, CDQR atendidas, espacios de socialización.
-- **Por hogar:** ingresos, vivienda, terreno, animales, pagos familiares, acceso a servicios, recuperación de medios de vida.
-- **Por persona:** vulnerabilidad, acompañamiento psicosocial, capacitación, trabajadores con pérdida de ingresos.
-- **Por OBC:** participación, fortalecimiento, apropiación, implementación de iniciativas comunitarias.
-- **Por lugar/infraestructura:** espacios de diálogo, estructuras comunitarias, lugares de reasentamiento, comunidades receptoras.
-        """
+id_registro PK
+id_indicador FK
+fecha_captura
+periodo_inicio
+periodo_fin
+fecha_necesidad
+tipo_entidad
+id_entidad
+valor_esperado
+valor_obtenido
+porcentaje_resultado
+fuente_dato
+soporte_documental
+observaciones
+usuario_registro
+fecha_creacion
+usuario_actualizacion
+fecha_actualizacion
+UNIQUE(id_indicador, fecha_captura, tipo_entidad, id_entidad)
+        """.strip()
     )
 
-
-def sidebar() -> str:
-    st.sidebar.title("PRMV")
-    st.sidebar.caption("Indicadores históricos")
-    page = st.sidebar.radio(
-        "Navegación",
-        [
-            "Inicio",
-            "Registrar corte",
-            "Histórico",
-            "Tablero PRMV",
-            "Catálogo de indicadores",
-            "Catálogos de relación",
-            "Modelo técnico",
-        ],
-        help="Usa Registrar corte para ingresar datos; Histórico y Tablero para consultar resultados.",
+    st.info(
+        "Regla de duplicados: el sistema no crea dos registros para el mismo indicador, fecha de captura, tipo de entidad e ID de entidad. "
+        "Cuando ya existe, modifica el registro. Para indicadores globales usa tipo_entidad = Global e id_entidad = GLOBAL."
     )
-    st.sidebar.divider()
-    st.sidebar.markdown(
-        """
-**Capturas soportadas**
-
-- Consolidado/global
-- Por hogar
-- Por persona
-- Por OBC
-- Por lugar poblado
-- Por infraestructura
-        """
-    )
-    return page
 
 
 def main() -> None:
+    st.set_page_config(page_title=APP_TITLE, page_icon="📊", layout="wide")
     init_db()
-    catalog = load_catalog()
-    records = load_records()
-    page = sidebar()
 
-    if page == "Inicio":
-        page_inicio(catalog, records)
-    elif page == "Registrar corte":
-        page_registrar(catalog)
-    elif page == "Histórico":
-        page_historico(catalog, records)
-    elif page == "Tablero PRMV":
-        page_tablero(catalog, records)
-    elif page == "Catálogo de indicadores":
-        page_catalogo(catalog)
-    elif page == "Catálogos de relación":
-        page_entidades()
-    elif page == "Modelo técnico":
-        page_modelo()
+    with st.sidebar:
+        st.header("PRMV")
+        usuario = st.text_input(
+            "Responsable de captura",
+            value=os.getenv("USER", "usuario_sir"),
+            help="Se guarda automáticamente como usuario de registro o actualización. En la integración final puede venir del login del SIR.",
+        )
+        pantalla = st.radio(
+            "Menú",
+            ["Inicio", "Registrar indicador", "Historial", "Tablero", "Catálogo", "Modelo técnico"],
+            help="Navegación del módulo PRMV.",
+        )
+
+    render_header(usuario)
+
+    if pantalla == "Inicio":
+        pantalla_inicio()
+    elif pantalla == "Registrar indicador":
+        pantalla_registrar(usuario)
+    elif pantalla == "Historial":
+        pantalla_historial()
+    elif pantalla == "Tablero":
+        pantalla_tablero()
+    elif pantalla == "Catálogo":
+        pantalla_catalogo()
+    elif pantalla == "Modelo técnico":
+        pantalla_modelo_tecnico()
 
 
 if __name__ == "__main__":

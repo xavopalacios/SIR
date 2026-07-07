@@ -50,7 +50,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -67,7 +67,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -84,7 +84,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -101,7 +101,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -118,7 +118,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -135,7 +135,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -152,7 +152,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -169,7 +169,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -186,7 +186,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -203,7 +203,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -220,7 +220,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -237,7 +237,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -254,7 +254,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -271,7 +271,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -288,7 +288,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -305,7 +305,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -322,7 +322,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -339,7 +339,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -356,7 +356,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -373,7 +373,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -390,7 +390,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -407,7 +407,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -424,7 +424,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -441,7 +441,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -458,7 +458,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -475,7 +475,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -492,7 +492,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -509,7 +509,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -526,7 +526,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -543,7 +543,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -560,7 +560,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -577,7 +577,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -594,7 +594,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -611,7 +611,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -628,7 +628,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -645,7 +645,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -662,7 +662,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -679,7 +679,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -696,7 +696,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -713,7 +713,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -730,7 +730,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -747,7 +747,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -764,7 +764,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -781,7 +781,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -798,7 +798,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -815,7 +815,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -832,7 +832,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -849,7 +849,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -866,7 +866,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -883,7 +883,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -900,7 +900,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -917,7 +917,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -934,7 +934,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -951,7 +951,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -968,7 +968,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -985,7 +985,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -1002,7 +1002,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -1019,7 +1019,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -1036,7 +1036,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -1053,7 +1053,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -1070,7 +1070,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -1087,7 +1087,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -1104,7 +1104,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -1121,7 +1121,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "",
     "periodicidad": "",
     "medicion": "Registro histórico por corte",
-    "requiere_numerador_denominador": true,
+    "requiere_numerador_denominador": True,
     "unidad": "Porcentaje"
   },
   {
@@ -1138,7 +1138,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "≥95%",
     "periodicidad": "Línea base + anual",
     "medicion": "Línea base + anual",
-    "requiere_numerador_denominador": false,
+    "requiere_numerador_denominador": False,
     "unidad": "Porcentaje o valor, según indicador"
   },
   {
@@ -1155,7 +1155,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "≥80%",
     "periodicidad": "Línea base + semestral",
     "medicion": "Línea base + semestral",
-    "requiere_numerador_denominador": false,
+    "requiere_numerador_denominador": False,
     "unidad": "Porcentaje o valor, según indicador"
   },
   {
@@ -1172,7 +1172,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "≥90%",
     "periodicidad": "Línea base + semestral",
     "medicion": "Línea base + semestral",
-    "requiere_numerador_denominador": false,
+    "requiere_numerador_denominador": False,
     "unidad": "Porcentaje o valor, según indicador"
   },
   {
@@ -1189,7 +1189,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "0.1",
     "periodicidad": "Línea base + anual",
     "medicion": "Línea base + anual",
-    "requiere_numerador_denominador": false,
+    "requiere_numerador_denominador": False,
     "unidad": "Porcentaje o valor, según indicador"
   },
   {
@@ -1206,7 +1206,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "≥80%",
     "periodicidad": "Línea base + anual",
     "medicion": "Línea base + anual",
-    "requiere_numerador_denominador": false,
+    "requiere_numerador_denominador": False,
     "unidad": "Porcentaje o valor, según indicador"
   },
   {
@@ -1223,7 +1223,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "1",
     "periodicidad": "Línea base + continuo",
     "medicion": "Línea base + continuo",
-    "requiere_numerador_denominador": false,
+    "requiere_numerador_denominador": False,
     "unidad": "Porcentaje o valor, según indicador"
   },
   {
@@ -1240,7 +1240,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "≥80%",
     "periodicidad": "Línea base + semestral",
     "medicion": "Línea base + semestral",
-    "requiere_numerador_denominador": false,
+    "requiere_numerador_denominador": False,
     "unidad": "Porcentaje o valor, según indicador"
   },
   {
@@ -1257,7 +1257,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "≥95%",
     "periodicidad": "Línea base + mensual",
     "medicion": "Línea base + mensual",
-    "requiere_numerador_denominador": false,
+    "requiere_numerador_denominador": False,
     "unidad": "Porcentaje o valor, según indicador"
   },
   {
@@ -1274,7 +1274,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "≥90%",
     "periodicidad": "Línea base + trimestral",
     "medicion": "Línea base + trimestral",
-    "requiere_numerador_denominador": false,
+    "requiere_numerador_denominador": False,
     "unidad": "Porcentaje o valor, según indicador"
   },
   {
@@ -1291,7 +1291,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "Igualar niveles previos",
     "periodicidad": "Línea base + semestral",
     "medicion": "Línea base + semestral",
-    "requiere_numerador_denominador": false,
+    "requiere_numerador_denominador": False,
     "unidad": "Porcentaje o valor, según indicador"
   },
   {
@@ -1308,7 +1308,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "≥75%",
     "periodicidad": "Línea base + anual",
     "medicion": "Línea base + anual",
-    "requiere_numerador_denominador": false,
+    "requiere_numerador_denominador": False,
     "unidad": "Porcentaje o valor, según indicador"
   },
   {
@@ -1325,7 +1325,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "Mínimo 2",
     "periodicidad": "Línea base + anual",
     "medicion": "Línea base + anual",
-    "requiere_numerador_denominador": false,
+    "requiere_numerador_denominador": False,
     "unidad": "Porcentaje o valor, según indicador"
   },
   {
@@ -1342,7 +1342,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "≥70%",
     "periodicidad": "Línea base + anual",
     "medicion": "Línea base + anual",
-    "requiere_numerador_denominador": false,
+    "requiere_numerador_denominador": False,
     "unidad": "Porcentaje o valor, según indicador"
   },
   {
@@ -1359,7 +1359,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "≥95%",
     "periodicidad": "Línea base + anual",
     "medicion": "Línea base + anual",
-    "requiere_numerador_denominador": false,
+    "requiere_numerador_denominador": False,
     "unidad": "Porcentaje o valor, según indicador"
   },
   {
@@ -1376,7 +1376,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "≥95%",
     "periodicidad": "Línea base + semestral",
     "medicion": "Línea base + semestral",
-    "requiere_numerador_denominador": false,
+    "requiere_numerador_denominador": False,
     "unidad": "Porcentaje o valor, según indicador"
   },
   {
@@ -1393,7 +1393,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "≥90%",
     "periodicidad": "Línea base + anual",
     "medicion": "Línea base + anual",
-    "requiere_numerador_denominador": false,
+    "requiere_numerador_denominador": False,
     "unidad": "Porcentaje o valor, según indicador"
   },
   {
@@ -1410,7 +1410,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "Niveles previos",
     "periodicidad": "Línea base + anual",
     "medicion": "Línea base + anual",
-    "requiere_numerador_denominador": false,
+    "requiere_numerador_denominador": False,
     "unidad": "Porcentaje o valor, según indicador"
   },
   {
@@ -1427,7 +1427,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "1",
     "periodicidad": "Línea base + anual",
     "medicion": "Línea base + anual",
-    "requiere_numerador_denominador": false,
+    "requiere_numerador_denominador": False,
     "unidad": "Porcentaje o valor, según indicador"
   },
   {
@@ -1444,7 +1444,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "Igualar previo",
     "periodicidad": "Línea base + anual",
     "medicion": "Línea base + anual",
-    "requiere_numerador_denominador": false,
+    "requiere_numerador_denominador": False,
     "unidad": "Porcentaje o valor, según indicador"
   },
   {
@@ -1461,7 +1461,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "Mínimo 3",
     "periodicidad": "Línea base + anual",
     "medicion": "Línea base + anual",
-    "requiere_numerador_denominador": false,
+    "requiere_numerador_denominador": False,
     "unidad": "Porcentaje o valor, según indicador"
   },
   {
@@ -1478,7 +1478,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "Mantener o mejorar",
     "periodicidad": "Línea base + anual",
     "medicion": "Línea base + anual",
-    "requiere_numerador_denominador": false,
+    "requiere_numerador_denominador": False,
     "unidad": "Porcentaje o valor, según indicador"
   },
   {
@@ -1495,7 +1495,7 @@ CATALOGO_INDICADORES: list[dict[str, Any]] = [
     "meta": "100% lluvia / ≥80% seco",
     "periodicidad": "Línea base + trimestral",
     "medicion": "Línea base + trimestral",
-    "requiere_numerador_denominador": false,
+    "requiere_numerador_denominador": False,
     "unidad": "Porcentaje o valor, según indicador"
   }
 ]

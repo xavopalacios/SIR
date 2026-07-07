@@ -1,6 +1,6 @@
 # ============================================================
 # SIR ACP - Módulo D Indicadores por sujeto de medición
-# Versión validada contra indicadores oficiales PRMV y M&E
+# Versión ajustada con CP, aplicabilidad por pregunta y data simulada
 # ============================================================
 # - Un solo archivo .py autosuficiente.
 # - No requiere schema.sql ni seed_catalogo.json.
@@ -38,7 +38,7 @@ COLOR_SECUNDARIO_SOCIONAUT = "#00A6A6"
 COLOR_CORAL = "#F05A43"
 COLOR_BORDE = "#D6DEE6"
 
-ARCHIVO_MEMORIA = Path("memoria_modulo_d_indicadores_validado.json")
+ARCHIVO_MEMORIA = Path("memoria_modulo_d_indicadores_v3.json")
 USUARIO_PROTOTIPO = "usuario_prototipo"
 
 ESTADOS_CUMPLIMIENTO = ["Cumple", "Parcial", "No cumple", "No aplica", "En proceso", "Sin dato"]
@@ -49,7 +49,7 @@ FUENTES_INFORMACION = [
     "Acta / lista de asistencia",
     "Encuesta / entrevista",
     "Expediente documental",
-    "CDQR / caso",
+    "CP - Consultas y Quejas",
     "Otro soporte",
 ]
 
@@ -1651,24 +1651,24 @@ CATALOGO_FORMULARIOS = [
     "fuente": "Indicadores PRMV",
     "hoja_origen": "INDICADORES_PRMV",
     "fila_origen": "64",
-    "formulario": "Formulario CDQR / caso",
-    "tipo_sujeto": "CDQR / caso",
+    "formulario": "Formulario CP / caso",
+    "tipo_sujeto": "CP / caso",
     "capital": "Social (gobernanza)",
     "categoria": "Transversal [Individual y Colectivo] Duración: Todo el ciclo de vida del proyecto",
     "subcategoria": "Indicadores PRMV",
     "impacto_asociado": "• Riesgo de inconformidades, conflictos y desinformación asociados al proyecto (medida preventiva y de gestión, no atiende un impacto físico)",
-    "indicador": "% de CDQR registradas y atendidas dentro del plazo establecido",
-    "formula_meta": "(# CDQR atendidas en plazo / # CDQR recibidas) × 100",
+    "indicador": "% de CP registradas y atendidas dentro del plazo establecido",
+    "formula_meta": "(# CP atendidas en plazo / # CP recibidas) × 100",
     "periodicidad": "",
     "medicion_periodicidad": "",
-    "pregunta": "¿La CDQR recibida fue atendida dentro del plazo establecido?",
+    "pregunta": "¿La CP recibida fue atendida dentro del plazo establecido?",
     "tipo_respuesta": "Catálogo de cumplimiento",
     "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
-    "resultado_esperado": "(# CDQR atendidas en plazo / # CDQR recibidas) × 100",
-    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: CDQR recibidas.",
-    "modulos_disparan": "M08 Consultas, quejas y reclamos",
-    "numerador_base": "CDQR atendidas en plazo",
-    "denominador_base": "CDQR recibidas"
+    "resultado_esperado": "(# CP atendidas en plazo / # CP recibidas) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: CP recibidas.",
+    "modulos_disparan": "M08 Consultas y quejas",
+    "numerador_base": "CP atendidas en plazo",
+    "denominador_base": "CP recibidas"
   },
   {
     "id_pregunta": "PREG-063",
@@ -1677,24 +1677,24 @@ CATALOGO_FORMULARIOS = [
     "fuente": "Indicadores PRMV",
     "hoja_origen": "INDICADORES_PRMV",
     "fila_origen": "65",
-    "formulario": "Formulario CDQR / caso",
-    "tipo_sujeto": "CDQR / caso",
+    "formulario": "Formulario CP / caso",
+    "tipo_sujeto": "CP / caso",
     "capital": "Social (gobernanza)",
     "categoria": "Transversal [Individual y Colectivo] Duración: Todo el ciclo de vida del proyecto",
     "subcategoria": "Indicadores PRMV",
     "impacto_asociado": "• Riesgo de inconformidades, conflictos y desinformación asociados al proyecto (medida preventiva y de gestión, no atiende un impacto físico)",
-    "indicador": "% de CDQR resueltas a satisfacción del solicitante",
-    "formula_meta": "(# CDQR resueltas a satisfacción / # CDQR cerradas) × 100",
+    "indicador": "% de CP resueltas a satisfacción del solicitante",
+    "formula_meta": "(# CP resueltas a satisfacción / # CP cerradas) × 100",
     "periodicidad": "",
     "medicion_periodicidad": "",
-    "pregunta": "¿La CDQR cerrada fue resuelta a satisfacción del solicitante?",
+    "pregunta": "¿La CP cerrada fue resuelta a satisfacción del solicitante?",
     "tipo_respuesta": "Catálogo de percepción",
     "catalogo_valores": "Favorable; Neutral; Desfavorable; No sabe/No responde; No aplica",
-    "resultado_esperado": "(# CDQR resueltas a satisfacción / # CDQR cerradas) × 100",
-    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: CDQR cerradas.",
-    "modulos_disparan": "M08 Consultas, quejas y reclamos",
-    "numerador_base": "CDQR resueltas a satisfacción",
-    "denominador_base": "CDQR cerradas"
+    "resultado_esperado": "(# CP resueltas a satisfacción / # CP cerradas) × 100",
+    "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: CP cerradas.",
+    "modulos_disparan": "M08 Consultas y quejas",
+    "numerador_base": "CP resueltas a satisfacción",
+    "denominador_base": "CP cerradas"
   },
   {
     "id_pregunta": "PREG-064",
@@ -1709,16 +1709,16 @@ CATALOGO_FORMULARIOS = [
     "categoria": "Transversal [Individual y Colectivo] Duración: Todo el ciclo de vida del proyecto",
     "subcategoria": "Indicadores PRMV",
     "impacto_asociado": "• Riesgo de inconformidades, conflictos y desinformación asociados al proyecto (medida preventiva y de gestión, no atiende un impacto físico)",
-    "indicador": "Cobertura de divulgación del mecanismo CDQR",
+    "indicador": "Cobertura de divulgación del mecanismo CP",
     "formula_meta": "(# espacios/piezas de divulgación realizados / # programados) × 100",
     "periodicidad": "",
     "medicion_periodicidad": "",
-    "pregunta": "¿La actividad o pieza de divulgación del mecanismo CDQR programada fue realizada?",
+    "pregunta": "¿La actividad o pieza de divulgación del mecanismo CP programada fue realizada?",
     "tipo_respuesta": "Catálogo de cumplimiento",
     "catalogo_valores": "Sí; No; Parcial; No aplica; Sin dato",
     "resultado_esperado": "(# espacios/piezas de divulgación realizados / # programados) × 100",
     "cuando_se_llena": "Solo si el registro pertenece al denominador del indicador: programados.",
-    "modulos_disparan": "M06 Gestión documental / soportes + M08 Consultas, quejas y reclamos",
+    "modulos_disparan": "M06 Gestión documental / soportes + M08 Consultas y quejas",
     "numerador_base": "espacios/piezas de divulgación realizados",
     "denominador_base": "programados"
   },
@@ -2298,7 +2298,7 @@ CATALOGO_FORMULARIOS = [
 
 # Sujetos de prueba para que el prototipo funcione sin conexión al SIR real.
 # En integración, esta lista debe reemplazarse por consultas a personas, hogares,
-# comunidades, OBC, actividades, CDQR, infraestructura y unidades productivas.
+# comunidades, OBC, actividades, CP, infraestructura y unidades productivas.
 SUJETOS_DEMO = [
   {
     "tipo_sujeto": "Actividad / evento",
@@ -2319,19 +2319,19 @@ SUJETOS_DEMO = [
     "id_comunidad": "COM-0002"
   },
   {
-    "tipo_sujeto": "CDQR / caso",
-    "id_sujeto": "CDQR-0001",
-    "nombre_sujeto": "Caso CDQR HOG-0001",
-    "descripcion": "Consulta/queja/reclamo asociado a hogar",
+    "tipo_sujeto": "CP / caso",
+    "id_sujeto": "CP-0001",
+    "nombre_sujeto": "Caso CP HOG-0001",
+    "descripcion": "Consulta/queja asociado a hogar",
     "zona": "Zona 1",
     "id_hogar": "HOG-0001",
     "id_comunidad": "COM-0001"
   },
   {
-    "tipo_sujeto": "CDQR / caso",
-    "id_sujeto": "CDQR-0002",
-    "nombre_sujeto": "Caso CDQR comunitario",
-    "descripcion": "Consulta/queja/reclamo comunitario",
+    "tipo_sujeto": "CP / caso",
+    "id_sujeto": "CP-0002",
+    "nombre_sujeto": "Caso CP comunitario",
+    "descripcion": "Consulta/queja comunitario",
     "zona": "Zona 2",
     "id_hogar": "",
     "id_comunidad": "COM-0002"
@@ -2608,6 +2608,15 @@ def aplicar_estilos():
             .question-kicker {{ color: var(--sir-accent); font-weight: 900; text-transform: uppercase; font-size: .70rem; letter-spacing: .08em; }}
             .question-title {{ font-weight: 900; font-size: 1rem; margin: .1rem 0 .35rem 0; }}
             .question-meta {{ opacity: .78; font-size: .82rem; line-height: 1.45; }}
+            .impact-subtitle {{
+                margin:.45rem 0 .25rem 0;
+                padding:.55rem .7rem;
+                border-left:4px solid var(--sir-coral);
+                border-radius:12px;
+                background: color-mix(in srgb, var(--sir-card) 88%, var(--sir-coral) 8%);
+                font-size:.84rem; line-height:1.35; opacity:.9;
+            }}
+            .omit-caption {{ opacity:.7; font-size:.78rem; text-align:right; margin-top:.2rem; }}
             .chip {{
                 display:inline-block; padding:.25rem .65rem; border-radius:999px; font-size:.82rem; font-weight:800;
                 border:1px solid var(--sir-border); margin-right:.35rem; margin-bottom:.35rem;
@@ -2776,15 +2785,98 @@ def guardar_memoria_local():
         json.dump(payload, archivo, ensure_ascii=False, indent=2)
 
 
+
+def crear_data_simulada_mediciones():
+    """Crea mediciones internas para probar histórico, edición y tablero sin depender de archivos externos."""
+    registros = []
+    estados = ["Cumple", "Parcial", "No cumple", "No aplica", "En proceso", "Sin dato"]
+    respuestas_por_estado = {
+        "Cumple": "Sí",
+        "Parcial": "Parcial",
+        "No cumple": "No",
+        "No aplica": "No aplica",
+        "En proceso": "Parcial",
+        "Sin dato": "Sin dato",
+    }
+    contador_levantamiento = 1
+    contador_medicion = 1
+    base_registro = datetime(2026, 7, 1, 9, 0, 0)
+
+    for tipo_sujeto in obtener_tipos_sujeto():
+        sujetos = obtener_sujetos_por_tipo(tipo_sujeto).head(2)
+        preguntas = obtener_preguntas_por_tipo(tipo_sujeto)
+        if sujetos.empty or preguntas.empty:
+            continue
+        preguntas_demo = preguntas.head(min(6, len(preguntas)))
+        for idx_sujeto, sujeto in sujetos.iterrows():
+            for vuelta in range(2):
+                id_levantamiento = f"LEV-DEMO-{contador_levantamiento:04d}"
+                fecha_registro = (base_registro.replace(day=min(25, 1 + contador_levantamiento))).isoformat(timespec="seconds")
+                fecha_medicion = date(2026, min(12, 5 + vuelta), min(25, 5 + contador_levantamiento)).isoformat()
+                periodo = f"2026-{min(12, 5 + vuelta):02d}"
+                for idx_pregunta, (_, row) in enumerate(preguntas_demo.iterrows()):
+                    estado = estados[(contador_levantamiento + idx_pregunta + vuelta) % len(estados)]
+                    resultado = respuestas_por_estado[estado]
+                    registros.append({
+                        "id_medicion": f"MED-DEMO-{contador_medicion:05d}",
+                        "id_levantamiento": id_levantamiento,
+                        "formulario": row.get("formulario", f"Formulario {tipo_sujeto}"),
+                        "tipo_sujeto": tipo_sujeto,
+                        "id_sujeto": sujeto.get("id_sujeto"),
+                        "nombre_sujeto": sujeto.get("nombre_sujeto"),
+                        "descripcion_sujeto": sujeto.get("descripcion"),
+                        "zona": sujeto.get("zona"),
+                        "id_hogar": sujeto.get("id_hogar"),
+                        "id_comunidad": sujeto.get("id_comunidad"),
+                        "id_pregunta": row.get("id_pregunta"),
+                        "referencia_indicador": row.get("referencia_indicador"),
+                        "codigo_indicador": row.get("referencia_indicador"),
+                        "fuente": row.get("fuente"),
+                        "hoja_origen": row.get("hoja_origen"),
+                        "fila_origen": row.get("fila_origen"),
+                        "capital": row.get("capital"),
+                        "categoria": row.get("categoria"),
+                        "subcategoria": row.get("subcategoria"),
+                        "impacto_asociado": row.get("impacto_asociado"),
+                        "indicador": row.get("indicador"),
+                        "formula_meta": row.get("formula_meta"),
+                        "medicion_periodicidad": row.get("medicion_periodicidad"),
+                        "pregunta": row.get("pregunta"),
+                        "tipo_respuesta": row.get("tipo_respuesta"),
+                        "catalogo_valores": row.get("catalogo_valores"),
+                        "resultado_esperado": row.get("resultado_esperado"),
+                        "cuando_se_llena": row.get("cuando_se_llena"),
+                        "modulos_disparan": row.get("modulos_disparan"),
+                        "numerador_base": row.get("numerador_base"),
+                        "denominador_base": row.get("denominador_base"),
+                        "resultado_obtenido": resultado,
+                        "estado_cumplimiento": estado,
+                        "valor_numerico": "",
+                        "fecha_medicion": fecha_medicion,
+                        "periodo_medicion": periodo,
+                        "fuente_informacion": FUENTES_INFORMACION[(contador_levantamiento + idx_pregunta) % len(FUENTES_INFORMACION)],
+                        "evidencia_url": f"/demo/evidencias/{id_levantamiento}.pdf",
+                        "observaciones": "Registro simulado para validar histórico y tablero.",
+                        "registrado_por": f"usuario_demo_{(contador_levantamiento % 3) + 1}",
+                        "fecha_registro": fecha_registro,
+                        "actualizado_por": "",
+                        "fecha_actualizacion": "",
+                        "activo": 1,
+                    })
+                    contador_medicion += 1
+                contador_levantamiento += 1
+    return asegurar_columnas_mediciones(pd.DataFrame(registros))
+
 def cargar_memoria_local():
     if ARCHIVO_MEMORIA.exists():
         try:
             with ARCHIVO_MEMORIA.open("r", encoding="utf-8") as archivo:
                 payload = json.load(archivo)
-            return asegurar_columnas_mediciones(pd.DataFrame(payload.get("mediciones", [])))
+            df = asegurar_columnas_mediciones(pd.DataFrame(payload.get("mediciones", [])))
+            return df if not df.empty else crear_data_simulada_mediciones()
         except Exception:
-            st.warning("La memoria local no pudo leerse. Se inició una memoria limpia del módulo D.")
-    return pd.DataFrame(columns=COLUMNAS_MEDICIONES)
+            st.warning("La memoria local no pudo leerse. Se cargó data simulada del módulo D.")
+    return crear_data_simulada_mediciones()
 
 
 def inicializar_estado():
@@ -2853,7 +2945,7 @@ def mostrar_sidebar():
     )
     seccion = st.sidebar.radio(
         "Sección de trabajo",
-        ["Captura", "Edición", "Tablero", "Histórico", "Catálogo"],
+        ["Captura", "Edición", "Tablero", "Histórico"],
         key="panel_md",
         help="Captura registra un formulario nuevo. Edición modifica un levantamiento existente.",
     )
@@ -2881,13 +2973,13 @@ def mostrar_sidebar():
     if st.sidebar.button("Guardar memoria local", use_container_width=True):
         guardar_memoria_local()
         st.sidebar.success("Memoria guardada.")
-    if st.sidebar.button("Reiniciar mediciones de prueba", use_container_width=True):
-        st.session_state.data_md = pd.DataFrame(columns=COLUMNAS_MEDICIONES)
+    if st.sidebar.button("Reiniciar data simulada", use_container_width=True):
+        st.session_state.data_md = crear_data_simulada_mediciones()
         guardar_memoria_local()
         st.session_state.reset_md += 1
-        st.sidebar.success("Mediciones reiniciadas.")
+        st.sidebar.success("Data simulada restaurada.")
         st.rerun()
-    st.sidebar.caption("Catálogo oficial embebido desde matriz validada. No requiere archivos externos para correr.")
+    st.sidebar.caption("Preguntas embebidas desde la matriz validada. La pantalla de catálogo se retiró para mantener el flujo operativo simple.")
     return seccion, filtros
 
 
@@ -2959,23 +3051,45 @@ def renderizar_respuesta(row, key_prefix, valor_actual=""):
     return st.selectbox("Resultado obtenido", opciones, index=index, key=f"{key_prefix}_resp_cat")
 
 
-def bloque_pregunta(row, key_prefix, valores_existentes=None):
+def bloque_pregunta(row, key_prefix, valores_existentes=None, permitir_omitir=True):
     valores_existentes = valores_existentes or {}
-    st.markdown(
-        f"""
-        <div class="question-card">
-            <div class="question-kicker">Referencia oficial: {escape(row.get('referencia_indicador', row.get('codigo_indicador', '')))} · {escape(row.get('fuente', ''))} · {escape(row.get('capital', ''))}</div>
-            <div class="question-title">{escape(row.get('pregunta', ''))}</div>
-            <div class="question-meta">
-                <b>Indicador oficial:</b> {escape(row.get('indicador', ''))}<br>
-                <b>Fórmula/meta:</b> {escape(row.get('formula_meta', '')) or 'No definida'} · <b>Medición:</b> {escape(row.get('medicion_periodicidad', row.get('periodicidad', '')) or 'No definida')}<br>
-                <b>Cuándo se llena:</b> {escape(row.get('cuando_se_llena', '')) or 'Según aplicabilidad del sujeto y módulo alimentador.'}<br>
-                <b>Módulo(s) que disparan o alimentan:</b> {escape(row.get('modulos_disparan', '')) or 'No especificado'}
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    impacto = normalizar_texto(row.get("impacto_asociado"))
+    impacto_html = (
+        f"<div class='impact-subtitle'><b>Descripción de impacto:</b> {escape(impacto)}</div>"
+        if impacto else ""
     )
+
+    c_card, c_omit = st.columns([5, 1])
+    with c_card:
+        st.markdown(
+            f"""
+            <div class="question-card">
+                <div class="question-kicker">Referencia oficial: {escape(row.get('referencia_indicador', row.get('codigo_indicador', '')))} · {escape(row.get('fuente', ''))} · {escape(row.get('capital', ''))}</div>
+                <div class="question-title">{escape(row.get('pregunta', ''))}</div>
+                {impacto_html}
+                <div class="question-meta">
+                    <b>Indicador oficial:</b> {escape(row.get('indicador', ''))}<br>
+                    <b>Cuándo se llena:</b> {escape(row.get('cuando_se_llena', '')) or 'Según aplicabilidad del sujeto.'}
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    omitida = False
+    if permitir_omitir:
+        with c_omit:
+            omitida = st.checkbox("✕", key=f"{key_prefix}_omit", help="Omitir esta pregunta en este levantamiento.")
+            st.markdown('<div class="omit-caption">Omitir</div>', unsafe_allow_html=True)
+    if omitida:
+        st.info("Pregunta omitida para este levantamiento. También puedes marcarla como 'No aplica' si quieres conservar la medición con trazabilidad.")
+        return {
+            "omitida": True,
+            "resultado_obtenido": "",
+            "estado_cumplimiento": "No aplica",
+            "observaciones": "Pregunta omitida en captura.",
+            "valor_numerico": "",
+        }
+
     c1, c2, c3 = st.columns([1.2, 1, 1.4])
     with c1:
         resultado = renderizar_respuesta(row, key_prefix, valores_existentes.get("resultado_obtenido", ""))
@@ -2991,6 +3105,7 @@ def bloque_pregunta(row, key_prefix, valores_existentes=None):
     except (TypeError, ValueError):
         valor_num = ""
     return {
+        "omitida": False,
         "resultado_obtenido": str(resultado),
         "estado_cumplimiento": estado,
         "observaciones": obs,
@@ -3004,34 +3119,15 @@ def bloque_pregunta(row, key_prefix, valores_existentes=None):
 
 def seleccionar_preguntas_aplicables(preguntas, tipo_sujeto):
     st.markdown("##### Aplicabilidad del formulario")
-    modo = st.radio(
-        "¿Qué preguntas se van a levantar?",
-        ["Todas las preguntas aplicables al tipo de sujeto", "Seleccionar solo preguntas aplicables al caso"],
-        horizontal=True,
-        key=f"modo_aplicabilidad_{tipo_sujeto}_{st.session_state.reset_md}",
-        help="El filtro evita obligar a llenar indicadores que no pertenecen al denominador o condición del caso.",
+    st.info(
+        "Se muestran las preguntas del tipo de sujeto seleccionado. En cada tarjeta puedes marcar 'No aplica' para conservar la trazabilidad, o usar la ✕ para omitir esa pregunta del levantamiento."
     )
-    if modo == "Todas las preguntas aplicables al tipo de sujeto":
-        return preguntas
-    opciones = preguntas["id_pregunta"].tolist()
-    etiquetas = {
-        row["id_pregunta"]: f"{row['id_pregunta']} · {row['capital']} · {row['indicador']}"
-        for _, row in preguntas.iterrows()
-    }
-    seleccion = st.multiselect(
-        "Selecciona preguntas/indicadores a diligenciar",
-        opciones,
-        default=opciones[: min(10, len(opciones))],
-        format_func=lambda x: etiquetas.get(x, x),
-        key=f"preguntas_sel_{tipo_sujeto}_{st.session_state.reset_md}",
-    )
-    return preguntas[preguntas["id_pregunta"].isin(seleccion)].copy()
-
+    return preguntas
 
 def mostrar_captura():
     st.markdown("#### Captura dinámica de formulario")
     st.markdown(
-        '<div class="screen-help">Primero selecciona el tipo de sujeto y el registro. El sistema muestra únicamente las preguntas formuladas desde indicadores oficiales para ese sujeto. Cada pregunta indica cuándo se llena y qué módulo la alimenta.</div>',
+        '<div class="screen-help">Primero selecciona el tipo de sujeto y el registro. El sistema muestra únicamente las preguntas formuladas desde indicadores oficiales para ese sujeto. Cada pregunta muestra el indicador oficial, cuándo se llena y, cuando existe, la descripción de impacto.</div>',
         unsafe_allow_html=True,
     )
 
@@ -3098,6 +3194,8 @@ def mostrar_captura():
         for _, row in preguntas.iterrows():
             q = row.to_dict()
             r = respuestas.get(q.get("id_pregunta"), {})
+            if r.get("omitida"):
+                continue
             obs = normalizar_texto(r.get("observaciones"))
             if observacion_general:
                 obs = f"{observacion_general} | {obs}" if obs else observacion_general
@@ -3147,6 +3245,9 @@ def mostrar_captura():
                 "fecha_actualizacion": "",
                 "activo": 1,
             })
+        if not registros:
+            st.warning("No se guardó el levantamiento porque todas las preguntas fueron omitidas.")
+            return
         nuevo_df = pd.DataFrame(registros)
         st.session_state.data_md = asegurar_columnas_mediciones(pd.concat([st.session_state.data_md, nuevo_df], ignore_index=True))
         guardar_memoria_local()
@@ -3249,6 +3350,11 @@ def mostrar_edicion():
         full = st.session_state.data_md.copy()
         for id_medicion, r in respuestas.items():
             mask = full["id_medicion"].astype(str) == str(id_medicion)
+            if r.get("omitida"):
+                full.loc[mask, "activo"] = 0
+                full.loc[mask, "actualizado_por"] = st.session_state.usuario_md
+                full.loc[mask, "fecha_actualizacion"] = ahora
+                continue
             full.loc[mask, "resultado_obtenido"] = r.get("resultado_obtenido", "Sin dato")
             full.loc[mask, "estado_cumplimiento"] = r.get("estado_cumplimiento", "Sin dato")
             full.loc[mask, "valor_numerico"] = r.get("valor_numerico", "")
@@ -3310,8 +3416,7 @@ def mostrar_tablero(df_filtrado):
     )
 
     if df_filtrado.empty:
-        st.warning("Todavía no hay mediciones para graficar. Captura primero un formulario.")
-        mostrar_catalogo_base_para_validacion()
+        st.warning("No hay mediciones visibles con los filtros seleccionados.")
         return
 
     c1, c2 = st.columns([1.1, 1])
@@ -3357,9 +3462,9 @@ def mostrar_historico(df_filtrado):
         return
     cols = [
         "id_levantamiento", "id_medicion", "tipo_sujeto", "id_sujeto", "nombre_sujeto", "capital",
-        "categoria", "referencia_indicador", "fuente", "hoja_origen", "fila_origen", "indicador", "formula_meta",
+        "categoria", "impacto_asociado", "referencia_indicador", "fuente", "hoja_origen", "fila_origen", "indicador",
         "pregunta", "resultado_obtenido", "estado_cumplimiento", "fecha_medicion", "periodo_medicion",
-        "cuando_se_llena", "modulos_disparan", "fuente_informacion", "registrado_por", "fecha_registro",
+        "cuando_se_llena", "fuente_informacion", "registrado_por", "fecha_registro",
         "actualizado_por", "fecha_actualizacion", "observaciones",
     ]
     st.dataframe(df_filtrado[cols].sort_values(["fecha_registro", "id_levantamiento"], ascending=False), use_container_width=True, hide_index=True)
@@ -3430,8 +3535,6 @@ def main():
         mostrar_tablero(df_filtrado)
     elif seccion == "Histórico":
         mostrar_historico(df_filtrado)
-    else:
-        mostrar_catalogo()
 
 
 if __name__ == "__main__":

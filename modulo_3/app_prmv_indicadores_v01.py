@@ -1,6 +1,6 @@
 # ============================================================
 # SIR ACP - Módulo D Indicadores por sujeto de medición
-# Versión v4 con CP, aplicabilidad por pregunta, data simulada y tablero profesional
+# Versión v5 con CP, aplicabilidad por pregunta e histórico simulado enero-julio
 # ============================================================
 # - Un solo archivo .py autosuficiente.
 # - No requiere schema.sql ni seed_catalogo.json.
@@ -9,23 +9,19 @@
 # - No contiene indicadores inventados: cada pregunta conserva fuente,
 #   hoja y fila de origen del indicador oficial.
 # - Mantiene interfaz tipo M01: sidebar, tarjetas, métricas, formularios
-#   reactivos, edición, histórico, tablero y memoria local JSON.
+#   reactivos, edición, histórico y memoria local JSON.
 # ============================================================
 
 import json
 import re
 import uuid
 from pathlib import Path
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from html import escape
 
 import pandas as pd
 import streamlit as st
 
-try:
-    import altair as alt
-except Exception:
-    alt = None
 
 # ============================================================
 # 1. CONFIGURACIÓN GENERAL
@@ -43,7 +39,7 @@ COLOR_SECUNDARIO_SOCIONAUT = "#00A6A6"
 COLOR_CORAL = "#F05A43"
 COLOR_BORDE = "#D6DEE6"
 
-ARCHIVO_MEMORIA = Path("memoria_modulo_d_indicadores_v4.json")
+ARCHIVO_MEMORIA = Path("memoria_modulo_d_indicadores_v5.json")
 USUARIO_PROTOTIPO = "usuario_prototipo"
 
 ESTADOS_CUMPLIMIENTO = ["Cumple", "Parcial", "No cumple", "No aplica", "En proceso", "Sin dato"]
@@ -2791,7 +2787,12 @@ def guardar_memoria_local():
 
 
 def crear_data_simulada_mediciones():
-    """Crea mediciones internas para probar histórico, edición y tablero sin depender de archivos externos."""
+    """Crea mediciones internas para probar histórico y edición sin depender de archivos externos.
+
+    La data simulada se distribuye en días reales entre enero y julio del año actual,
+    usando fechas de medición y fechas automáticas de registro diferentes para validar
+    trazabilidad temporal de los levantamientos.
+    """
     registros = []
     estados = ["Cumple", "Parcial", "No cumple", "No aplica", "En proceso", "Sin dato"]
     respuestas_por_estado = {
@@ -2804,7 +2805,11 @@ def crear_data_simulada_mediciones():
     }
     contador_levantamiento = 1
     contador_medicion = 1
-    base_registro = datetime(2026, 7, 1, 9, 0, 0)
+
+    hoy = date.today()
+    fecha_inicio_demo = date(hoy.year, 1, 1)
+    fecha_fin_demo = hoy if hoy.month <= 7 else date(hoy.year, 7, 31)
+    total_dias = max(1, (fecha_fin_demo - fecha_inicio_demo).days)
 
     for tipo_sujeto in obtener_tipos_sujeto():
         sujetos = obtener_sujetos_por_tipo(tipo_sujeto).head(2)
@@ -2812,12 +2817,29 @@ def crear_data_simulada_mediciones():
         if sujetos.empty or preguntas.empty:
             continue
         preguntas_demo = preguntas.head(min(6, len(preguntas)))
-        for idx_sujeto, sujeto in sujetos.iterrows():
-            for vuelta in range(2):
+        for idx_sujeto, sujeto in sujetos.reset_index(drop=True).iterrows():
+            # Tres levantamientos por sujeto para generar histórico visible desde enero hasta julio.
+            for vuelta in range(3):
                 id_levantamiento = f"LEV-DEMO-{contador_levantamiento:04d}"
-                fecha_registro = (base_registro.replace(day=min(25, 1 + contador_levantamiento))).isoformat(timespec="seconds")
-                fecha_medicion = date(2026, min(12, 5 + vuelta), min(25, 5 + contador_levantamiento)).isoformat()
-                periodo = f"2026-{min(12, 5 + vuelta):02d}"
+
+                # Distribución determinística a lo largo del año: evita concentrar todo en dos días.
+                offset = (contador_levantamiento * 11 + idx_sujeto * 7 + vuelta * 29) % (total_dias + 1)
+                fecha_medicion_dt = fecha_inicio_demo + timedelta(days=offset)
+                retraso_registro = (contador_levantamiento % 5) + 1
+                fecha_registro_dt = min(fecha_medicion_dt + timedelta(days=retraso_registro), fecha_fin_demo)
+                hora = 8 + (contador_levantamiento % 9)
+                minuto = (contador_levantamiento * 7) % 60
+                fecha_registro = datetime(
+                    fecha_registro_dt.year,
+                    fecha_registro_dt.month,
+                    fecha_registro_dt.day,
+                    hora,
+                    minuto,
+                    0,
+                ).isoformat(timespec="seconds")
+                fecha_medicion = fecha_medicion_dt.isoformat()
+                periodo = fecha_medicion_dt.strftime("%Y-%m")
+
                 for idx_pregunta, (_, row) in enumerate(preguntas_demo.iterrows()):
                     estado = estados[(contador_levantamiento + idx_pregunta + vuelta) % len(estados)]
                     resultado = respuestas_por_estado[estado]
@@ -2860,7 +2882,7 @@ def crear_data_simulada_mediciones():
                         "periodo_medicion": periodo,
                         "fuente_informacion": FUENTES_INFORMACION[(contador_levantamiento + idx_pregunta) % len(FUENTES_INFORMACION)],
                         "evidencia_url": f"/demo/evidencias/{id_levantamiento}.pdf",
-                        "observaciones": "Registro simulado para validar histórico y tablero.",
+                        "observaciones": "Registro simulado para validar histórico enero-julio y trazabilidad de captura.",
                         "registrado_por": f"usuario_demo_{(contador_levantamiento % 3) + 1}",
                         "fecha_registro": fecha_registro,
                         "actualizado_por": "",
@@ -2949,7 +2971,7 @@ def mostrar_sidebar():
     )
     seccion = st.sidebar.radio(
         "Sección de trabajo",
-        ["Captura", "Edición", "Tablero", "Histórico"],
+        ["Captura", "Edición", "Histórico"],
         key="panel_md",
         help="Captura registra un formulario nuevo. Edición modifica un levantamiento existente.",
     )
@@ -2983,7 +3005,7 @@ def mostrar_sidebar():
         st.session_state.reset_md += 1
         st.sidebar.success("Data simulada restaurada.")
         st.rerun()
-    st.sidebar.caption("Preguntas embebidas desde la matriz validada. La pantalla de catálogo se retiró para mantener el flujo operativo simple.")
+    st.sidebar.caption("Preguntas embebidas desde la matriz validada. La pantalla de catálogo y el tablero se retiraron para mantener el flujo operativo simple.")
     return seccion, filtros
 
 
@@ -3393,284 +3415,8 @@ def mostrar_edicion():
         st.rerun()
 
 # ============================================================
-# 7. TABLERO, HISTÓRICO Y CATÁLOGO
+# 7. HISTÓRICO
 # ============================================================
-
-
-def tabla_resumen(df, grupo):
-    if df.empty or grupo not in df.columns:
-        return pd.DataFrame()
-    base = df.copy()
-    base = base[base["estado_cumplimiento"].astype(str) != "No aplica"]
-    if base.empty:
-        return pd.DataFrame()
-    resumen = base.groupby([grupo, "estado_cumplimiento"]).size().reset_index(name="n")
-    pivot = resumen.pivot(index=grupo, columns="estado_cumplimiento", values="n").fillna(0).astype(int)
-    pivot["Total"] = pivot.sum(axis=1)
-    pivot["Críticas"] = sum(pivot[col] for col in ["No cumple", "Parcial", "En proceso", "Sin dato"] if col in pivot.columns)
-    if "Cumple" in pivot.columns:
-        pivot["% Cumple"] = (pivot["Cumple"] / pivot["Total"] * 100).round(1)
-    else:
-        pivot["% Cumple"] = 0.0
-    return pivot.reset_index().sort_values(["% Cumple", "Total"], ascending=[True, False])
-
-
-def mostrar_catalogo_base_para_validacion():
-    df = catalogo_df()
-    resumen = df.groupby(["tipo_sujeto", "capital"]).size().reset_index(name="preguntas")
-    st.markdown("##### Catálogo base disponible")
-    st.dataframe(resumen, use_container_width=True, hide_index=True)
-
-
-def preparar_df_tablero(df_filtrado):
-    df = df_filtrado.copy()
-    if df.empty:
-        return df
-    df["fecha_medicion_dt"] = pd.to_datetime(df.get("fecha_medicion"), errors="coerce")
-    df["mes_medicion"] = df["fecha_medicion_dt"].dt.to_period("M").astype(str)
-    df.loc[df["mes_medicion"].astype(str).eq("NaT"), "mes_medicion"] = "Sin fecha"
-    df["es_cumple"] = df["estado_cumplimiento"].astype(str).eq("Cumple")
-    df["es_no_aplica"] = df["estado_cumplimiento"].astype(str).eq("No aplica")
-    df["es_critico"] = df["estado_cumplimiento"].astype(str).isin(["No cumple", "Parcial", "En proceso", "Sin dato"])
-    texto_vul = (
-        df.get("tipo_sujeto", pd.Series(index=df.index, dtype=str)).astype(str) + " " +
-        df.get("categoria", pd.Series(index=df.index, dtype=str)).astype(str) + " " +
-        df.get("subcategoria", pd.Series(index=df.index, dtype=str)).astype(str) + " " +
-        df.get("indicador", pd.Series(index=df.index, dtype=str)).astype(str) + " " +
-        df.get("pregunta", pd.Series(index=df.index, dtype=str)).astype(str) + " " +
-        df.get("impacto_asociado", pd.Series(index=df.index, dtype=str)).astype(str)
-    ).str.lower()
-    patron_vul = "vulnerab|diferencial|discapacidad|adulto mayor|niñ|niñ|genero|género|salud|dependencia|riesgo social"
-    df["es_vulnerabilidad"] = texto_vul.str.contains(patron_vul, regex=True, na=False)
-    return df
-
-
-def resumen_por_grupo_para_grafica(df, grupo):
-    if df.empty or grupo not in df.columns:
-        return pd.DataFrame()
-    base = df[df["estado_cumplimiento"].astype(str) != "No aplica"].copy()
-    if base.empty:
-        return pd.DataFrame()
-    resumen = base.groupby(grupo).agg(
-        Total=("id_medicion", "count"),
-        Cumple=("es_cumple", "sum"),
-        Criticas=("es_critico", "sum"),
-    ).reset_index()
-    resumen["% Cumple"] = (resumen["Cumple"] / resumen["Total"] * 100).round(1)
-    return resumen.sort_values(["% Cumple", "Total"], ascending=[True, False])
-
-
-def render_bar_chart(df, x, y, title, tooltip=None, height=320):
-    if df.empty:
-        st.info("No hay datos suficientes para esta visualización.")
-        return
-    if alt is None:
-        st.bar_chart(df.set_index(y)[[x]])
-        return
-    tooltip = tooltip or list(df.columns)
-    chart = (
-        alt.Chart(df)
-        .mark_bar(cornerRadiusTopRight=4, cornerRadiusBottomRight=4)
-        .encode(
-            x=alt.X(f"{x}:Q", title=x),
-            y=alt.Y(f"{y}:N", sort="-x", title=""),
-            tooltip=tooltip,
-        )
-        .properties(height=height, title=title)
-        .interactive()
-    )
-    st.altair_chart(chart, use_container_width=True)
-
-
-def render_stacked_chart(df, grupo, title, height=340):
-    if df.empty or grupo not in df.columns:
-        st.info("No hay datos suficientes para esta visualización.")
-        return
-    base = df.groupby([grupo, "estado_cumplimiento"]).size().reset_index(name="Mediciones")
-    if base.empty:
-        st.info("No hay datos suficientes para esta visualización.")
-        return
-    if alt is None:
-        st.bar_chart(base.pivot(index=grupo, columns="estado_cumplimiento", values="Mediciones").fillna(0))
-        return
-    chart = (
-        alt.Chart(base)
-        .mark_bar()
-        .encode(
-            x=alt.X("Mediciones:Q", stack="zero", title="Mediciones"),
-            y=alt.Y(f"{grupo}:N", sort="-x", title=""),
-            color=alt.Color("estado_cumplimiento:N", title="Estado"),
-            tooltip=[grupo, "estado_cumplimiento", "Mediciones"],
-        )
-        .properties(height=height, title=title)
-        .interactive()
-    )
-    st.altair_chart(chart, use_container_width=True)
-
-
-def render_timeline(df):
-    base = df[(df["mes_medicion"] != "Sin fecha") & (~df["es_no_aplica"])].copy()
-    if base.empty:
-        st.info("No hay fechas de medición suficientes para construir una línea de tiempo.")
-        return
-    estado_mes = base.groupby(["mes_medicion", "estado_cumplimiento"]).size().reset_index(name="Mediciones")
-    cumplimiento_mes = base.groupby("mes_medicion").agg(
-        Total=("id_medicion", "count"),
-        Cumple=("es_cumple", "sum"),
-    ).reset_index()
-    cumplimiento_mes["% Cumple"] = (cumplimiento_mes["Cumple"] / cumplimiento_mes["Total"] * 100).round(1)
-
-    if alt is None:
-        st.line_chart(cumplimiento_mes.set_index("mes_medicion")[["% Cumple"]])
-        st.bar_chart(estado_mes.pivot(index="mes_medicion", columns="estado_cumplimiento", values="Mediciones").fillna(0))
-        return
-
-    barras = (
-        alt.Chart(estado_mes)
-        .mark_bar()
-        .encode(
-            x=alt.X("mes_medicion:N", title="Mes de medición"),
-            y=alt.Y("Mediciones:Q", title="Mediciones"),
-            color=alt.Color("estado_cumplimiento:N", title="Estado"),
-            tooltip=["mes_medicion", "estado_cumplimiento", "Mediciones"],
-        )
-        .properties(height=280, title="Volumen de mediciones por mes y estado")
-    )
-    linea = (
-        alt.Chart(cumplimiento_mes)
-        .mark_line(point=True)
-        .encode(
-            x=alt.X("mes_medicion:N", title="Mes de medición"),
-            y=alt.Y("% Cumple:Q", title="% Cumple", scale=alt.Scale(domain=[0, 100])),
-            tooltip=["mes_medicion", "Total", "Cumple", "% Cumple"],
-        )
-        .properties(height=280, title="Tendencia de cumplimiento")
-    )
-    c1, c2 = st.columns(2)
-    with c1:
-        st.altair_chart(barras, use_container_width=True)
-    with c2:
-        st.altair_chart(linea, use_container_width=True)
-
-
-def mostrar_tablero(df_filtrado):
-    st.markdown("#### Tablero dinámico de indicadores")
-    st.markdown(
-        '<div class="screen-help">Dashboard de lectura ejecutiva por capital, categoría, sujeto, vulnerabilidad y tiempo. Usa los filtros globales del sidebar para analizar zonas, sujetos, periodos o estados específicos.</div>',
-        unsafe_allow_html=True,
-    )
-
-    if df_filtrado.empty:
-        st.warning("No hay mediciones visibles con los filtros seleccionados.")
-        return
-
-    df = preparar_df_tablero(df_filtrado)
-    df_base = df[~df["es_no_aplica"]].copy()
-    total_mediciones = len(df)
-    total_base = len(df_base)
-    total_levantamientos = df["id_levantamiento"].nunique() if "id_levantamiento" in df.columns else 0
-    total_sujetos = df[["tipo_sujeto", "id_sujeto"]].drop_duplicates().shape[0] if {"tipo_sujeto", "id_sujeto"}.issubset(df.columns) else 0
-    total_cumple = int(df_base["es_cumple"].sum()) if not df_base.empty else 0
-    total_criticos = int(df_base["es_critico"].sum()) if not df_base.empty else 0
-    pct_cumple = round((total_cumple / total_base * 100), 1) if total_base else 0.0
-    vul_total = int(df[df["es_vulnerabilidad"] & ~df["es_no_aplica"]].shape[0])
-    vul_criticas = int(df[df["es_vulnerabilidad"] & df["es_critico"] & ~df["es_no_aplica"]].shape[0])
-
-    k1, k2, k3, k4, k5, k6 = st.columns(6)
-    k1.metric("Mediciones", total_mediciones)
-    k2.metric("Levantamientos", total_levantamientos)
-    k3.metric("Sujetos medidos", total_sujetos)
-    k4.metric("% cumple", f"{pct_cumple}%")
-    k5.metric("Alertas", total_criticos)
-    k6.metric("Vulnerabilidad", f"{vul_criticas}/{vul_total}", help="Mediciones críticas sobre mediciones asociadas a vulnerabilidad o atención diferencial.")
-
-    st.markdown("---")
-    tab_cap, tab_cat, tab_suj, tab_tiempo, tab_vul, tab_alertas = st.tabs([
-        "Capitales", "Categorías", "Sujetos", "Línea de tiempo", "Vulnerabilidad", "Alertas"
-    ])
-
-    with tab_cap:
-        st.markdown("##### Medición por capital")
-        resumen_capital = resumen_por_grupo_para_grafica(df, "capital")
-        c1, c2 = st.columns([1, 1.15])
-        with c1:
-            st.dataframe(resumen_capital, use_container_width=True, hide_index=True)
-        with c2:
-            render_bar_chart(resumen_capital, "% Cumple", "capital", "Cumplimiento (%) por capital", tooltip=["capital", "Total", "Cumple", "Criticas", "% Cumple"], height=330)
-        render_stacked_chart(df_base, "capital", "Mediciones por capital y estado", height=330)
-
-    with tab_cat:
-        st.markdown("##### Medición por categoría")
-        resumen_categoria = resumen_por_grupo_para_grafica(df, "categoria")
-        c1, c2 = st.columns([1, 1.15])
-        with c1:
-            st.dataframe(resumen_categoria, use_container_width=True, hide_index=True)
-        with c2:
-            top_cat = resumen_categoria.head(15)
-            render_bar_chart(top_cat, "% Cumple", "categoria", "Cumplimiento (%) por categoría", tooltip=["categoria", "Total", "Cumple", "Criticas", "% Cumple"], height=420)
-        render_stacked_chart(df_base, "categoria", "Mediciones por categoría y estado", height=420)
-
-    with tab_suj:
-        st.markdown("##### Medición por tipo de sujeto")
-        resumen_sujeto = resumen_por_grupo_para_grafica(df, "tipo_sujeto")
-        c1, c2 = st.columns([1, 1.15])
-        with c1:
-            st.dataframe(resumen_sujeto, use_container_width=True, hide_index=True)
-        with c2:
-            render_bar_chart(resumen_sujeto, "% Cumple", "tipo_sujeto", "Cumplimiento (%) por sujeto", tooltip=["tipo_sujeto", "Total", "Cumple", "Criticas", "% Cumple"], height=380)
-        render_stacked_chart(df_base, "tipo_sujeto", "Mediciones por sujeto y estado", height=380)
-
-    with tab_tiempo:
-        st.markdown("##### Línea de tiempo")
-        render_timeline(df)
-        ultimos_cols = ["id_levantamiento", "tipo_sujeto", "nombre_sujeto", "fecha_medicion", "estado_cumplimiento", "capital", "categoria", "indicador"]
-        ultimos_cols = [c for c in ultimos_cols if c in df.columns]
-        st.markdown("##### Últimas mediciones registradas")
-        st.dataframe(df[ultimos_cols].sort_values("fecha_medicion_dt", ascending=False).head(25), use_container_width=True, hide_index=True)
-
-    with tab_vul:
-        st.markdown("##### Lectura de vulnerabilidad y atención diferencial")
-        df_vul = df[df["es_vulnerabilidad"] & ~df["es_no_aplica"]].copy()
-        if df_vul.empty:
-            st.info("No hay mediciones clasificadas como vulnerabilidad o atención diferencial con los filtros actuales.")
-        else:
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Mediciones vulnerabilidad", len(df_vul))
-            c2.metric("Alertas vulnerabilidad", int(df_vul["es_critico"].sum()))
-            c3.metric("Sujetos con vulnerabilidad", df_vul[["tipo_sujeto", "id_sujeto"]].drop_duplicates().shape[0])
-            pct_vul = round((df_vul["es_cumple"].sum() / len(df_vul) * 100), 1) if len(df_vul) else 0.0
-            c4.metric("% cumple", f"{pct_vul}%")
-            render_stacked_chart(df_vul, "tipo_sujeto", "Vulnerabilidad por sujeto y estado", height=320)
-            render_stacked_chart(df_vul, "capital", "Vulnerabilidad por capital y estado", height=300)
-            cols_vul = ["tipo_sujeto", "id_sujeto", "nombre_sujeto", "capital", "categoria", "indicador", "estado_cumplimiento", "fecha_medicion", "observaciones"]
-            st.dataframe(df_vul[[c for c in cols_vul if c in df_vul.columns]].sort_values(["estado_cumplimiento", "fecha_medicion"], ascending=[True, False]), use_container_width=True, hide_index=True)
-
-    with tab_alertas:
-        st.markdown("##### Indicadores con alerta")
-        criticos = df_base[df_base["es_critico"]].copy()
-        cols = ["tipo_sujeto", "id_sujeto", "nombre_sujeto", "capital", "categoria", "referencia_indicador", "indicador", "estado_cumplimiento", "fecha_medicion", "observaciones"]
-        cols = [c for c in cols if c in criticos.columns]
-        if criticos.empty:
-            st.success("No hay mediciones críticas con los filtros actuales.")
-        else:
-            resumen_alertas = criticos.groupby(["capital", "categoria", "estado_cumplimiento"]).size().reset_index(name="alertas")
-            if alt is not None:
-                chart = (
-                    alt.Chart(resumen_alertas)
-                    .mark_bar()
-                    .encode(
-                        x=alt.X("alertas:Q", title="Alertas"),
-                        y=alt.Y("categoria:N", sort="-x", title=""),
-                        color=alt.Color("estado_cumplimiento:N", title="Estado"),
-                        tooltip=["capital", "categoria", "estado_cumplimiento", "alertas"],
-                    )
-                    .properties(height=420, title="Alertas por categoría y estado")
-                    .interactive()
-                )
-                st.altair_chart(chart, use_container_width=True)
-            else:
-                st.bar_chart(resumen_alertas.pivot(index="categoria", columns="estado_cumplimiento", values="alertas").fillna(0))
-            st.dataframe(criticos[cols].sort_values(["estado_cumplimiento", "capital", "categoria"]), use_container_width=True, hide_index=True)
 
 def mostrar_historico(df_filtrado):
     st.markdown("#### Histórico y trazabilidad de mediciones")
@@ -3688,10 +3434,18 @@ def mostrar_historico(df_filtrado):
         "cuando_se_llena", "fuente_informacion", "registrado_por", "fecha_registro",
         "actualizado_por", "fecha_actualizacion", "observaciones",
     ]
-    st.dataframe(df_filtrado[cols].sort_values(["fecha_registro", "id_levantamiento"], ascending=False), use_container_width=True, hide_index=True)
+    vista = df_filtrado[cols].copy()
+    vista["día_año_medición"] = pd.to_datetime(vista["fecha_medicion"], errors="coerce").dt.dayofyear
+    vista["día_año_registro"] = pd.to_datetime(vista["fecha_registro"], errors="coerce").dt.dayofyear
+    cols_vista = cols[:]
+    if "fecha_medicion" in cols_vista:
+        cols_vista.insert(cols_vista.index("fecha_medicion") + 1, "día_año_medición")
+    if "fecha_registro" in cols_vista:
+        cols_vista.insert(cols_vista.index("fecha_registro") + 1, "día_año_registro")
+    st.dataframe(vista[cols_vista].sort_values(["fecha_registro", "id_levantamiento"], ascending=False), use_container_width=True, hide_index=True)
     st.download_button(
         "Descargar histórico filtrado CSV",
-        data=dataframe_descargable(df_filtrado[cols]),
+        data=dataframe_descargable(vista[cols_vista]),
         file_name="historico_modulo_d_indicadores.csv",
         mime="text/csv",
         use_container_width=True,
@@ -3752,8 +3506,6 @@ def main():
         mostrar_captura()
     elif seccion == "Edición":
         mostrar_edicion()
-    elif seccion == "Tablero":
-        mostrar_tablero(df_filtrado)
     elif seccion == "Histórico":
         mostrar_historico(df_filtrado)
 

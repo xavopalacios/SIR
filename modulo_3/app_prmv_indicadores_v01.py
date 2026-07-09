@@ -1,6 +1,6 @@
 # ============================================================
-# SIR ACP - Módulo D Indicadores por sujeto de medición
-# Versión v5 con CP, aplicabilidad por pregunta e histórico simulado enero-julio
+# SIR ACP - Módulo PMRB Indicadores por sujeto de medición
+# Versión v6 con formularios en blanco, validaciones, notificaciones y preguntas contraíbles
 # ============================================================
 # - Un solo archivo .py autosuficiente.
 # - No requiere schema.sql ni seed_catalogo.json.
@@ -28,7 +28,7 @@ import streamlit as st
 # ============================================================
 
 st.set_page_config(
-    page_title="SIR ACP | Módulo D Indicadores",
+    page_title="SIR ACP | Módulo PMRB Indicadores",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -39,7 +39,7 @@ COLOR_SECUNDARIO_SOCIONAUT = "#00A6A6"
 COLOR_CORAL = "#F05A43"
 COLOR_BORDE = "#D6DEE6"
 
-ARCHIVO_MEMORIA = Path("memoria_modulo_d_indicadores_v5.json")
+ARCHIVO_MEMORIA = Path("memoria_modulo_pmrb_indicadores_v6.json")
 USUARIO_PROTOTIPO = "usuario_prototipo"
 
 ESTADOS_CUMPLIMIENTO = ["Cumple", "Parcial", "No cumple", "No aplica", "En proceso", "Sin dato"]
@@ -2599,6 +2599,27 @@ def aplicar_estilos():
                 padding: .85rem 1rem;
                 margin-bottom: 1rem;
             }}
+            .floating-alert {
+                position: fixed;
+                top: 76px;
+                right: 24px;
+                z-index: 9999;
+                max-width: 440px;
+                padding: 1rem 1.1rem;
+                border-radius: 18px;
+                box-shadow: 0 16px 42px rgba(0,0,0,.22);
+                border: 1px solid var(--sir-border);
+                background: var(--sir-card);
+                color: var(--sir-text);
+            }
+            .floating-alert-success { border-left: 7px solid #10B981; }
+            .floating-alert-error { border-left: 7px solid #DC2626; }
+            .floating-alert-warning { border-left: 7px solid #F59E0B; }
+            .floating-title { font-weight: 950; margin-bottom: .2rem; }
+            .floating-message { opacity:.84; font-size:.9rem; line-height:1.35; }
+            .required-note { color:#DC2626; font-size:.82rem; font-weight:800; margin-top:.15rem; }
+            .question-error { border-left: 5px solid #DC2626; padding-left:.5rem; }
+            .compact-hint { opacity:.72; font-size:.82rem; margin:.2rem 0 .6rem 0; }
             .question-card {{
                 border: 1px solid var(--sir-border);
                 border-radius: 18px;
@@ -2650,8 +2671,8 @@ def aplicar_estilos():
 
 
 def mostrar_encabezado():
-    st.markdown('<div class="main-title">Módulo D · Indicadores por sujeto de medición</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-title">SIR ACP · Formularios dinámicos validados contra indicadores oficiales PRMV y M&E por capital</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">Módulo PMRB · Indicadores por sujeto de medición</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-title">SIR ACP · Formularios dinámicos validados contra indicadores oficiales PMRB y M&E por capital</div>', unsafe_allow_html=True)
 
 
 def crear_chip(texto, tipo="default"):
@@ -2901,7 +2922,7 @@ def cargar_memoria_local():
             df = asegurar_columnas_mediciones(pd.DataFrame(payload.get("mediciones", [])))
             return df if not df.empty else crear_data_simulada_mediciones()
         except Exception:
-            st.warning("La memoria local no pudo leerse. Se cargó data simulada del módulo D.")
+            st.warning("La memoria local no pudo leerse. Se cargó data simulada del módulo PMRB.")
     return crear_data_simulada_mediciones()
 
 
@@ -2914,7 +2935,8 @@ def inicializar_estado():
     st.session_state.setdefault("panel_md", "Captura")
     st.session_state.setdefault("reset_md", 0)
     st.session_state.setdefault("busqueda_md", "")
-
+    st.session_state.setdefault("form_errors_md", {})
+    st.session_state.setdefault("notificacion_md", None)
 
 def filtrar_mediciones(df, filtros):
     if df.empty:
@@ -2957,13 +2979,66 @@ def obtener_sujeto(tipo_sujeto, id_sujeto):
 def dataframe_descargable(df):
     return df.to_csv(index=False).encode("utf-8-sig")
 
+
+def registrar_notificacion(tipo, titulo, mensaje):
+    """Guarda una notificación visual para mostrarla en la siguiente renderización."""
+    st.session_state.notificacion_md = {"tipo": tipo, "titulo": titulo, "mensaje": mensaje}
+    if hasattr(st, "toast"):
+        icono = "✅" if tipo == "success" else "⚠️" if tipo == "warning" else "❌"
+        try:
+            st.toast(f"{titulo}: {mensaje}", icon=icono)
+        except Exception:
+            pass
+
+
+def mostrar_notificacion_flotante():
+    notif = st.session_state.get("notificacion_md")
+    if not notif:
+        return
+    tipo = notif.get("tipo", "info")
+    titulo = escape(str(notif.get("titulo", "Aviso")))
+    mensaje = escape(str(notif.get("mensaje", "")))
+    clase = "floating-alert-success" if tipo == "success" else "floating-alert-error" if tipo == "error" else "floating-alert-warning"
+    st.markdown(
+        f"""
+        <div class="floating-alert {clase}">
+            <div class="floating-title">{titulo}</div>
+            <div class="floating-message">{mensaje}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.session_state.notificacion_md = None
+
+
+def errores_formulario():
+    return st.session_state.get("form_errors_md", {}) or {}
+
+
+def error_campo(clave):
+    msg = errores_formulario().get(clave)
+    if msg:
+        st.markdown(f'<div class="required-note">{escape(str(msg))}</div>', unsafe_allow_html=True)
+    return msg
+
+
+def valor_vacio(valor):
+    return valor is None or str(valor).strip() in ["", "Selecciona...", "Sin dato"]
+
+
+def parse_numero(valor):
+    texto = str(valor or "").strip().replace("%", "").replace(",", ".")
+    if texto == "":
+        return ""
+    return float(texto)
+
 # ============================================================
 # 5. COMPONENTES DE INTERFAZ
 # ============================================================
 
 
 def mostrar_sidebar():
-    st.sidebar.title("Módulo D · Controles")
+    st.sidebar.title("Módulo PMRB")
     st.session_state.usuario_md = st.sidebar.text_input(
         "Usuario activo",
         value=st.session_state.usuario_md,
@@ -3005,7 +3080,7 @@ def mostrar_sidebar():
         st.session_state.reset_md += 1
         st.sidebar.success("Data simulada restaurada.")
         st.rerun()
-    st.sidebar.caption("Preguntas embebidas desde la matriz validada. La pantalla de catálogo y el tablero se retiraron para mantener el flujo operativo simple.")
+    st.sidebar.caption("Preguntas embebidas desde la matriz validada. Captura inicia en blanco; el histórico conserva trazabilidad de mediciones por sujeto.")
     return seccion, filtros
 
 
@@ -3051,39 +3126,66 @@ def mostrar_info_sujeto(sujeto):
     st.markdown(html, unsafe_allow_html=True)
 
 
-def renderizar_respuesta(row, key_prefix, valor_actual=""):
+def renderizar_respuesta(row, key_prefix, valor_actual="", requerido_error=""):
+    """Renderiza el resultado obtenido dejando el campo en blanco en captura nueva."""
     tipo = normalizar_texto(row.get("tipo_respuesta"))
     opciones = opciones_catalogo(row)
+    valor_actual = "" if valor_actual is None else str(valor_actual)
 
     if "Numérico" in tipo or "Número" in tipo:
-        try:
-            valor_num = float(valor_actual) if valor_actual not in [None, ""] else 0.0
-        except ValueError:
-            valor_num = 0.0
-        return st.number_input("Resultado obtenido", value=valor_num, step=1.0, key=f"{key_prefix}_resp_num")
+        valor = st.text_input(
+            "Resultado obtenido *",
+            value=valor_actual if valor_actual not in ["Sin dato"] else "",
+            placeholder="Captura un número. Ej.: 850.50",
+            key=f"{key_prefix}_resp_num",
+            help="Usa este campo para montos, cantidades, salarios, hectáreas, número de personas u otros valores cuantitativos.",
+        )
+        if requerido_error:
+            st.markdown(f'<div class="required-note">{escape(requerido_error)}</div>', unsafe_allow_html=True)
+        return valor
 
     if "Porcentaje" in tipo or "%" in tipo:
-        try:
-            valor_num = float(str(valor_actual).replace("%", "")) if valor_actual not in [None, ""] else 0.0
-        except ValueError:
-            valor_num = 0.0
-        return st.number_input("Resultado obtenido (%)", min_value=0.0, max_value=100.0, value=valor_num, step=1.0, key=f"{key_prefix}_resp_pct")
+        valor = st.text_input(
+            "Resultado obtenido (%) *",
+            value=valor_actual.replace("%", "") if valor_actual not in ["Sin dato"] else "",
+            placeholder="Captura un porcentaje de 0 a 100. Ej.: 75",
+            key=f"{key_prefix}_resp_pct",
+        )
+        if requerido_error:
+            st.markdown(f'<div class="required-note">{escape(requerido_error)}</div>', unsafe_allow_html=True)
+        return valor
 
     if "Texto" in tipo or "Abierta" in tipo:
-        return st.text_area("Resultado obtenido", value=str(valor_actual or ""), height=80, key=f"{key_prefix}_resp_txt")
+        valor = st.text_area(
+            "Resultado obtenido *",
+            value="" if valor_actual == "Sin dato" else valor_actual,
+            height=80,
+            key=f"{key_prefix}_resp_txt",
+            placeholder="Describe el resultado obtenido.",
+        )
+        if requerido_error:
+            st.markdown(f'<div class="required-note">{escape(requerido_error)}</div>', unsafe_allow_html=True)
+        return valor
 
-    valor_actual = str(valor_actual or "")
-    index = opciones.index(valor_actual) if valor_actual in opciones else 0
-    return st.selectbox("Resultado obtenido", opciones, index=index, key=f"{key_prefix}_resp_cat")
+    opciones_ui = [""] + [o for o in opciones if o not in ["", "Sin dato"]]
+    index = opciones_ui.index(valor_actual) if valor_actual in opciones_ui else 0
+    valor = st.selectbox(
+        "Resultado obtenido *",
+        opciones_ui,
+        index=index,
+        format_func=lambda x: x if x else "Selecciona...",
+        key=f"{key_prefix}_resp_cat",
+    )
+    if requerido_error:
+        st.markdown(f'<div class="required-note">{escape(requerido_error)}</div>', unsafe_allow_html=True)
+    return valor
 
 
 def bloque_pregunta(row, key_prefix, valores_existentes=None, permitir_omitir=True):
-    """Renderiza una pregunta del formulario sin imprimir HTML literal.
-
-    Se evita usar bloques HTML anidados porque Streamlit puede escaparlos en algunos
-    entornos/temas y terminar mostrando el código en pantalla.
-    """
+    """Renderiza una pregunta contraíble para captura/edición."""
     valores_existentes = valores_existentes or {}
+    qid = normalizar_texto(row.get("id_pregunta")) or key_prefix
+    errores = errores_formulario()
     impacto = normalizar_texto(row.get("impacto_asociado"))
     referencia = normalizar_texto(row.get("referencia_indicador", row.get("codigo_indicador", "")))
     fuente = normalizar_texto(row.get("fuente"))
@@ -3091,57 +3193,87 @@ def bloque_pregunta(row, key_prefix, valores_existentes=None, permitir_omitir=Tr
     pregunta = normalizar_texto(row.get("pregunta"))
     indicador = normalizar_texto(row.get("indicador"))
     cuando = normalizar_texto(row.get("cuando_se_llena")) or "Según aplicabilidad del sujeto."
+    tiene_error = any(k.endswith(qid) for k in errores.keys())
+    titulo = f"{referencia} · {pregunta}" if referencia else pregunta
 
-    c_card, c_omit = st.columns([5, .55])
-    with c_card:
-        try:
-            contenedor = st.container(border=True)
-        except TypeError:
-            contenedor = st.container()
-        with contenedor:
+    with st.expander(titulo, expanded=tiene_error):
+        if tiene_error:
+            st.markdown('<div class="question-error">Revisa los campos obligatorios de esta pregunta.</div>', unsafe_allow_html=True)
+        c_info, c_omit = st.columns([5, .7])
+        with c_info:
             st.caption(f"REFERENCIA OFICIAL: {referencia} · {fuente} · {capital}")
-            st.markdown(f"**{pregunta}**")
             if impacto:
                 st.markdown(f"**Descripción de impacto:** {impacto}")
             st.markdown(f"**Indicador oficial:** {indicador}")
             st.markdown(f"**Cuándo se llena:** {cuando}")
+        omitida = False
+        if permitir_omitir:
+            with c_omit:
+                omitida = st.checkbox("✕", key=f"{key_prefix}_omit", help="Marcar para omitir esta pregunta en este levantamiento. Desmárcala para recuperarla antes de guardar.")
+        if omitida:
+            st.info("Pregunta omitida para este levantamiento. Si necesitas dejar trazabilidad, desmarca la ✕ y usa el estado 'No aplica'.")
+            return {
+                "omitida": True,
+                "resultado_obtenido": "",
+                "estado_cumplimiento": "No aplica",
+                "observaciones": "Pregunta omitida en captura.",
+                "valor_numerico": "",
+            }
 
-    omitida = False
-    if permitir_omitir:
-        with c_omit:
-            omitida = st.checkbox("✕", key=f"{key_prefix}_omit", help="Marcar para omitir esta pregunta en este levantamiento. Desmárcala para recuperarla antes de guardar.")
+        c1, c2 = st.columns([1.15, 1])
+        with c1:
+            resultado = renderizar_respuesta(row, key_prefix, valores_existentes.get("resultado_obtenido", ""), errores.get(f"resultado_{qid}", ""))
+        estado_actual = valores_existentes.get("estado_cumplimiento") or ""
+        opciones_estado = [""] + ESTADOS_CUMPLIMIENTO
+        with c2:
+            idx_estado = opciones_estado.index(estado_actual) if estado_actual in opciones_estado else 0
+            estado = st.selectbox("Estado *", opciones_estado, index=idx_estado, format_func=lambda x: x if x else "Selecciona...", key=f"{key_prefix}_estado")
+            if errores.get(f"estado_{qid}"):
+                st.markdown(f'<div class="required-note">{escape(errores.get(f"estado_{qid}"))}</div>', unsafe_allow_html=True)
 
-    if omitida:
-        st.info("Pregunta omitida para este levantamiento. También puedes marcarla como 'No aplica' si quieres conservar la medición con trazabilidad.")
+        tipo = normalizar_texto(row.get("tipo_respuesta"))
+        es_num = "Numérico" in tipo or "Número" in tipo or "Porcentaje" in tipo or "%" in tipo
+        valor_numerico_actual = valores_existentes.get("valor_numerico", "")
+        if es_num:
+            valor_num_txt = resultado
+        else:
+            valor_num_txt = st.text_input(
+                "Valor numérico complementario, si aplica",
+                value="" if valor_numerico_actual in [None, "nan"] else str(valor_numerico_actual or ""),
+                placeholder="Ej.: monto, cantidad, salario, hectáreas, porcentaje",
+                key=f"{key_prefix}_valor_aux",
+                help="Opcional. Úsalo cuando el catálogo no sea suficiente y necesites registrar una cantidad comparable.",
+            )
+            if errores.get(f"valor_numerico_{qid}"):
+                st.markdown(f'<div class="required-note">{escape(errores.get(f"valor_numerico_{qid}"))}</div>', unsafe_allow_html=True)
+
+        obs = st.text_input(
+            "Observación específica",
+            value=str(valores_existentes.get("observaciones", "") or ""),
+            key=f"{key_prefix}_obs",
+            placeholder="Opcional. No es obligatorio.",
+        )
+
+        try:
+            valor_num = parse_numero(valor_num_txt)
+        except Exception:
+            valor_num = ""
         return {
-            "omitida": True,
-            "resultado_obtenido": "",
-            "estado_cumplimiento": "No aplica",
-            "observaciones": "Pregunta omitida en captura.",
-            "valor_numerico": "",
+            "omitida": False,
+            "resultado_obtenido": str(resultado).strip(),
+            "estado_cumplimiento": estado,
+            "observaciones": obs,
+            "valor_numerico": valor_num,
+            "valor_numerico_texto": str(valor_num_txt or "").strip(),
         }
 
-    c1, c2, c3 = st.columns([1.2, 1, 1.4])
-    with c1:
-        resultado = renderizar_respuesta(row, key_prefix, valores_existentes.get("resultado_obtenido", ""))
-    sugerido = estado_sugerido(resultado, row.get("resultado_esperado", ""))
-    estado_actual = valores_existentes.get("estado_cumplimiento") or sugerido
-    with c2:
-        idx_estado = ESTADOS_CUMPLIMIENTO.index(estado_actual) if estado_actual in ESTADOS_CUMPLIMIENTO else ESTADOS_CUMPLIMIENTO.index(sugerido)
-        estado = st.selectbox("Estado", ESTADOS_CUMPLIMIENTO, index=idx_estado, key=f"{key_prefix}_estado")
-    with c3:
-        obs = st.text_input("Observación específica", value=str(valores_existentes.get("observaciones", "") or ""), key=f"{key_prefix}_obs")
-    try:
-        valor_num = float(str(resultado).replace("%", ""))
-    except (TypeError, ValueError):
-        valor_num = ""
-    return {
-        "omitida": False,
-        "resultado_obtenido": str(resultado),
-        "estado_cumplimiento": estado,
-        "observaciones": obs,
-        "valor_numerico": valor_num,
-    }
+
+def seleccionar_preguntas_aplicables(preguntas, tipo_sujeto):
+    st.markdown("##### Aplicabilidad del formulario")
+    st.info(
+        "Las preguntas aparecen agrupadas por capital. Cada pregunta está contraída para que la captura sea más ligera. Ábrela para responderla, marca 'No aplica' para conservar trazabilidad o usa la ✕ para omitirla del levantamiento."
+    )
+    return preguntas
 
 # ============================================================
 # 6. CAPTURA Y EDICIÓN
@@ -3158,14 +3290,25 @@ def seleccionar_preguntas_aplicables(preguntas, tipo_sujeto):
 def mostrar_captura():
     st.markdown("#### Captura dinámica de formulario")
     st.markdown(
-        '<div class="screen-help">Primero selecciona el tipo de sujeto y el registro. El sistema muestra únicamente las preguntas formuladas desde indicadores oficiales para ese sujeto. Cada pregunta muestra el indicador oficial, cuándo se llena y, cuando existe, la descripción de impacto.</div>',
+        '<div class="screen-help">Selecciona el tipo de sujeto y el registro. La pantalla inicia en blanco para evitar capturas accidentales. El sistema muestra únicamente preguntas formuladas desde indicadores oficiales para ese sujeto.</div>',
         unsafe_allow_html=True,
     )
 
     tipos = obtener_tipos_sujeto()
     c1, c2 = st.columns([1, 1.4])
     with c1:
-        tipo_sujeto = st.selectbox("Tipo de sujeto", tipos, key=f"captura_tipo_{st.session_state.reset_md}")
+        tipo_sujeto = st.selectbox(
+            "Tipo de sujeto *",
+            [""] + tipos,
+            index=0,
+            format_func=lambda x: x if x else "Selecciona...",
+            key=f"captura_tipo_{st.session_state.reset_md}",
+        )
+        error_campo("tipo_sujeto")
+    if not tipo_sujeto:
+        st.info("Selecciona un tipo de sujeto para cargar los registros disponibles y sus preguntas aplicables.")
+        return
+
     sujetos = obtener_sujetos_por_tipo(tipo_sujeto)
     if sujetos.empty:
         st.warning("No hay sujetos disponibles para este tipo. En integración real se consultarán desde las tablas del SIR.")
@@ -3173,44 +3316,68 @@ def mostrar_captura():
     opciones_ids = sujetos["id_sujeto"].astype(str).tolist()
     etiquetas = {row["id_sujeto"]: formatear_sujeto(row) for _, row in sujetos.iterrows()}
     with c2:
-        id_sujeto = st.selectbox("Registro / sujeto", opciones_ids, format_func=lambda x: etiquetas.get(x, x), key=f"captura_sujeto_{tipo_sujeto}_{st.session_state.reset_md}")
+        id_sujeto = st.selectbox(
+            "Registro / sujeto *",
+            [""] + opciones_ids,
+            index=0,
+            format_func=lambda x: etiquetas.get(x, x) if x else "Selecciona...",
+            key=f"captura_sujeto_{tipo_sujeto}_{st.session_state.reset_md}",
+        )
+        error_campo("id_sujeto")
+    if not id_sujeto:
+        st.info("Selecciona el registro específico que será medido.")
+        return
 
     sujeto = obtener_sujeto(tipo_sujeto, id_sujeto)
     mostrar_info_sujeto(sujeto)
 
-    preguntas_base = obtener_preguntas_por_tipo(tipo_sujeto)
-    if preguntas_base.empty:
+    preguntas = obtener_preguntas_por_tipo(tipo_sujeto)
+    if preguntas.empty:
         st.warning("No hay preguntas configuradas para este tipo de sujeto.")
         return
-
-    preguntas = seleccionar_preguntas_aplicables(preguntas_base, tipo_sujeto)
-    if preguntas.empty:
-        st.warning("Selecciona al menos una pregunta para guardar el levantamiento.")
-        return
+    preguntas = seleccionar_preguntas_aplicables(preguntas, tipo_sujeto)
 
     st.markdown("##### Datos generales del levantamiento")
     c1, c2, c3 = st.columns(3)
     with c1:
-        fecha_medicion = st.date_input("Fecha de realización / captura de la información", value=date.today(), key=f"captura_fecha_{st.session_state.reset_md}", help="La ingresa el usuario. No es la fecha automática de registro del sistema.")
+        fecha_medicion = st.date_input(
+            "Fecha de realización / captura de la información *",
+            value=None,
+            key=f"captura_fecha_{st.session_state.reset_md}",
+            help="La ingresa el usuario. No es la fecha automática de registro del sistema.",
+        )
+        error_campo("fecha_medicion")
     with c2:
-        periodo = st.text_input("Periodo de medición", value=date.today().strftime("%Y-%m"), key=f"captura_periodo_{st.session_state.reset_md}")
+        periodo = st.text_input(
+            "Periodo de medición",
+            value="",
+            placeholder="Ej.: 2026-07. Si lo dejas en blanco se calcula desde la fecha.",
+            key=f"captura_periodo_{st.session_state.reset_md}",
+        )
     with c3:
-        fuente_registro = st.selectbox("Fuente usada para este levantamiento", FUENTES_INFORMACION, key=f"captura_fuente_{st.session_state.reset_md}")
+        fuente_registro = st.selectbox(
+            "Fuente usada para este levantamiento *",
+            [""] + FUENTES_INFORMACION,
+            index=0,
+            format_func=lambda x: x if x else "Selecciona...",
+            key=f"captura_fuente_{st.session_state.reset_md}",
+        )
+        error_campo("fuente_informacion")
 
     c5, c6 = st.columns([1, 1])
     with c5:
         evidencia_url = st.text_input("URL / ruta de evidencia general", placeholder="Acta, foto, documento, expediente o enlace", key=f"captura_evidencia_{st.session_state.reset_md}")
     with c6:
-        observacion_general = st.text_input("Observación general del levantamiento", key=f"captura_obs_general_{st.session_state.reset_md}")
+        observacion_general = st.text_input("Observación general del levantamiento", placeholder="Opcional. No es obligatoria.", key=f"captura_obs_general_{st.session_state.reset_md}")
 
     st.markdown("##### Preguntas del formulario")
+    st.markdown('<div class="compact-hint">Abre cada pregunta para responderla. Si la contraes, queda visible solo el título de la pregunta.</div>', unsafe_allow_html=True)
     respuestas = {}
     for capital, df_capital in preguntas.groupby("capital", dropna=False):
         with st.expander(f"{capital} · {len(df_capital)} pregunta(s)", expanded=True):
             for _, row in df_capital.iterrows():
                 key = f"cap_{row.get('id_pregunta')}_{st.session_state.reset_md}"
                 respuestas[row.get("id_pregunta")] = bloque_pregunta(row.to_dict(), key)
-                st.divider()
 
     col_guardar, col_info = st.columns([1, 2])
     with col_guardar:
@@ -3219,14 +3386,57 @@ def mostrar_captura():
         st.info("fecha_registro y registrado_por se calculan automáticamente. fecha_medicion la ingresa el usuario.")
 
     if guardar:
-        ahora = datetime.now().isoformat(timespec="seconds")
-        id_levantamiento = generar_id_levantamiento()
-        registros = []
+        errores_nuevos = {}
+        if not tipo_sujeto:
+            errores_nuevos["tipo_sujeto"] = "Selecciona el tipo de sujeto."
+        if not id_sujeto:
+            errores_nuevos["id_sujeto"] = "Selecciona el registro que será medido."
+        if fecha_medicion is None:
+            errores_nuevos["fecha_medicion"] = "Captura la fecha de realización de la medición."
+        if not fuente_registro:
+            errores_nuevos["fuente_informacion"] = "Selecciona la fuente usada para el levantamiento."
+
+        registros_preparados = []
         for _, row in preguntas.iterrows():
             q = row.to_dict()
-            r = respuestas.get(q.get("id_pregunta"), {})
+            qid = q.get("id_pregunta")
+            r = respuestas.get(qid, {})
             if r.get("omitida"):
                 continue
+            estado = normalizar_texto(r.get("estado_cumplimiento"))
+            resultado = normalizar_texto(r.get("resultado_obtenido"))
+            if not estado:
+                errores_nuevos[f"estado_{qid}"] = "Selecciona el estado."
+            if estado != "No aplica" and valor_vacio(resultado):
+                errores_nuevos[f"resultado_{qid}"] = "Captura el resultado obtenido o marca No aplica."
+            tipo_resp = normalizar_texto(q.get("tipo_respuesta"))
+            requiere_numero = "Numérico" in tipo_resp or "Número" in tipo_resp or "Porcentaje" in tipo_resp or "%" in tipo_resp
+            valor_num_txt = normalizar_texto(r.get("valor_numerico_texto"))
+            if estado != "No aplica" and requiere_numero:
+                try:
+                    parse_numero(valor_num_txt)
+                except Exception:
+                    errores_nuevos[f"resultado_{qid}"] = "Captura un valor numérico válido."
+            elif valor_num_txt:
+                try:
+                    parse_numero(valor_num_txt)
+                except Exception:
+                    errores_nuevos[f"valor_numerico_{qid}"] = "El valor complementario debe ser numérico."
+            registros_preparados.append((q, r))
+
+        if not registros_preparados:
+            errores_nuevos["preguntas"] = "No se puede guardar porque todas las preguntas fueron omitidas."
+
+        if errores_nuevos:
+            st.session_state.form_errors_md = errores_nuevos
+            registrar_notificacion("error", "No se puede guardar", f"Corrige {len(errores_nuevos)} campo(s) obligatorio(s). Las observaciones son opcionales.")
+            st.rerun()
+
+        ahora = datetime.now().isoformat(timespec="seconds")
+        id_levantamiento = generar_id_levantamiento()
+        periodo_final = periodo.strip() or fecha_medicion.strftime("%Y-%m")
+        registros = []
+        for q, r in registros_preparados:
             obs = normalizar_texto(r.get("observaciones"))
             if observacion_general:
                 obs = f"{observacion_general} | {obs}" if obs else observacion_general
@@ -3262,11 +3472,11 @@ def mostrar_captura():
                 "modulos_disparan": q.get("modulos_disparan"),
                 "numerador_base": q.get("numerador_base"),
                 "denominador_base": q.get("denominador_base"),
-                "resultado_obtenido": r.get("resultado_obtenido", "Sin dato"),
-                "estado_cumplimiento": r.get("estado_cumplimiento", "Sin dato"),
+                "resultado_obtenido": r.get("resultado_obtenido", ""),
+                "estado_cumplimiento": r.get("estado_cumplimiento", ""),
                 "valor_numerico": r.get("valor_numerico", ""),
                 "fecha_medicion": fecha_medicion.isoformat(),
-                "periodo_medicion": periodo,
+                "periodo_medicion": periodo_final,
                 "fuente_informacion": fuente_registro,
                 "evidencia_url": evidencia_url,
                 "observaciones": obs,
@@ -3276,16 +3486,13 @@ def mostrar_captura():
                 "fecha_actualizacion": "",
                 "activo": 1,
             })
-        if not registros:
-            st.warning("No se guardó el levantamiento porque todas las preguntas fueron omitidas.")
-            return
         nuevo_df = pd.DataFrame(registros)
         st.session_state.data_md = asegurar_columnas_mediciones(pd.concat([st.session_state.data_md, nuevo_df], ignore_index=True))
         guardar_memoria_local()
-        st.success(f"Formulario guardado correctamente. Levantamiento: {id_levantamiento} · {len(registros)} mediciones creadas.")
+        st.session_state.form_errors_md = {}
+        registrar_notificacion("success", "Formulario guardado", f"Levantamiento {id_levantamiento} guardado con {len(registros)} medición(es). El formulario quedó en blanco para una nueva captura.")
         st.session_state.reset_md += 1
         st.rerun()
-
 
 def etiqueta_levantamiento(df, id_levantamiento):
     d = df[df["id_levantamiento"].astype(str) == str(id_levantamiento)]
@@ -3398,7 +3605,8 @@ def mostrar_edicion():
             full.loc[mask, "fecha_actualizacion"] = ahora
         st.session_state.data_md = asegurar_columnas_mediciones(full)
         guardar_memoria_local()
-        st.success("Formulario actualizado correctamente.")
+        registrar_notificacion("success", "Formulario actualizado", "Los cambios fueron guardados sin crear duplicados.")
+        st.session_state.form_errors_md = {}
         st.session_state.reset_md += 1
         st.rerun()
 
@@ -3410,7 +3618,7 @@ def mostrar_edicion():
         full.loc[mask, "fecha_actualizacion"] = datetime.now().isoformat(timespec="seconds")
         st.session_state.data_md = asegurar_columnas_mediciones(full)
         guardar_memoria_local()
-        st.warning("Levantamiento desactivado.")
+        registrar_notificacion("warning", "Levantamiento desactivado", "Las mediciones quedaron inactivas en el histórico.")
         st.session_state.reset_md += 1
         st.rerun()
 
@@ -3446,7 +3654,7 @@ def mostrar_historico(df_filtrado):
     st.download_button(
         "Descargar histórico filtrado CSV",
         data=dataframe_descargable(vista[cols_vista]),
-        file_name="historico_modulo_d_indicadores.csv",
+        file_name="historico_modulo_pmrb_indicadores.csv",
         mime="text/csv",
         use_container_width=True,
     )
@@ -3483,7 +3691,7 @@ def mostrar_catalogo():
     st.download_button(
         "Descargar catálogo CSV",
         data=dataframe_descargable(vista[cols]),
-        file_name="catalogo_formularios_indicadores_modulo_d_validado.csv",
+        file_name="catalogo_formularios_indicadores_modulo_pmrb_validado.csv",
         mime="text/csv",
         use_container_width=True,
     )
@@ -3497,6 +3705,7 @@ def main():
     aplicar_estilos()
     inicializar_estado()
     mostrar_encabezado()
+    mostrar_notificacion_flotante()
     seccion, filtros = mostrar_sidebar()
     df_filtrado = filtrar_mediciones(st.session_state.data_md, filtros)
     mostrar_metricas(df_filtrado)

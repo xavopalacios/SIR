@@ -1,6 +1,6 @@
 # ============================================================
 # SIR ACP - Módulo PRMV Indicadores por sujeto de medición
-# Versión v13 beta funcional alineada a matriz campo-fuente → indicador → pregunta
+# Versión v14 beta funcional alineada a matriz campo-fuente → indicador → pregunta
 # ============================================================
 # - Un solo archivo .py autosuficiente.
 # - No requiere schema.sql ni seed_catalogo.json.
@@ -41,10 +41,11 @@ COLOR_SECUNDARIO_SOCIONAUT = "#00A6A6"
 COLOR_CORAL = "#F05A43"
 COLOR_BORDE = "#D6DEE6"
 
-ARCHIVO_MEMORIA = Path("memoria_modulo_prmv_indicadores_v13.json")
+ARCHIVO_MEMORIA = Path("memoria_modulo_prmv_indicadores_v14.json")
 USUARIO_PROTOTIPO = "usuario_prototipo"
 
-ESTADOS_CUMPLIMIENTO = ["Resuelto", "No resuelto", "No aplica"]
+ESTADOS_CUMPLIMIENTO = ["Resuelto", "No resuelto"]
+RESULTADOS_BINARIOS = ["Sí", "No"]
 FUENTES_INFORMACION = [
     "Módulo alimentador oficial",
     "Seguimiento operativo",
@@ -4322,7 +4323,7 @@ def opciones_catalogo(row):
 def estado_sugerido(respuesta, esperado=""):
     r = normalizar_texto(respuesta).lower()
     if r in ["no aplica", "n/a", "na"]:
-        return "No aplica"
+        return "No resuelto"
     if r in ["sí", "si", "resuelto", "cumple", "completo", "realizado", "entregado", "activo", "activa"]:
         return "Resuelto"
     return "No resuelto"
@@ -4424,11 +4425,10 @@ def crear_data_simulada_mediciones():
     trazabilidad temporal de los levantamientos.
     """
     registros = []
-    estados = ["Resuelto", "No resuelto", "No aplica"]
+    estados = ["Resuelto", "No resuelto"]
     respuestas_por_estado = {
         "Resuelto": "Sí",
         "No resuelto": "No",
-        "No aplica": "No aplica",
     }
     contador_levantamiento = 1
     contador_medicion = 1
@@ -4677,6 +4677,7 @@ def parse_numero(valor):
 # ============================================================
 
 
+
 def mostrar_sidebar():
     st.sidebar.title("Módulo PRMV")
     st.session_state.usuario_md = st.sidebar.text_input(
@@ -4688,31 +4689,12 @@ def mostrar_sidebar():
         "Sección de trabajo",
         ["Captura", "Edición", "Histórico"],
         key="panel_md",
-        help="Captura registra un formulario nuevo. Edición modifica un levantamiento existente.",
+        help="Captura registra un formulario nuevo. Edición modifica un levantamiento existente. Histórico consulta trazabilidad.",
     )
     st.sidebar.markdown("---")
-    st.sidebar.subheader("Filtros globales")
-
-    df = st.session_state.data_md
-    cat = catalogo_df()
-    filtros = {}
-    filtros["capital"] = multiselect_con_todos("Capital", cat["capital"].dropna().unique().tolist(), "f_capital_md")
-    modulos_catalogo = sorted(set(m for valor in cat["modulo_vinculado"].dropna().astype(str) for m in [x.strip() for x in valor.split(";") if x.strip()]))
-    filtros["modulo_vinculado"] = multiselect_con_todos("Módulo vinculado", modulos_catalogo, "f_modulo_md", help_text="Filtra histórico por módulo alimentador o disparador de la medición.")
-    filtros["tipo_sujeto"] = multiselect_con_todos("Tipo de sujeto", obtener_tipos_sujeto(), "f_tipo_sujeto_md")
-    filtros["fuente"] = multiselect_con_todos("Fuente oficial", cat["fuente"].dropna().unique().tolist(), "f_fuente_md")
-    filtros["estado_cumplimiento"] = multiselect_con_todos("Resolución", ESTADOS_CUMPLIMIENTO, "f_estado_md")
-    filtros["zona"] = multiselect_con_todos("Zona", sujetos_df()["zona"].dropna().unique().tolist(), "f_zona_md")
-    if not df.empty:
-        filtros["categoria"] = multiselect_con_todos("Categoría", df["categoria"].dropna().unique().tolist(), "f_categoria_md")
-        filtros["periodo_medicion"] = multiselect_con_todos("Periodo", df["periodo_medicion"].dropna().unique().tolist(), "f_periodo_md")
-    else:
-        filtros["categoria"] = []
-        filtros["periodo_medicion"] = []
-    filtros["busqueda"] = st.sidebar.text_input("Buscador", value=st.session_state.busqueda_md, placeholder="Buscar sujeto, indicador, categoría...")
-    st.session_state.busqueda_md = filtros["busqueda"]
-
-    st.sidebar.markdown("---")
+    st.sidebar.caption(
+        "Los filtros operativos están dentro de cada pantalla para mantener el mismo flujo: capital → módulo vinculado → tipo de sujeto → sujeto."
+    )
     if st.sidebar.button("Guardar memoria local", use_container_width=True):
         guardar_memoria_local()
         st.sidebar.success("Memoria guardada.")
@@ -4722,8 +4704,8 @@ def mostrar_sidebar():
         st.session_state.reset_md += 1
         st.sidebar.success("Data simulada restaurada.")
         st.rerun()
-    st.sidebar.caption("Captura organizada por capital → tipo de sujeto → sujeto. Las preguntas resueltas ya no se muestran en nuevas capturas. Los sujetos se resuelven con módulo + tabla_origen + id_sujeto_origen.")
-    return seccion, filtros
+    st.sidebar.caption("Beta funcional: los módulos fuente están documentados en el código, pero la app usa data simulada interna para pruebas.")
+    return seccion, {}
 
 
 def mostrar_metricas(df_filtrado):
@@ -4762,8 +4744,8 @@ def mostrar_info_sujeto(sujeto):
                 {crear_chip('Tabla: ' + (normalizar_texto(sujeto.get('tabla_origen')) or 'No definida'), 'default')}
                 {crear_chip('PK: ' + (normalizar_texto(sujeto.get('pk_id_sujeto')) or 'No definida'), 'default')}
                 {crear_chip('ID origen: ' + (normalizar_texto(sujeto.get('id_sujeto_origen')) or normalizar_texto(sujeto.get('id_sujeto'))), 'default')}
-                {crear_chip('Hogar: ' + (normalizar_texto(sujeto.get('id_hogar')) or 'No aplica'), 'default')}
-                {crear_chip('Comunidad: ' + (normalizar_texto(sujeto.get('id_comunidad')) or 'No aplica'), 'default')}
+                {crear_chip('Hogar: ' + (normalizar_texto(sujeto.get('id_hogar')) or 'Sin hogar'), 'default')}
+                {crear_chip('Comunidad: ' + (normalizar_texto(sujeto.get('id_comunidad')) or 'Sin comunidad'), 'default')}
             </div>
         </div>
     </div>
@@ -4771,50 +4753,37 @@ def mostrar_info_sujeto(sujeto):
     st.markdown(html, unsafe_allow_html=True)
 
 
+
 def renderizar_respuesta(row, key_prefix, valor_actual="", requerido_error=""):
-    """Renderiza el resultado obtenido. El valor numérico se captura aparte cuando aplique."""
-    tipo = normalizar_texto(row.get("tipo_respuesta"))
-    opciones = opciones_catalogo(row)
-    valor_actual = "" if valor_actual is None else str(valor_actual)
+    """Renderiza el resultado obtenido como respuesta binaria.
 
-    if "Numérico" in tipo or "Número" in tipo or "Porcentaje" in tipo or "%" in tipo:
-        label = "Resultado obtenido *" if not ("Porcentaje" in tipo or "%" in tipo) else "Resultado obtenido (%) *"
-        valor = st.text_input(
-            label,
-            value=valor_actual.replace("%", "") if valor_actual not in ["Sin dato", "No aplica"] else "",
-            placeholder="Captura el valor. Ej.: 850.50, 12, 75",
-            key=f"{key_prefix}_resp_num",
-            help="Usa este campo para montos, cantidades, salarios, hectáreas, porcentajes u otros valores cuantitativos.",
-        )
-        if requerido_error:
-            st.markdown(f'<div class="required-note">{escape(requerido_error)}</div>', unsafe_allow_html=True)
-        return valor
-
-    if "Texto" in tipo or "Abierta" in tipo:
-        valor = st.text_area(
-            "Resultado obtenido *",
-            value="" if valor_actual == "Sin dato" else valor_actual,
-            height=80,
-            key=f"{key_prefix}_resp_txt",
-            placeholder="Describe el resultado obtenido.",
-        )
-        if requerido_error:
-            st.markdown(f'<div class="required-note">{escape(requerido_error)}</div>', unsafe_allow_html=True)
-        return valor
-
-    opciones_ui = [""] + [o for o in opciones if o not in ["", "Sin dato"]]
+    En esta versión beta el resultado obtenido NO incluye "No aplica". La no
+    aplicabilidad se maneja omitiendo la pregunta o la sección completa antes de
+    guardar el levantamiento. El valor numérico complementario se captura aparte.
+    """
+    valor_actual = "" if valor_actual is None else str(valor_actual).strip()
+    if valor_actual not in RESULTADOS_BINARIOS:
+        # Normalización defensiva de valores antiguos/simulados.
+        if valor_actual.lower() in ["si", "sí", "true", "1", "resuelto", "cumple"]:
+            valor_actual = "Sí"
+        elif valor_actual.lower() in ["no", "false", "0", "no resuelto", "no cumple", "en proceso"]:
+            valor_actual = "No"
+        else:
+            valor_actual = ""
+    opciones_ui = [""] + RESULTADOS_BINARIOS
     index = opciones_ui.index(valor_actual) if valor_actual in opciones_ui else 0
     valor = st.selectbox(
         "Resultado obtenido *",
         opciones_ui,
         index=index,
         format_func=lambda x: x if x else "Selecciona...",
-        key=f"{key_prefix}_resp_cat",
-        help="Resultado directo observado para el indicador. Si necesitas una cantidad adicional, usa el campo numérico complementario.",
+        key=f"{key_prefix}_resp_bin",
+        help="Respuesta directa del indicador. La no aplicabilidad se maneja omitiendo la pregunta o la sección, no como resultado.",
     )
     if requerido_error:
         st.markdown(f'<div class="required-note">{escape(requerido_error)}</div>', unsafe_allow_html=True)
     return valor
+
 
 
 def bloque_pregunta(row, key_prefix, valores_existentes=None, permitir_omitir=True):
@@ -4858,13 +4827,14 @@ def bloque_pregunta(row, key_prefix, valores_existentes=None, permitir_omitir=Tr
             with c_omit:
                 omitida = st.checkbox("✕", key=f"{key_prefix}_omit", help="Marcar para omitir esta pregunta en este levantamiento. Desmárcala para recuperarla antes de guardar.")
         if omitida:
-            st.info("Pregunta omitida para este levantamiento. Si necesitas dejar trazabilidad, desmarca la ✕ y usa resolución 'No aplica'.")
+            st.info("Pregunta omitida para este levantamiento. No se guardará como respuesta en el histórico.")
             return {
                 "omitida": True,
                 "resultado_obtenido": "",
-                "estado_cumplimiento": "No aplica",
+                "estado_cumplimiento": "",
                 "observaciones": "Pregunta omitida en captura.",
                 "valor_numerico": "",
+                "valor_numerico_texto": "",
             }
 
         c1, c2 = st.columns([1.15, 1])
@@ -4872,30 +4842,32 @@ def bloque_pregunta(row, key_prefix, valores_existentes=None, permitir_omitir=Tr
             resultado = renderizar_respuesta(row, key_prefix, valores_existentes.get("resultado_obtenido", ""), errores.get(f"resultado_{qid}", ""))
 
         estado_actual = valores_existentes.get("estado_cumplimiento") or valores_existentes.get("estado_resolucion") or ""
-        if estado_actual in ["Cumple", "Parcial", "No cumple", "En proceso", "Sin dato"]:
+        if estado_actual in ["Cumple", "Parcial", "No cumple", "En proceso", "Sin dato", "No aplica"]:
             estado_actual = "Resuelto" if estado_actual == "Cumple" else "No resuelto"
         opciones_estado = [""] + ESTADOS_CUMPLIMIENTO
         with c2:
             idx_estado = opciones_estado.index(estado_actual) if estado_actual in opciones_estado else 0
-            estado = st.selectbox("Resolución *", opciones_estado, index=idx_estado, format_func=lambda x: x if x else "Selecciona...", key=f"{key_prefix}_estado", help="Clasifica únicamente si el indicador ya está resuelto, no resuelto o no aplica.")
+            estado = st.selectbox(
+                "Resolución *",
+                opciones_estado,
+                index=idx_estado,
+                format_func=lambda x: x if x else "Selecciona...",
+                key=f"{key_prefix}_estado",
+                help="Clasifica únicamente si el indicador ya está resuelto o no resuelto. La no aplicabilidad se maneja omitiendo la pregunta o sección.",
+            )
             if errores.get(f"estado_{qid}"):
                 st.markdown(f'<div class="required-note">{escape(errores.get(f"estado_{qid}"))}</div>', unsafe_allow_html=True)
 
-        tipo = normalizar_texto(row.get("tipo_respuesta"))
-        es_num = "Numérico" in tipo or "Número" in tipo or "Porcentaje" in tipo or "%" in tipo
         valor_numerico_actual = valores_existentes.get("valor_numerico", "")
-        if es_num:
-            valor_num_txt = resultado
-        else:
-            valor_num_txt = st.text_input(
-                "Valor numérico complementario, si aplica",
-                value="" if valor_numerico_actual in [None, "nan"] else str(valor_numerico_actual or ""),
-                placeholder="Ej.: monto, cantidad, salario, hectáreas, porcentaje",
-                key=f"{key_prefix}_valor_aux",
-                help="Opcional. Úsalo cuando el resultado de catálogo no sea suficiente y necesites registrar una cantidad comparable.",
-            )
-            if errores.get(f"valor_numerico_{qid}"):
-                st.markdown(f'<div class="required-note">{escape(errores.get(f"valor_numerico_{qid}"))}</div>', unsafe_allow_html=True)
+        valor_num_txt = st.text_input(
+            "Valor numérico complementario, si aplica",
+            value="" if valor_numerico_actual in [None, "nan"] else str(valor_numerico_actual or ""),
+            placeholder="Ej.: monto, cantidad, salario, hectáreas, porcentaje",
+            key=f"{key_prefix}_valor_aux",
+            help="Opcional. Úsalo cuando la respuesta Sí/No no sea suficiente y necesites registrar una cantidad comparable.",
+        )
+        if errores.get(f"valor_numerico_{qid}"):
+            st.markdown(f'<div class="required-note">{escape(errores.get(f"valor_numerico_{qid}"))}</div>', unsafe_allow_html=True)
 
         obs = st.text_input(
             "Observación específica",
@@ -4905,7 +4877,7 @@ def bloque_pregunta(row, key_prefix, valores_existentes=None, permitir_omitir=Tr
         )
 
         try:
-            valor_num = parse_numero(valor_num_txt)
+            valor_num = parse_numero(valor_num_txt) if str(valor_num_txt or "").strip() else ""
         except Exception:
             valor_num = ""
         return {
@@ -4933,14 +4905,14 @@ def seleccionar_preguntas_aplicables(preguntas, tipo_sujeto):
 def seleccionar_preguntas_aplicables(preguntas, tipo_sujeto):
     st.markdown("##### Aplicabilidad del formulario")
     st.info(
-        "Se muestran las preguntas del tipo de sujeto seleccionado. En cada tarjeta puedes marcar 'No aplica' para conservar la trazabilidad, o usar la ✕ para omitir esa pregunta del levantamiento."
+        "Se muestran las preguntas del tipo de sujeto seleccionado. Usa la ✕ para omitir preguntas que no aplican al levantamiento."
     )
     return preguntas
 
 def mostrar_captura():
     st.markdown("#### Captura dinámica de formulario")
     st.markdown(
-        '<div class="screen-help">La captura se organiza por capital → tipo de sujeto → sujeto. Las preguntas resueltas para ese sujeto ya no aparecen en nuevos levantamientos. Puedes marcar una sección completa como No aplica.</div>',
+        '<div class="screen-help">La captura se organiza por capital → tipo de sujeto → sujeto. Las preguntas resueltas para ese sujeto ya no aparecen en nuevos levantamientos. Puedes omitir una sección completa cuando no aplique al levantamiento.</div>',
         unsafe_allow_html=True,
     )
 
@@ -5076,7 +5048,7 @@ def mostrar_captura():
         observacion_general = st.text_input("Observación general del levantamiento", placeholder="Opcional. No es obligatoria.", key=f"captura_obs_general_{st.session_state.reset_md}")
 
     st.markdown("##### Preguntas del formulario")
-    st.markdown('<div class="compact-hint">Las preguntas están agrupadas por categoría. Puedes marcar una categoría completa como No aplica o abrir cada pregunta para responderla.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="compact-hint">Las preguntas están agrupadas por categoría. Puedes omitir una categoría completa cuando no aplique o abrir cada pregunta para responderla.</div>', unsafe_allow_html=True)
     respuestas = {}
     secciones_no_aplica = {}
     for categoria, df_categoria in preguntas.groupby("categoria", dropna=False):
@@ -5086,19 +5058,19 @@ def mostrar_captura():
         expandir = any((f"resultado_{qid}" in errores or f"estado_{qid}" in errores or f"valor_numerico_{qid}" in errores) for qid in ids_cat)
         with st.expander(f"{titulo_seccion} · {len(df_categoria)} pregunta(s)", expanded=expandir):
             no_aplica_categoria = st.checkbox(
-                "Marcar toda esta sección/categoría como No aplica",
+                "Omitir toda esta sección/categoría",
                 key=f"cat_no_aplica_{abs(hash(titulo_seccion))}_{st.session_state.reset_md}",
-                help="Guarda todas las preguntas de esta categoría como No aplica y evita responder una por una.",
+                help="No guarda las preguntas de esta categoría en el levantamiento actual. Desmarca para recuperarlas antes de guardar.",
             )
             secciones_no_aplica[titulo_seccion] = no_aplica_categoria
             if no_aplica_categoria:
-                st.info("Esta sección se guardará completa como No aplica para conservar trazabilidad.")
+                st.info("Esta sección será omitida del levantamiento actual y no se guardará como respuesta.")
                 for _, row in df_categoria.iterrows():
                     respuestas[row.get("id_pregunta")] = {
-                        "omitida": False,
-                        "resultado_obtenido": "No aplica",
-                        "estado_cumplimiento": "No aplica",
-                        "observaciones": "Sección/categoría marcada como No aplica.",
+                        "omitida": True,
+                        "resultado_obtenido": "",
+                        "estado_cumplimiento": "",
+                        "observaciones": "Sección/categoría omitida en captura.",
                         "valor_numerico": "",
                         "valor_numerico_texto": "",
                     }
@@ -5136,13 +5108,13 @@ def mostrar_captura():
             estado = normalizar_texto(r.get("estado_cumplimiento"))
             resultado = normalizar_texto(r.get("resultado_obtenido"))
             if not estado:
-                errores_nuevos[f"estado_{qid}"] = "Selecciona si está resuelto, no resuelto o no aplica."
-            if estado != "No aplica" and valor_vacio(resultado):
-                errores_nuevos[f"resultado_{qid}"] = "Captura el resultado obtenido o marca resolución No aplica."
+                errores_nuevos[f"estado_{qid}"] = "Selecciona si está resuelto o no resuelto."
+            if valor_vacio(resultado):
+                errores_nuevos[f"resultado_{qid}"] = "Captura el resultado obtenido: Sí o No."
             tipo_resp = normalizar_texto(q.get("tipo_respuesta"))
             requiere_numero = "Numérico" in tipo_resp or "Número" in tipo_resp or "Porcentaje" in tipo_resp or "%" in tipo_resp
             valor_num_txt = normalizar_texto(r.get("valor_numerico_texto"))
-            if estado != "No aplica" and requiere_numero:
+            if requiere_numero:
                 try:
                     parse_numero(valor_num_txt)
                 except Exception:
@@ -5240,6 +5212,39 @@ def mostrar_captura():
         st.session_state.reset_md += 1
         st.rerun()
 
+
+def modulos_unicos_desde_df(df):
+    """Extrae módulos vinculados visibles desde un DataFrame de catálogo o mediciones."""
+    if df is None or df.empty or "modulo_vinculado" not in df.columns:
+        return []
+    modulos = set()
+    for valor in df["modulo_vinculado"].dropna().astype(str):
+        for item in [m.strip() for m in valor.split(";") if m.strip()]:
+            modulos.add(item)
+        for item in modulos_desde_texto(valor):
+            modulos.add(item)
+    return [m for m in MODULOS_CANONICOS if m in modulos] + sorted([m for m in modulos if m not in MODULOS_CANONICOS])
+
+
+def filtrar_df_por_modulo_vinculado(df, modulo_vinculado=""):
+    """Filtra por módulo de forma tolerante para el beta.
+
+    El módulo es una referencia de integración futura; por eso se compara tanto
+    contra el texto original como contra los módulos canónicos derivados.
+    """
+    if not modulo_vinculado or df is None or df.empty or "modulo_vinculado" not in df.columns:
+        return df
+    return df[df["modulo_vinculado"].astype(str).apply(lambda x: modulo_vinculado in x or modulo_vinculado in modulos_desde_texto(x))].copy()
+
+
+def filtrar_mediciones_por_texto(df, texto=""):
+    texto = normalizar_texto(texto).lower()
+    if not texto or df is None or df.empty:
+        return df
+    mascara = df.astype(str).apply(lambda col: col.str.lower().str.contains(texto, na=False)).any(axis=1)
+    return df[mascara].copy()
+
+
 def etiqueta_levantamiento(df, id_levantamiento):
     d = df[df["id_levantamiento"].astype(str) == str(id_levantamiento)]
     if d.empty:
@@ -5250,28 +5255,103 @@ def etiqueta_levantamiento(df, id_levantamiento):
     return f"{id_levantamiento} · medición {fecha} · registro {registro} · {len(d)} preguntas"
 
 
+
 def mostrar_edicion():
     st.markdown("#### Edición de formulario diligenciado")
     st.markdown(
-        '<div class="screen-help">Selecciona el tipo de sujeto, el registro y el levantamiento existente. La edición actualiza las mismas mediciones; no crea duplicados.</div>',
+        '<div class="screen-help">La edición usa el mismo flujo de filtros que Captura: capital → módulo vinculado → tipo de sujeto → sujeto → levantamiento. La edición actualiza las mismas mediciones; no crea duplicados.</div>',
         unsafe_allow_html=True,
     )
     df = st.session_state.data_md.copy()
     if df.empty:
         st.warning("Aún no hay formularios guardados para editar.")
         return
+    if "activo" in df.columns:
+        df = df[df["activo"].astype(str).isin(["1", "True", "true", ""] ) | (df["activo"] == 1)].copy()
+    if df.empty:
+        st.warning("No hay formularios activos para editar.")
+        return
 
-    tipos_con_data = sorted(df["tipo_sujeto"].dropna().astype(str).unique().tolist())
-    c1, c2 = st.columns([1, 1.5])
+    st.markdown("##### Filtros de edición")
+    c1, c2, c3 = st.columns([1, 1.15, 1.15])
+    capitales = sorted([c for c in df["capital"].dropna().astype(str).unique().tolist() if c])
     with c1:
-        tipo_sujeto = st.selectbox("Tipo de sujeto", tipos_con_data, key=f"edit_tipo_{st.session_state.reset_md}")
-    df_tipo = df[df["tipo_sujeto"].astype(str) == tipo_sujeto]
+        capital = st.selectbox(
+            "Capital / clasificación *",
+            [""] + capitales,
+            index=0,
+            format_func=lambda x: x if x else "Selecciona...",
+            key=f"edit_capital_{st.session_state.reset_md}",
+        )
+    if not capital:
+        st.info("Selecciona un capital para cargar módulos, tipos de sujeto y levantamientos existentes.")
+        return
+
+    df_capital = df[df["capital"].astype(str) == str(capital)].copy()
+    modulos = modulos_unicos_desde_df(df_capital)
+    with c2:
+        modulo_vinculado = st.selectbox(
+            "Módulo vinculado / fuente real",
+            [""] + modulos,
+            index=0,
+            format_func=lambda x: x if x else "Todos los módulos vinculados",
+            key=f"edit_modulo_{capital}_{st.session_state.reset_md}",
+        )
+    df_modulo = filtrar_df_por_modulo_vinculado(df_capital, modulo_vinculado)
+
+    tipos_con_data = sorted([t for t in df_modulo["tipo_sujeto"].dropna().astype(str).unique().tolist() if t])
+    with c3:
+        tipo_sujeto = st.selectbox(
+            "Tipo de sujeto *",
+            [""] + tipos_con_data,
+            index=0,
+            format_func=lambda x: x if x else "Selecciona...",
+            key=f"edit_tipo_{capital}_{modulo_vinculado}_{st.session_state.reset_md}",
+        )
+    if not tipo_sujeto:
+        st.info("Selecciona el tipo de sujeto para ver registros editables.")
+        return
+
+    df_tipo = df_modulo[df_modulo["tipo_sujeto"].astype(str) == str(tipo_sujeto)].copy()
+
+    st.markdown("##### Clasificación del sujeto / casos asociados")
+    f1, f2, f3, f4 = st.columns([1, 1, 1, 1.3])
+    with f1:
+        zonas = [""] + sorted([z for z in df_tipo.get("zona", pd.Series(dtype=str)).dropna().astype(str).unique().tolist() if z])
+        zona_sel = st.selectbox("Filtrar por zona", zonas, format_func=lambda x: x if x else "Todas", key=f"edit_zona_{tipo_sujeto}_{st.session_state.reset_md}")
+    if zona_sel:
+        df_tipo = df_tipo[df_tipo["zona"].astype(str) == zona_sel]
+    with f2:
+        hogares = [""] + sorted([h for h in df_tipo.get("id_hogar", pd.Series(dtype=str)).dropna().astype(str).unique().tolist() if h])
+        hogar_sel = st.selectbox("Filtrar por hogar", hogares, format_func=lambda x: x if x else "Todos", key=f"edit_hogar_{tipo_sujeto}_{st.session_state.reset_md}")
+    if hogar_sel:
+        df_tipo = df_tipo[df_tipo["id_hogar"].astype(str) == hogar_sel]
+    with f3:
+        comunidades = [""] + sorted([c for c in df_tipo.get("id_comunidad", pd.Series(dtype=str)).dropna().astype(str).unique().tolist() if c])
+        comunidad_sel = st.selectbox("Filtrar por comunidad", comunidades, format_func=lambda x: x if x else "Todas", key=f"edit_com_{tipo_sujeto}_{st.session_state.reset_md}")
+    if comunidad_sel:
+        df_tipo = df_tipo[df_tipo["id_comunidad"].astype(str) == comunidad_sel]
+    with f4:
+        buscar_sujeto = st.text_input("Buscar sujeto / caso", value="", placeholder="ID, nombre, hogar, comunidad...", key=f"edit_buscar_suj_{tipo_sujeto}_{st.session_state.reset_md}")
+    df_tipo = filtrar_mediciones_por_texto(df_tipo, buscar_sujeto)
+
+    if df_tipo.empty:
+        st.warning("No hay levantamientos con los filtros seleccionados.")
+        return
+
     sujetos = sorted(df_tipo["id_sujeto"].dropna().astype(str).unique().tolist())
     etiquetas_suj = df_tipo.drop_duplicates("id_sujeto").set_index("id_sujeto")["nombre_sujeto"].to_dict()
-    with c2:
-        id_sujeto = st.selectbox("Registro / sujeto", sujetos, format_func=lambda x: f"{x} · {etiquetas_suj.get(x, '')}", key=f"edit_sujeto_{tipo_sujeto}_{st.session_state.reset_md}")
+    id_sujeto = st.selectbox(
+        "Registro / sujeto *",
+        [""] + sujetos,
+        format_func=lambda x: f"{x} · {etiquetas_suj.get(x, '')}" if x else "Selecciona...",
+        key=f"edit_sujeto_{tipo_sujeto}_{capital}_{st.session_state.reset_md}",
+    )
+    if not id_sujeto:
+        st.info("Selecciona el registro específico que quieres editar.")
+        return
 
-    df_sujeto = df_tipo[df_tipo["id_sujeto"].astype(str) == str(id_sujeto)]
+    df_sujeto = df_tipo[df_tipo["id_sujeto"].astype(str) == str(id_sujeto)].copy()
     levantamientos = sorted(df_sujeto["id_levantamiento"].dropna().astype(str).unique().tolist(), reverse=True)
     id_levantamiento = st.selectbox(
         "Formulario / levantamiento",
@@ -5312,9 +5392,9 @@ def mostrar_edicion():
     st.markdown("##### Preguntas del formulario")
     respuestas = {}
     catalogo = catalogo_df().set_index("id_pregunta").to_dict("index")
-    for capital, df_capital in df_lev.groupby("capital", dropna=False):
-        with st.expander(f"{capital} · {len(df_capital)} pregunta(s)", expanded=True):
-            for _, med in df_capital.iterrows():
+    for categoria, df_categoria in df_lev.groupby("categoria", dropna=False):
+        with st.expander(f"{normalizar_texto(categoria) or 'Sin categoría'} · {len(df_categoria)} pregunta(s)", expanded=False):
+            for _, med in df_categoria.iterrows():
                 id_pregunta = med.get("id_pregunta")
                 row = catalogo.get(id_pregunta, {})
                 if not row:
@@ -5330,6 +5410,25 @@ def mostrar_edicion():
         desactivar = st.button("Desactivar levantamiento", use_container_width=True, help="No elimina físicamente; marca las mediciones como inactivas.")
 
     if actualizar:
+        errores_nuevos = {}
+        for id_medicion, r in respuestas.items():
+            if r.get("omitida"):
+                continue
+            if valor_vacio(r.get("resultado_obtenido")):
+                errores_nuevos[f"resultado_{id_medicion}"] = "Captura el resultado obtenido: Sí o No."
+            if valor_vacio(r.get("estado_cumplimiento")):
+                errores_nuevos[f"estado_{id_medicion}"] = "Selecciona si está resuelto o no resuelto."
+            valor_num_txt = normalizar_texto(r.get("valor_numerico_texto"))
+            if valor_num_txt:
+                try:
+                    parse_numero(valor_num_txt)
+                except Exception:
+                    errores_nuevos[f"valor_numerico_{id_medicion}"] = "El valor complementario debe ser numérico."
+        if errores_nuevos:
+            st.session_state.form_errors_md = errores_nuevos
+            registrar_notificacion("error", "No se puede actualizar", f"Corrige {len(errores_nuevos)} campo(s) obligatorio(s).")
+            st.rerun()
+
         ahora = datetime.now().isoformat(timespec="seconds")
         full = st.session_state.data_md.copy()
         for id_medicion, r in respuestas.items():
@@ -5339,8 +5438,8 @@ def mostrar_edicion():
                 full.loc[mask, "actualizado_por"] = st.session_state.usuario_md
                 full.loc[mask, "fecha_actualizacion"] = ahora
                 continue
-            full.loc[mask, "resultado_obtenido"] = r.get("resultado_obtenido", "Sin dato")
-            full.loc[mask, "estado_cumplimiento"] = r.get("estado_cumplimiento", "Sin dato")
+            full.loc[mask, "resultado_obtenido"] = r.get("resultado_obtenido", "")
+            full.loc[mask, "estado_cumplimiento"] = r.get("estado_cumplimiento", "")
             full.loc[mask, "valor_numerico"] = r.get("valor_numerico", "")
             full.loc[mask, "observaciones"] = r.get("observaciones", "")
             full.loc[mask, "fecha_medicion"] = fecha_medicion.isoformat()
@@ -5368,19 +5467,78 @@ def mostrar_edicion():
         st.session_state.reset_md += 1
         st.rerun()
 
-# ============================================================
-# 7. HISTÓRICO
-# ============================================================
 
-def mostrar_historico(df_filtrado):
+
+def mostrar_historico(df_filtrado=None):
     st.markdown("#### Histórico y trazabilidad de mediciones")
     st.markdown(
-        '<div class="screen-help">Consulta las mediciones por levantamiento, sujeto, indicador, fecha de realización y fecha automática de registro.</div>',
+        '<div class="screen-help">Consulta las mediciones usando el mismo flujo de filtros de Captura y Edición: capital → módulo vinculado → tipo de sujeto → sujeto.</div>',
         unsafe_allow_html=True,
     )
-    if df_filtrado.empty:
+    df = st.session_state.data_md.copy()
+    if df.empty:
+        st.warning("No hay mediciones registradas.")
+        return
+    if "activo" in df.columns:
+        df = df[df["activo"].astype(str).isin(["1", "True", "true", ""] ) | (df["activo"] == 1)].copy()
+    if df.empty:
+        st.warning("No hay mediciones activas.")
+        return
+
+    st.markdown("##### Filtros del histórico")
+    c1, c2, c3 = st.columns([1, 1.15, 1.15])
+    capitales = sorted([c for c in df["capital"].dropna().astype(str).unique().tolist() if c])
+    with c1:
+        capital = st.selectbox("Capital / clasificación", [""] + capitales, index=0, format_func=lambda x: x if x else "Todos", key=f"hist_capital_{st.session_state.reset_md}")
+    df_f = df[df["capital"].astype(str) == str(capital)].copy() if capital else df.copy()
+
+    modulos = modulos_unicos_desde_df(df_f)
+    with c2:
+        modulo_vinculado = st.selectbox("Módulo vinculado / fuente real", [""] + modulos, index=0, format_func=lambda x: x if x else "Todos los módulos vinculados", key=f"hist_modulo_{capital}_{st.session_state.reset_md}")
+    df_f = filtrar_df_por_modulo_vinculado(df_f, modulo_vinculado)
+
+    tipos = sorted([t for t in df_f["tipo_sujeto"].dropna().astype(str).unique().tolist() if t])
+    with c3:
+        tipo_sujeto = st.selectbox("Tipo de sujeto", [""] + tipos, index=0, format_func=lambda x: x if x else "Todos", key=f"hist_tipo_{capital}_{modulo_vinculado}_{st.session_state.reset_md}")
+    if tipo_sujeto:
+        df_f = df_f[df_f["tipo_sujeto"].astype(str) == str(tipo_sujeto)].copy()
+
+    st.markdown("##### Clasificación del sujeto / casos asociados")
+    f1, f2, f3, f4 = st.columns([1, 1, 1, 1.3])
+    with f1:
+        zonas = [""] + sorted([z for z in df_f.get("zona", pd.Series(dtype=str)).dropna().astype(str).unique().tolist() if z])
+        zona_sel = st.selectbox("Filtrar por zona", zonas, format_func=lambda x: x if x else "Todas", key=f"hist_zona_{st.session_state.reset_md}")
+    if zona_sel:
+        df_f = df_f[df_f["zona"].astype(str) == zona_sel]
+    with f2:
+        hogares = [""] + sorted([h for h in df_f.get("id_hogar", pd.Series(dtype=str)).dropna().astype(str).unique().tolist() if h])
+        hogar_sel = st.selectbox("Filtrar por hogar", hogares, format_func=lambda x: x if x else "Todos", key=f"hist_hogar_{st.session_state.reset_md}")
+    if hogar_sel:
+        df_f = df_f[df_f["id_hogar"].astype(str) == hogar_sel]
+    with f3:
+        comunidades = [""] + sorted([c for c in df_f.get("id_comunidad", pd.Series(dtype=str)).dropna().astype(str).unique().tolist() if c])
+        comunidad_sel = st.selectbox("Filtrar por comunidad", comunidades, format_func=lambda x: x if x else "Todas", key=f"hist_com_{st.session_state.reset_md}")
+    if comunidad_sel:
+        df_f = df_f[df_f["id_comunidad"].astype(str) == comunidad_sel]
+    with f4:
+        buscar = st.text_input("Buscar sujeto / caso / indicador", value="", placeholder="ID, nombre, indicador, categoría...", key=f"hist_buscar_{st.session_state.reset_md}")
+    df_f = filtrar_mediciones_por_texto(df_f, buscar)
+
+    if df_f.empty:
         st.warning("No hay mediciones con los filtros seleccionados.")
         return
+
+    sujetos = sorted(df_f["id_sujeto"].dropna().astype(str).unique().tolist())
+    etiquetas_suj = df_f.drop_duplicates("id_sujeto").set_index("id_sujeto")["nombre_sujeto"].to_dict()
+    id_sujeto = st.selectbox(
+        "Registro / sujeto",
+        [""] + sujetos,
+        format_func=lambda x: f"{x} · {etiquetas_suj.get(x, '')}" if x else "Todos",
+        key=f"hist_sujeto_{st.session_state.reset_md}",
+    )
+    if id_sujeto:
+        df_f = df_f[df_f["id_sujeto"].astype(str) == str(id_sujeto)].copy()
+
     cols = deduplicar_columnas([
         "id_levantamiento", "id_medicion", "tipo_sujeto", "modulo_vinculado", "tabla_origen",
         "pk_id_sujeto", "id_sujeto_origen", "id_sujeto", "nombre_sujeto", "capital", "capital_original",
@@ -5390,16 +5548,11 @@ def mostrar_historico(df_filtrado):
         "tablas_alimentan_medicion", "relacion_prmv", "estado_validacion", "fuente_informacion", "registrado_por", "fecha_registro",
         "actualizado_por", "fecha_actualizacion", "observaciones",
     ])
-    cols_existentes = [c for c in cols if c in df_filtrado.columns]
-    vista = df_filtrado.loc[:, cols_existentes].copy()
+    cols_existentes = [c for c in cols if c in df_f.columns]
+    vista = df_f.loc[:, cols_existentes].copy()
 
-    # Alias visual sin duplicar columnas ni disparar errores de pandas.
-    if "modulo_vinculado" in vista.columns:
-        vista.insert(
-            vista.columns.get_loc("modulo_vinculado") + 1,
-            "módulo_vinculado_visible",
-            vista["modulo_vinculado"].astype(str),
-        )
+    if "modulo_vinculado" in vista.columns and "módulo_vinculado_visible" not in vista.columns:
+        vista.insert(vista.columns.get_loc("modulo_vinculado") + 1, "módulo_vinculado_visible", vista["modulo_vinculado"].astype(str))
 
     vista["día_año_medición"] = pd.to_datetime(vista.get("fecha_medicion"), errors="coerce").dt.dayofyear
     vista["día_año_registro"] = pd.to_datetime(vista.get("fecha_registro"), errors="coerce").dt.dayofyear
@@ -5416,6 +5569,8 @@ def mostrar_historico(df_filtrado):
     sort_cols = [c for c in ["fecha_registro", "id_levantamiento"] if c in vista.columns]
     if sort_cols:
         vista = vista.sort_values(sort_cols, ascending=False)
+
+    st.caption(f"Registros visibles: {len(vista)} medición(es) · Levantamientos: {vista['id_levantamiento'].nunique() if 'id_levantamiento' in vista.columns else 0}")
     st.dataframe(vista[cols_vista], use_container_width=True, hide_index=True)
     st.download_button(
         "Descargar histórico filtrado CSV",

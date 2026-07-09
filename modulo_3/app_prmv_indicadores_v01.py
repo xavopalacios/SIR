@@ -1,6 +1,6 @@
 # ============================================================
 # SIR ACP - Módulo PRMV Indicadores por sujeto de medición
-# Versión v10 con capitales normalizados y filtro por módulo vinculado
+# Versión v11 con sujetos canónicos vinculados a módulos reales
 # ============================================================
 # - Un solo archivo .py autosuficiente.
 # - No requiere schema.sql ni seed_catalogo.json.
@@ -40,7 +40,7 @@ COLOR_SECUNDARIO_SOCIONAUT = "#00A6A6"
 COLOR_CORAL = "#F05A43"
 COLOR_BORDE = "#D6DEE6"
 
-ARCHIVO_MEMORIA = Path("memoria_modulo_prmv_indicadores_v10.json")
+ARCHIVO_MEMORIA = Path("memoria_modulo_prmv_indicadores_v11.json")
 USUARIO_PROTOTIPO = "usuario_prototipo"
 
 ESTADOS_CUMPLIMIENTO = ["Resuelto", "No resuelto", "No aplica"]
@@ -2299,203 +2299,54 @@ CATALOGO_FORMULARIOS = [
 ]
 
 # Sujetos de prueba para que el prototipo funcione sin conexión al SIR real.
-# En integración, esta lista debe reemplazarse por consultas a personas, hogares,
-# comunidades, OBC, actividades, CP, infraestructura y unidades productivas.
+# En integración, esta lista debe reemplazarse por consultas a las tablas reales:
+# M01: hogares/familias, personas, hogares no censados, personas no censadas,
+#     línea base hogar y línea base persona.
+# M02: relacionamiento, comunidades/lugares poblados, OBC, actividades, visitas e interacciones.
+# M07: bienes, reposición e infraestructura.
+# M08: consultas y quejas.
 SUJETOS_DEMO = [
   {
-    "tipo_sujeto": "Actividad / evento",
-    "id_sujeto": "ACT-0001",
-    "nombre_sujeto": "Capacitación BPA",
-    "descripcion": "Actividad programada de capacitación",
-    "zona": "Zona 1",
-    "id_hogar": "",
-    "id_comunidad": "COM-0001"
-  },
-  {
-    "tipo_sujeto": "Actividad / evento",
-    "id_sujeto": "ACT-0002",
-    "nombre_sujeto": "Encuentro de diálogo de saberes",
-    "descripcion": "Evento de participación comunitaria",
-    "zona": "Zona 2",
-    "id_hogar": "",
-    "id_comunidad": "COM-0002"
-  },
-  {
-    "tipo_sujeto": "CP / caso",
-    "id_sujeto": "CP-0001",
-    "nombre_sujeto": "Caso CP HOG-0001",
-    "descripcion": "Consulta/queja asociado a hogar",
-    "zona": "Zona 1",
-    "id_hogar": "HOG-0001",
-    "id_comunidad": "COM-0001"
-  },
-  {
-    "tipo_sujeto": "CP / caso",
-    "id_sujeto": "CP-0002",
-    "nombre_sujeto": "Caso CP comunitario",
-    "descripcion": "Consulta/queja comunitario",
-    "zona": "Zona 2",
-    "id_hogar": "",
-    "id_comunidad": "COM-0002"
-  },
-  {
-    "tipo_sujeto": "Comunidad / lugar poblado",
-    "id_sujeto": "COM-0001",
-    "nombre_sujeto": "Nuevo Progreso",
-    "descripcion": "Lugar poblado receptor/de seguimiento",
-    "zona": "Zona 1",
-    "id_hogar": "",
-    "id_comunidad": "COM-0001"
-  },
-  {
-    "tipo_sujeto": "Comunidad / lugar poblado",
-    "id_sujeto": "COM-0002",
-    "nombre_sujeto": "El Progreso",
-    "descripcion": "Lugar poblado de origen",
-    "zona": "Zona 2",
-    "id_hogar": "",
-    "id_comunidad": "COM-0002"
-  },
-  {
-    "tipo_sujeto": "Comunidad receptora",
-    "id_sujeto": "REC-0001",
-    "nombre_sujeto": "Nuevo Progreso receptor",
-    "descripcion": "Comunidad receptora vinculada a integración social",
-    "zona": "Zona 1",
-    "id_hogar": "",
-    "id_comunidad": "COM-0001"
-  },
-  {
-    "tipo_sujeto": "Comunidad receptora",
-    "id_sujeto": "REC-0002",
-    "nombre_sujeto": "Santa Rosa receptora",
-    "descripcion": "Comunidad receptora en validación",
-    "zona": "Zona 3",
-    "id_hogar": "",
-    "id_comunidad": "COM-0003"
-  },
-  {
-    "tipo_sujeto": "Conflicto / caso comunitario",
-    "id_sujeto": "CON-0001",
-    "nombre_sujeto": "Caso comunitario 001",
-    "descripcion": "Conflicto comunitario en seguimiento",
-    "zona": "Zona 1",
-    "id_hogar": "",
-    "id_comunidad": "COM-0001"
-  },
-  {
-    "tipo_sujeto": "Conflicto / caso comunitario",
-    "id_sujeto": "CON-0002",
-    "nombre_sujeto": "Caso comunitario 002",
-    "descripcion": "Conflicto comunitario cerrado",
-    "zona": "Zona 2",
-    "id_hogar": "",
-    "id_comunidad": "COM-0002"
-  },
-  {
-    "tipo_sujeto": "Hogar / familia",
+    "tipo_sujeto": "Familia",
     "id_sujeto": "HOG-0001",
-    "nombre_sujeto": "Hogar María López",
-    "descripcion": "Hogar afectado físico · Zona 1",
+    "nombre_sujeto": "Familia María López",
+    "descripcion": "M01 · Hogar/familia registrada · Zona 1",
     "zona": "Zona 1",
     "id_hogar": "HOG-0001",
     "id_comunidad": "COM-0001"
   },
   {
-    "tipo_sujeto": "Hogar / familia",
+    "tipo_sujeto": "Familia",
     "id_sujeto": "HOG-0002",
-    "nombre_sujeto": "Hogar Carlos Mendoza",
-    "descripcion": "Hogar afectado económico · Zona 2",
+    "nombre_sujeto": "Familia Carlos Mendoza",
+    "descripcion": "M01 · Hogar/familia registrada · Zona 2",
     "zona": "Zona 2",
     "id_hogar": "HOG-0002",
     "id_comunidad": "COM-0002"
   },
   {
-    "tipo_sujeto": "Hogar / familia",
+    "tipo_sujeto": "Familia",
     "id_sujeto": "HOG-0003",
-    "nombre_sujeto": "Hogar Rosa Martínez",
-    "descripcion": "Hogar con seguimiento social · Zona 3",
+    "nombre_sujeto": "Familia Rosa Martínez",
+    "descripcion": "M01 · Hogar/familia registrada · Zona 3",
     "zona": "Zona 3",
     "id_hogar": "HOG-0003",
     "id_comunidad": "COM-0003"
   },
   {
-    "tipo_sujeto": "Hogar / unidad productiva",
-    "id_sujeto": "UPR-0001",
-    "nombre_sujeto": "Unidad productiva HOG-0001",
-    "descripcion": "Unidad agrícola vinculada al hogar HOG-0001",
+    "tipo_sujeto": "Familia",
+    "id_sujeto": "HNC-0001",
+    "nombre_sujeto": "Familia no censada 001",
+    "descripcion": "M01 · Hogar/familia no censada · Pendiente de validación",
     "zona": "Zona 1",
-    "id_hogar": "HOG-0001",
+    "id_hogar": "HNC-0001",
     "id_comunidad": "COM-0001"
-  },
-  {
-    "tipo_sujeto": "Hogar / unidad productiva",
-    "id_sujeto": "UPR-0002",
-    "nombre_sujeto": "Unidad productiva HOG-0002",
-    "descripcion": "Unidad productiva familiar · Zona 2",
-    "zona": "Zona 2",
-    "id_hogar": "HOG-0002",
-    "id_comunidad": "COM-0002"
-  },
-  {
-    "tipo_sujeto": "Infraestructura comunitaria",
-    "id_sujeto": "INF-0001",
-    "nombre_sujeto": "Centro comunitario Nuevo Progreso",
-    "descripcion": "Infraestructura comunitaria en reposición",
-    "zona": "Zona 1",
-    "id_hogar": "",
-    "id_comunidad": "COM-0001"
-  },
-  {
-    "tipo_sujeto": "Infraestructura comunitaria",
-    "id_sujeto": "INF-0002",
-    "nombre_sujeto": "Sistema de agua Santa Rosa",
-    "descripcion": "Infraestructura comunitaria de servicio",
-    "zona": "Zona 3",
-    "id_hogar": "",
-    "id_comunidad": "COM-0003"
-  },
-  {
-    "tipo_sujeto": "Mecanismo / espacio comunitario",
-    "id_sujeto": "MEC-0001",
-    "nombre_sujeto": "Mesa comunitaria mensual",
-    "descripcion": "Mecanismo de consulta y participación",
-    "zona": "Zona 1",
-    "id_hogar": "",
-    "id_comunidad": "COM-0001"
-  },
-  {
-    "tipo_sujeto": "Mecanismo / espacio comunitario",
-    "id_sujeto": "MEC-0002",
-    "nombre_sujeto": "Espacio de seguimiento OBC",
-    "descripcion": "Mecanismo comunitario de seguimiento",
-    "zona": "Zona 2",
-    "id_hogar": "",
-    "id_comunidad": "COM-0002"
-  },
-  {
-    "tipo_sujeto": "Organización comunitaria / OBC",
-    "id_sujeto": "OBC-0001",
-    "nombre_sujeto": "Comité de Reasentamiento Nuevo Progreso",
-    "descripcion": "OBC asociada a COM-0001",
-    "zona": "Zona 1",
-    "id_hogar": "",
-    "id_comunidad": "COM-0001"
-  },
-  {
-    "tipo_sujeto": "Organización comunitaria / OBC",
-    "id_sujeto": "OBC-0002",
-    "nombre_sujeto": "Asociación Productiva El Progreso",
-    "descripcion": "OBC asociada a COM-0002",
-    "zona": "Zona 2",
-    "id_hogar": "",
-    "id_comunidad": "COM-0002"
   },
   {
     "tipo_sujeto": "Persona",
     "id_sujeto": "PER-0001",
     "nombre_sujeto": "María López",
-    "descripcion": "Persona registrada en HOG-0001",
+    "descripcion": "M01 · Persona registrada en HOG-0001",
     "zona": "Zona 1",
     "id_hogar": "HOG-0001",
     "id_comunidad": "COM-0001"
@@ -2504,45 +2355,126 @@ SUJETOS_DEMO = [
     "tipo_sujeto": "Persona",
     "id_sujeto": "PER-0002",
     "nombre_sujeto": "Carlos Mendoza",
-    "descripcion": "Persona registrada en HOG-0002",
+    "descripcion": "M01 · Persona registrada en HOG-0002",
     "zona": "Zona 2",
     "id_hogar": "HOG-0002",
     "id_comunidad": "COM-0002"
   },
   {
-    "tipo_sujeto": "Persona / trabajador",
-    "id_sujeto": "TRA-0001",
-    "nombre_sujeto": "Trabajador 001",
-    "descripcion": "Trabajador vinculado a actividad productiva",
-    "zona": "Zona 1",
-    "id_hogar": "HOG-0001",
-    "id_comunidad": "COM-0001"
-  },
-  {
-    "tipo_sujeto": "Persona / trabajador",
-    "id_sujeto": "TRA-0002",
-    "nombre_sujeto": "Trabajador 002",
-    "descripcion": "Trabajador vinculado a capacitación",
-    "zona": "Zona 2",
-    "id_hogar": "HOG-0002",
-    "id_comunidad": "COM-0002"
-  },
-  {
-    "tipo_sujeto": "Persona vulnerable",
-    "id_sujeto": "PVU-0001",
+    "tipo_sujeto": "Persona",
+    "id_sujeto": "PER-0003",
     "nombre_sujeto": "Rosa Martínez",
-    "descripcion": "Persona vulnerable con medida diferencial",
+    "descripcion": "M01 · Persona registrada en HOG-0003 · Condición de atención diferencial si aplica",
     "zona": "Zona 3",
     "id_hogar": "HOG-0003",
     "id_comunidad": "COM-0003"
   },
   {
-    "tipo_sujeto": "Persona vulnerable",
-    "id_sujeto": "PVU-0002",
-    "nombre_sujeto": "Luis García",
-    "descripcion": "Persona vulnerable en seguimiento",
+    "tipo_sujeto": "Persona",
+    "id_sujeto": "PNC-0001",
+    "nombre_sujeto": "Persona no censada 001",
+    "descripcion": "M01 · Persona no censada · Pendiente de validación",
+    "zona": "Zona 1",
+    "id_hogar": "HNC-0001",
+    "id_comunidad": "COM-0001"
+  },
+  {
+    "tipo_sujeto": "Comunidad / lugar poblado",
+    "id_sujeto": "COM-0001",
+    "nombre_sujeto": "Nuevo Progreso",
+    "descripcion": "M02 · Comunidad/lugar poblado",
+    "zona": "Zona 1",
+    "id_hogar": "",
+    "id_comunidad": "COM-0001"
+  },
+  {
+    "tipo_sujeto": "Comunidad / lugar poblado",
+    "id_sujeto": "COM-0002",
+    "nombre_sujeto": "El Progreso",
+    "descripcion": "M02 · Comunidad/lugar poblado",
+    "zona": "Zona 2",
+    "id_hogar": "",
+    "id_comunidad": "COM-0002"
+  },
+  {
+    "tipo_sujeto": "Comunidad / lugar poblado",
+    "id_sujeto": "COM-0003",
+    "nombre_sujeto": "Santa Rosa",
+    "descripcion": "M02 · Comunidad/lugar poblado",
+    "zona": "Zona 3",
+    "id_hogar": "",
+    "id_comunidad": "COM-0003"
+  },
+  {
+    "tipo_sujeto": "Organización comunitaria / OBC",
+    "id_sujeto": "OBC-0001",
+    "nombre_sujeto": "Comité de Reasentamiento Nuevo Progreso",
+    "descripcion": "M02 · Organización comunitaria/OBC asociada a COM-0001",
+    "zona": "Zona 1",
+    "id_hogar": "",
+    "id_comunidad": "COM-0001"
+  },
+  {
+    "tipo_sujeto": "Organización comunitaria / OBC",
+    "id_sujeto": "OBC-0002",
+    "nombre_sujeto": "Asociación Productiva El Progreso",
+    "descripcion": "M02 · Organización comunitaria/OBC asociada a COM-0002",
+    "zona": "Zona 2",
+    "id_hogar": "",
+    "id_comunidad": "COM-0002"
+  },
+  {
+    "tipo_sujeto": "Actividad / visita / interacción",
+    "id_sujeto": "ACT-0001",
+    "nombre_sujeto": "Capacitación BPA",
+    "descripcion": "M02 · Actividad de relacionamiento/capacitación",
+    "zona": "Zona 1",
+    "id_hogar": "",
+    "id_comunidad": "COM-0001"
+  },
+  {
+    "tipo_sujeto": "Actividad / visita / interacción",
+    "id_sujeto": "VIS-0001",
+    "nombre_sujeto": "Visita de seguimiento HOG-0001",
+    "descripcion": "M02 · Visita/interacción asociada a familia",
     "zona": "Zona 1",
     "id_hogar": "HOG-0001",
+    "id_comunidad": "COM-0001"
+  },
+  {
+    "tipo_sujeto": "Consulta y queja / caso",
+    "id_sujeto": "CP-0001",
+    "nombre_sujeto": "Consulta y queja HOG-0001",
+    "descripcion": "M08 · Caso de consulta o queja asociado a familia",
+    "zona": "Zona 1",
+    "id_hogar": "HOG-0001",
+    "id_comunidad": "COM-0001"
+  },
+  {
+    "tipo_sujeto": "Consulta y queja / caso",
+    "id_sujeto": "CP-0002",
+    "nombre_sujeto": "Consulta y queja comunitaria",
+    "descripcion": "M08 · Caso de consulta o queja asociado a comunidad",
+    "zona": "Zona 2",
+    "id_hogar": "",
+    "id_comunidad": "COM-0002"
+  },
+  {
+    "tipo_sujeto": "Bien / infraestructura",
+    "id_sujeto": "BIE-0001",
+    "nombre_sujeto": "Bien de reposición HOG-0001",
+    "descripcion": "M07 · Bien/reposición asociado a familia",
+    "zona": "Zona 1",
+    "id_hogar": "HOG-0001",
+    "id_comunidad": "COM-0001"
+  },
+  {
+    "tipo_sujeto": "Bien / infraestructura",
+    "id_sujeto": "INF-0001",
+    "nombre_sujeto": "Centro comunitario Nuevo Progreso",
+    "descripcion": "M07 · Infraestructura comunitaria en reposición",
+    "zona": "Zona 1",
+    "id_hogar": "",
     "id_comunidad": "COM-0001"
   }
 ]
@@ -2720,47 +2652,72 @@ def normalizar_capital(valor):
 
 
 def normalizar_tipo_sujeto(valor):
-    """Unifica nombres de sujetos para que el usuario no vea variantes repetidas."""
+    """Unifica nombres de sujetos contra entidades reales del SIR.
+
+    No crea nuevos sujetos de base. Cuando el indicador menciona una variante
+    que no existe como tabla propia, se vincula a la entidad real disponible.
+    """
     txt = quitar_acentos(valor).lower().strip()
-    if txt in ["hogar / familia", "hogar/familia", "hogar familia"]:
+    txt = re.sub(r"\s+", " ", txt)
+
+    # M01: en la interfaz se muestra como Familia, pero el ID sigue siendo HOG/HNC.
+    if txt in [
+        "hogar / familia", "hogar/familia", "hogar familia", "familia", "hogar",
+        "hogar / unidad productiva", "hogar/unidad productiva", "unidad productiva familiar",
+    ]:
         return "Familia"
-    if txt in ["hogar / unidad productiva", "hogar/unidad productiva"]:
-        return "Unidad productiva familiar"
-    if txt in ["cp / caso", "cp/caso"]:
+
+    # No existe una tabla separada de trabajadores ni de personas vulnerables en esta versión.
+    # Esas condiciones se capturan sobre Persona/M01.
+    if txt in ["persona", "persona / trabajador", "persona/trabajador", "trabajador", "persona vulnerable"]:
+        return "Persona"
+
+    # M02: relacionamiento, comunidades, OBC, actividades, visitas e interacciones.
+    if txt in ["comunidad receptora", "comunidad / lugar poblado", "comunidad/lugar poblado", "lugar poblado", "comunidad"]:
+        return "Comunidad / lugar poblado"
+    if txt in ["organizacion comunitaria / obc", "organización comunitaria / obc", "obc", "organizacion comunitaria", "organización comunitaria"]:
+        return "Organización comunitaria / OBC"
+    if txt in ["actividad / evento", "actividad/evento", "mecanismo / espacio comunitario", "mecanismo/espacio comunitario", "visita", "interaccion", "interacción"]:
+        return "Actividad / visita / interacción"
+
+    # M08: consultas y quejas. Los conflictos/casos comunitarios se revisan como caso CP/CQ.
+    if txt in ["cp / caso", "cp/caso", "consulta y queja / caso", "consultas y quejas", "conflicto / caso comunitario", "conflicto/caso comunitario"]:
         return "Consulta y queja / caso"
+
+    # M07: bienes, reposición e infraestructura.
+    if txt in ["infraestructura comunitaria", "bien / infraestructura", "bien/infraestructura", "bien", "infraestructura"]:
+        return "Bien / infraestructura"
+
     return normalizar_texto(valor)
 
 
 MODULOS_CANONICOS = [
-    "M01 · Familias y personas",
-    "M03 · Comunidades, lugares poblados y OBC",
+    "M01 · Registro de hogares y personas",
+    "M02 · Relacionamiento e interacciones",
     "M04 · Negociación y compensaciones",
     "M06 · Gestión documental",
     "M07 · Bienes, reposición e infraestructura",
     "M08 · Consultas y quejas",
-    "Interacciones · Visitas, actividades y seguimiento",
     "Sin módulo vinculado",
 ]
 
 
 def modulos_desde_texto(texto):
-    """Deriva módulos funcionales desde la columna original de módulo alimentador/disparador."""
+    """Deriva módulos funcionales sin inventar módulos no trabajados en el SIR."""
     txt = quitar_acentos(texto).lower()
     modulos = []
-    if any(k in txt for k in ["m01", "registro de hogares", "personas", "vulnerabilidades"]):
-        modulos.append("M01 · Familias y personas")
-    if any(k in txt for k in ["comunidades", "lugares poblados", "obc"]):
-        modulos.append("M03 · Comunidades, lugares poblados y OBC")
-    if any(k in txt for k in ["m04", "compensaciones", "negociacion", "negociación"]):
+    if any(k in txt for k in ["m01", "registro de hogares", "hogar", "hogares", "familia", "familias", "persona", "personas", "vulnerabilidades", "linea base", "línea base", "censo"]):
+        modulos.append("M01 · Registro de hogares y personas")
+    if any(k in txt for k in ["m02", "relacionamiento", "seguimiento operativo", "actividades", "actividad", "visitas", "visita", "encuentros", "interacciones", "comunidades", "comunidad", "lugares poblados", "lugar poblado", "obc", "organizacion", "organización", "mecanismo", "participacion", "participación"]):
+        modulos.append("M02 · Relacionamiento e interacciones")
+    if any(k in txt for k in ["m04", "compensaciones", "compensacion", "compensación", "negociacion", "negociación", "contrato", "transaccion", "transacción", "pago"]):
         modulos.append("M04 · Negociación y compensaciones")
-    if any(k in txt for k in ["m06", "documental", "soportes", "expediente"]):
+    if any(k in txt for k in ["m06", "documental", "soportes", "expediente", "documento", "documentos"]):
         modulos.append("M06 · Gestión documental")
-    if any(k in txt for k in ["m07", "bienes", "reposicion", "reposición", "infraestructura"]):
+    if any(k in txt for k in ["m07", "bienes", "bien", "reposicion", "reposición", "infraestructura", "predio", "activo"]):
         modulos.append("M07 · Bienes, reposición e infraestructura")
-    if any(k in txt for k in ["m08", "consultas", "quejas", "cp"]):
+    if any(k in txt for k in ["m08", "consultas", "quejas", "cp", "caso", "conflicto"]):
         modulos.append("M08 · Consultas y quejas")
-    if any(k in txt for k in ["seguimiento operativo", "actividades", "actividad", "visitas", "encuentros", "interacciones"]):
-        modulos.append("Interacciones · Visitas, actividades y seguimiento")
     if not modulos:
         modulos.append("Sin módulo vinculado")
     return [m for m in MODULOS_CANONICOS if m in set(modulos)]
@@ -2773,19 +2730,13 @@ def modulos_texto(texto):
 def sujeto_modulos_por_tipo(tipo_sujeto):
     tipo = normalizar_tipo_sujeto(tipo_sujeto)
     mapa = {
-        "Familia": ["M01 · Familias y personas"],
-        "Persona": ["M01 · Familias y personas"],
-        "Persona vulnerable": ["M01 · Familias y personas"],
-        "Persona / trabajador": ["M01 · Familias y personas", "Interacciones · Visitas, actividades y seguimiento", "M04 · Negociación y compensaciones"],
-        "Unidad productiva familiar": ["M01 · Familias y personas", "M07 · Bienes, reposición e infraestructura"],
-        "Comunidad / lugar poblado": ["M03 · Comunidades, lugares poblados y OBC"],
-        "Comunidad receptora": ["M03 · Comunidades, lugares poblados y OBC"],
-        "Organización comunitaria / OBC": ["M03 · Comunidades, lugares poblados y OBC"],
-        "Infraestructura comunitaria": ["M07 · Bienes, reposición e infraestructura", "M03 · Comunidades, lugares poblados y OBC"],
-        "Actividad / evento": ["Interacciones · Visitas, actividades y seguimiento"],
-        "Mecanismo / espacio comunitario": ["Interacciones · Visitas, actividades y seguimiento", "M03 · Comunidades, lugares poblados y OBC"],
+        "Familia": ["M01 · Registro de hogares y personas"],
+        "Persona": ["M01 · Registro de hogares y personas"],
+        "Comunidad / lugar poblado": ["M02 · Relacionamiento e interacciones"],
+        "Organización comunitaria / OBC": ["M02 · Relacionamiento e interacciones"],
+        "Actividad / visita / interacción": ["M02 · Relacionamiento e interacciones"],
         "Consulta y queja / caso": ["M08 · Consultas y quejas"],
-        "Conflicto / caso comunitario": ["M08 · Consultas y quejas", "M03 · Comunidades, lugares poblados y OBC"],
+        "Bien / infraestructura": ["M07 · Bienes, reposición e infraestructura"],
     }
     return mapa.get(tipo, ["Sin módulo vinculado"])
 
@@ -2835,8 +2786,9 @@ def obtener_tipos_sujeto():
 def obtener_sujetos_por_tipo(tipo_sujeto, modulo_vinculado=""):
     df = sujetos_df()
     df = df[df["tipo_sujeto"].astype(str) == str(tipo_sujeto)].copy()
-    if modulo_vinculado and "modulo_origen" in df.columns:
-        df = df[df["modulo_origen"].astype(str).apply(lambda x: modulo_vinculado in x)]
+    # El filtro de módulo se usa para las preguntas/indicadores. El sujeto se busca
+    # en su tabla real de origen: por ejemplo, una compensación M04 puede medirse
+    # sobre una Familia que vive en M01.
     return df
 
 
@@ -3034,7 +2986,7 @@ def crear_data_simulada_mediciones():
                     registros.append({
                         "id_medicion": f"MED-DEMO-{contador_medicion:05d}",
                         "id_levantamiento": id_levantamiento,
-                        "formulario": row.get("formulario", f"Formulario {tipo_sujeto}"),
+                        "formulario": f"Formulario {tipo_sujeto}",
                         "tipo_sujeto": tipo_sujeto,
                         "id_sujeto": sujeto.get("id_sujeto"),
                         "nombre_sujeto": sujeto.get("nombre_sujeto"),
@@ -3701,7 +3653,7 @@ def mostrar_captura():
             registros.append({
                 "id_medicion": generar_id_medicion(),
                 "id_levantamiento": id_levantamiento,
-                "formulario": q.get("formulario", f"Formulario {tipo_sujeto}"),
+                "formulario": f"Formulario {tipo_sujeto}",
                 "tipo_sujeto": tipo_sujeto,
                 "id_sujeto": sujeto.get("id_sujeto"),
                 "nombre_sujeto": sujeto.get("nombre_sujeto"),

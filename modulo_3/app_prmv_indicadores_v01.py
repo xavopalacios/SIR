@@ -1,6 +1,6 @@
 # ============================================================
 # SIR ACP - Módulo PRMV Indicadores por sujeto de medición
-# Versión v9 con clasificación por capital, secciones No aplica y resolución simple
+# Versión v10 con capitales normalizados y filtro por módulo vinculado
 # ============================================================
 # - Un solo archivo .py autosuficiente.
 # - No requiere schema.sql ni seed_catalogo.json.
@@ -15,6 +15,7 @@
 import json
 import re
 import uuid
+import unicodedata
 from pathlib import Path
 from datetime import date, datetime, timedelta
 from html import escape
@@ -39,7 +40,7 @@ COLOR_SECUNDARIO_SOCIONAUT = "#00A6A6"
 COLOR_CORAL = "#F05A43"
 COLOR_BORDE = "#D6DEE6"
 
-ARCHIVO_MEMORIA = Path("memoria_modulo_prmv_indicadores_v9.json")
+ARCHIVO_MEMORIA = Path("memoria_modulo_prmv_indicadores_v10.json")
 USUARIO_PROTOTIPO = "usuario_prototipo"
 
 ESTADOS_CUMPLIMIENTO = ["Resuelto", "No resuelto", "No aplica"]
@@ -2686,6 +2687,115 @@ def normalizar_texto(valor):
     return str(valor).strip()
 
 
+def quitar_acentos(texto):
+    """Normaliza texto para comparar palabras clave sin depender de acentos."""
+    return "".join(
+        c for c in unicodedata.normalize("NFD", str(texto or ""))
+        if unicodedata.category(c) != "Mn"
+    )
+
+
+ORDEN_CAPITALES = ["natural", "físico", "económico", "social", "humano"]
+
+
+def normalizar_capital(valor):
+    """Agrupa capitales equivalentes y combinados en una única etiqueta canónica."""
+    txt = quitar_acentos(valor).lower()
+    tokens = []
+    if "natural" in txt:
+        tokens.append("natural")
+    if "fisico" in txt or "infraestructura" in txt:
+        tokens.append("físico")
+    if "econom" in txt or "financier" in txt:
+        tokens.append("económico")
+    if "social" in txt or "gobernanza" in txt:
+        tokens.append("social")
+    if "humano" in txt or "cultural" in txt:
+        tokens.append("humano")
+    tokens = [t for t in ORDEN_CAPITALES if t in set(tokens)]
+    if not tokens:
+        limpio = normalizar_texto(valor).replace("Capital ", "").replace("capital ", "")
+        return f"Capital {limpio}" if limpio else "Sin capital clasificado"
+    return "Capital " + "-".join(tokens)
+
+
+def normalizar_tipo_sujeto(valor):
+    """Unifica nombres de sujetos para que el usuario no vea variantes repetidas."""
+    txt = quitar_acentos(valor).lower().strip()
+    if txt in ["hogar / familia", "hogar/familia", "hogar familia"]:
+        return "Familia"
+    if txt in ["hogar / unidad productiva", "hogar/unidad productiva"]:
+        return "Unidad productiva familiar"
+    if txt in ["cp / caso", "cp/caso"]:
+        return "Consulta y queja / caso"
+    return normalizar_texto(valor)
+
+
+MODULOS_CANONICOS = [
+    "M01 · Familias y personas",
+    "M03 · Comunidades, lugares poblados y OBC",
+    "M04 · Negociación y compensaciones",
+    "M06 · Gestión documental",
+    "M07 · Bienes, reposición e infraestructura",
+    "M08 · Consultas y quejas",
+    "Interacciones · Visitas, actividades y seguimiento",
+    "Sin módulo vinculado",
+]
+
+
+def modulos_desde_texto(texto):
+    """Deriva módulos funcionales desde la columna original de módulo alimentador/disparador."""
+    txt = quitar_acentos(texto).lower()
+    modulos = []
+    if any(k in txt for k in ["m01", "registro de hogares", "personas", "vulnerabilidades"]):
+        modulos.append("M01 · Familias y personas")
+    if any(k in txt for k in ["comunidades", "lugares poblados", "obc"]):
+        modulos.append("M03 · Comunidades, lugares poblados y OBC")
+    if any(k in txt for k in ["m04", "compensaciones", "negociacion", "negociación"]):
+        modulos.append("M04 · Negociación y compensaciones")
+    if any(k in txt for k in ["m06", "documental", "soportes", "expediente"]):
+        modulos.append("M06 · Gestión documental")
+    if any(k in txt for k in ["m07", "bienes", "reposicion", "reposición", "infraestructura"]):
+        modulos.append("M07 · Bienes, reposición e infraestructura")
+    if any(k in txt for k in ["m08", "consultas", "quejas", "cp"]):
+        modulos.append("M08 · Consultas y quejas")
+    if any(k in txt for k in ["seguimiento operativo", "actividades", "actividad", "visitas", "encuentros", "interacciones"]):
+        modulos.append("Interacciones · Visitas, actividades y seguimiento")
+    if not modulos:
+        modulos.append("Sin módulo vinculado")
+    return [m for m in MODULOS_CANONICOS if m in set(modulos)]
+
+
+def modulos_texto(texto):
+    return "; ".join(modulos_desde_texto(texto))
+
+
+def sujeto_modulos_por_tipo(tipo_sujeto):
+    tipo = normalizar_tipo_sujeto(tipo_sujeto)
+    mapa = {
+        "Familia": ["M01 · Familias y personas"],
+        "Persona": ["M01 · Familias y personas"],
+        "Persona vulnerable": ["M01 · Familias y personas"],
+        "Persona / trabajador": ["M01 · Familias y personas", "Interacciones · Visitas, actividades y seguimiento", "M04 · Negociación y compensaciones"],
+        "Unidad productiva familiar": ["M01 · Familias y personas", "M07 · Bienes, reposición e infraestructura"],
+        "Comunidad / lugar poblado": ["M03 · Comunidades, lugares poblados y OBC"],
+        "Comunidad receptora": ["M03 · Comunidades, lugares poblados y OBC"],
+        "Organización comunitaria / OBC": ["M03 · Comunidades, lugares poblados y OBC"],
+        "Infraestructura comunitaria": ["M07 · Bienes, reposición e infraestructura", "M03 · Comunidades, lugares poblados y OBC"],
+        "Actividad / evento": ["Interacciones · Visitas, actividades y seguimiento"],
+        "Mecanismo / espacio comunitario": ["Interacciones · Visitas, actividades y seguimiento", "M03 · Comunidades, lugares poblados y OBC"],
+        "Consulta y queja / caso": ["M08 · Consultas y quejas"],
+        "Conflicto / caso comunitario": ["M08 · Consultas y quejas", "M03 · Comunidades, lugares poblados y OBC"],
+    }
+    return mapa.get(tipo, ["Sin módulo vinculado"])
+
+
+def contiene_modulo(valor_modulos, modulo):
+    if not modulo:
+        return True
+    return modulo in modulos_desde_texto(valor_modulos) or modulo in str(valor_modulos or "")
+
+
 def catalogo_df():
     df = pd.DataFrame(CATALOGO_FORMULARIOS)
     columnas = [
@@ -2698,20 +2808,36 @@ def catalogo_df():
     for col in columnas:
         if col not in df.columns:
             df[col] = ""
-    return df[columnas].copy()
+    # Normalizaciones de interfaz: no alteran la referencia oficial del indicador,
+    # solo agrupan capitales/sujetos equivalentes para captura.
+    df["capital_original"] = df["capital"].astype(str)
+    df["capital"] = df["capital"].apply(normalizar_capital)
+    df["tipo_sujeto_original"] = df["tipo_sujeto"].astype(str)
+    df["tipo_sujeto"] = df["tipo_sujeto"].apply(normalizar_tipo_sujeto)
+    df["modulo_vinculado"] = df["modulos_disparan"].apply(modulos_texto)
+    return df[columnas + ["capital_original", "tipo_sujeto_original", "modulo_vinculado"]].copy()
 
 
 def sujetos_df():
-    return pd.DataFrame(SUJETOS_DEMO)
+    df = pd.DataFrame(SUJETOS_DEMO)
+    if df.empty:
+        return df
+    df["tipo_sujeto_original"] = df["tipo_sujeto"].astype(str)
+    df["tipo_sujeto"] = df["tipo_sujeto"].apply(normalizar_tipo_sujeto)
+    df["modulo_origen"] = df["tipo_sujeto"].apply(lambda t: "; ".join(sujeto_modulos_por_tipo(t)))
+    return df
 
 
 def obtener_tipos_sujeto():
     return sorted(catalogo_df()["tipo_sujeto"].dropna().astype(str).unique().tolist())
 
 
-def obtener_sujetos_por_tipo(tipo_sujeto):
+def obtener_sujetos_por_tipo(tipo_sujeto, modulo_vinculado=""):
     df = sujetos_df()
-    return df[df["tipo_sujeto"].astype(str) == str(tipo_sujeto)].copy()
+    df = df[df["tipo_sujeto"].astype(str) == str(tipo_sujeto)].copy()
+    if modulo_vinculado and "modulo_origen" in df.columns:
+        df = df[df["modulo_origen"].astype(str).apply(lambda x: modulo_vinculado in x)]
+    return df
 
 
 def obtener_preguntas_por_tipo(tipo_sujeto):
@@ -2724,24 +2850,43 @@ def obtener_capitales():
     return sorted([c for c in catalogo_df()["capital"].dropna().astype(str).unique().tolist() if c.strip()])
 
 
-def obtener_tipos_sujeto_por_capital(capital):
+def obtener_modulos_por_capital(capital):
     df = catalogo_df()
     if capital:
         df = df[df["capital"].astype(str) == str(capital)]
+    modulos = set()
+    for valor in df["modulo_vinculado"].dropna().astype(str):
+        for item in [m.strip() for m in valor.split(";") if m.strip()]:
+            modulos.add(item)
+    return [m for m in MODULOS_CANONICOS if m in modulos]
+
+
+def filtrar_catalogo_por_modulo(df, modulo_vinculado=""):
+    if modulo_vinculado:
+        df = df[df["modulo_vinculado"].astype(str).apply(lambda x: modulo_vinculado in x)]
+    return df
+
+
+def obtener_tipos_sujeto_por_capital(capital, modulo_vinculado=""):
+    df = catalogo_df()
+    if capital:
+        df = df[df["capital"].astype(str) == str(capital)]
+    df = filtrar_catalogo_por_modulo(df, modulo_vinculado)
     return sorted([t for t in df["tipo_sujeto"].dropna().astype(str).unique().tolist() if t.strip()])
 
 
-def obtener_preguntas_por_capital_tipo(capital, tipo_sujeto):
+def obtener_preguntas_por_capital_tipo(capital, tipo_sujeto, modulo_vinculado=""):
     df = catalogo_df()
     if capital:
         df = df[df["capital"].astype(str) == str(capital)]
+    df = filtrar_catalogo_por_modulo(df, modulo_vinculado)
     if tipo_sujeto:
         df = df[df["tipo_sujeto"].astype(str) == str(tipo_sujeto)]
     return df.sort_values(["categoria", "referencia_indicador", "id_pregunta"])
 
 
-def obtener_preguntas_pendientes(capital, tipo_sujeto, id_sujeto):
-    preguntas = obtener_preguntas_por_capital_tipo(capital, tipo_sujeto)
+def obtener_preguntas_pendientes(capital, tipo_sujeto, id_sujeto, modulo_vinculado=""):
+    preguntas = obtener_preguntas_por_capital_tipo(capital, tipo_sujeto, modulo_vinculado)
     if preguntas.empty or not id_sujeto:
         return preguntas, 0
     data = st.session_state.get("data_md", pd.DataFrame())
@@ -2801,6 +2946,11 @@ def asegurar_columnas_mediciones(df):
     for col in COLUMNAS_MEDICIONES:
         if col not in df.columns:
             df[col] = ""
+    df = df.copy()
+    if "capital" in df.columns:
+        df["capital"] = df["capital"].apply(normalizar_capital)
+    if "tipo_sujeto" in df.columns:
+        df["tipo_sujeto"] = df["tipo_sujeto"].apply(normalizar_tipo_sujeto)
     return df[COLUMNAS_MEDICIONES].copy()
 
 
@@ -2963,6 +3113,9 @@ def filtrar_mediciones(df, filtros):
         valores = filtros.get(campo, [])
         if valores and campo in out.columns:
             out = out[out[campo].astype(str).isin(valores)]
+    modulos_filtro = filtros.get("modulo_vinculado", [])
+    if modulos_filtro and "modulos_disparan" in out.columns:
+        out = out[out["modulos_disparan"].astype(str).apply(lambda x: any(m in modulos_desde_texto(x) for m in modulos_filtro))]
     texto = normalizar_texto(filtros.get("busqueda")).lower()
     if texto:
         mascara = out.astype(str).apply(lambda col: col.str.lower().str.contains(texto, na=False)).any(axis=1)
@@ -2989,6 +3142,8 @@ def formatear_sujeto(row):
         partes.append(f"Comunidad: {row.get('id_comunidad')}")
     if normalizar_texto(row.get("zona")):
         partes.append(f"Zona: {row.get('zona')}")
+    if normalizar_texto(row.get("modulo_origen")):
+        partes.append(f"Módulo: {row.get('modulo_origen')}")
     desc = normalizar_texto(row.get("descripcion"))
     if desc:
         partes.append(desc)
@@ -3084,6 +3239,8 @@ def mostrar_sidebar():
     cat = catalogo_df()
     filtros = {}
     filtros["capital"] = multiselect_con_todos("Capital", cat["capital"].dropna().unique().tolist(), "f_capital_md")
+    modulos_catalogo = sorted(set(m for valor in cat["modulo_vinculado"].dropna().astype(str) for m in [x.strip() for x in valor.split(";") if x.strip()]))
+    filtros["modulo_vinculado"] = multiselect_con_todos("Módulo vinculado", modulos_catalogo, "f_modulo_md", help_text="Filtra histórico por módulo alimentador o disparador de la medición.")
     filtros["tipo_sujeto"] = multiselect_con_todos("Tipo de sujeto", obtener_tipos_sujeto(), "f_tipo_sujeto_md")
     filtros["fuente"] = multiselect_con_todos("Fuente oficial", cat["fuente"].dropna().unique().tolist(), "f_fuente_md")
     filtros["estado_cumplimiento"] = multiselect_con_todos("Resolución", ESTADOS_CUMPLIMIENTO, "f_estado_md")
@@ -3316,7 +3473,7 @@ def mostrar_captura():
     )
 
     capitales = obtener_capitales()
-    c1, c2 = st.columns([1, 1.2])
+    c1, c2, c3 = st.columns([1, 1.15, 1.15])
     with c1:
         capital = st.selectbox(
             "Capital / clasificación *",
@@ -3324,28 +3481,38 @@ def mostrar_captura():
             index=0,
             format_func=lambda x: x if x else "Selecciona...",
             key=f"captura_capital_{st.session_state.reset_md}",
-            help="Primero selecciona el capital o clasificación del indicador.",
+            help="Primero selecciona el capital. Los nombres equivalentes se agrupan automáticamente: físico/social/económico/natural/humano y combinados.",
         )
         error_campo("capital")
     if not capital:
-        st.info("Selecciona un capital para cargar los tipos de sujeto relacionados.")
+        st.info("Selecciona un capital para cargar módulos y tipos de sujeto relacionados.")
         return
 
-    tipos = obtener_tipos_sujeto_por_capital(capital)
+    modulos_capital = obtener_modulos_por_capital(capital)
     with c2:
+        modulo_vinculado = st.selectbox(
+            "Módulo vinculado / fuente de búsqueda",
+            [""] + modulos_capital,
+            index=0,
+            format_func=lambda x: x if x else "Todos los módulos vinculados",
+            key=f"captura_modulo_{capital}_{st.session_state.reset_md}",
+            help="Opcional. Filtra las preguntas y los registros por el módulo que alimenta o dispara la medición.",
+        )
+    tipos = obtener_tipos_sujeto_por_capital(capital, modulo_vinculado)
+    with c3:
         tipo_sujeto = st.selectbox(
             "Tipo de sujeto *",
             [""] + tipos,
             index=0,
             format_func=lambda x: x if x else "Selecciona...",
-            key=f"captura_tipo_{capital}_{st.session_state.reset_md}",
+            key=f"captura_tipo_{capital}_{modulo_vinculado}_{st.session_state.reset_md}",
         )
         error_campo("tipo_sujeto")
     if not tipo_sujeto:
         st.info("Selecciona el tipo de sujeto para ver los registros disponibles.")
         return
 
-    sujetos = obtener_sujetos_por_tipo(tipo_sujeto)
+    sujetos = obtener_sujetos_por_tipo(tipo_sujeto, modulo_vinculado)
     if sujetos.empty:
         st.warning("No hay sujetos disponibles para este tipo. En integración real se consultarán desde las tablas del SIR.")
         return
@@ -3393,8 +3560,10 @@ def mostrar_captura():
 
     sujeto = obtener_sujeto(tipo_sujeto, id_sujeto)
     mostrar_info_sujeto(sujeto)
+    if modulo_vinculado:
+        st.caption(f"Filtro activo por módulo vinculado: {modulo_vinculado}")
 
-    preguntas, total_ocultas = obtener_preguntas_pendientes(capital, tipo_sujeto, id_sujeto)
+    preguntas, total_ocultas = obtener_preguntas_pendientes(capital, tipo_sujeto, id_sujeto, modulo_vinculado)
     if total_ocultas:
         st.success(f"Se ocultaron {total_ocultas} pregunta(s) ya resuelta(s) para este sujeto.")
     if preguntas.empty:
@@ -3728,13 +3897,16 @@ def mostrar_historico(df_filtrado):
         "id_levantamiento", "id_medicion", "tipo_sujeto", "id_sujeto", "nombre_sujeto", "capital",
         "categoria", "impacto_asociado", "referencia_indicador", "fuente", "hoja_origen", "fila_origen", "indicador",
         "pregunta", "resultado_obtenido", "valor_numerico", "estado_cumplimiento", "fecha_medicion", "periodo_medicion",
-        "cuando_se_llena", "fuente_informacion", "registrado_por", "fecha_registro",
+        "cuando_se_llena", "modulos_disparan", "fuente_informacion", "registrado_por", "fecha_registro",
         "actualizado_por", "fecha_actualizacion", "observaciones",
     ]
     vista = df_filtrado[cols].copy()
+    vista["módulo_vinculado"] = vista["modulos_disparan"].apply(modulos_texto)
     vista["día_año_medición"] = pd.to_datetime(vista["fecha_medicion"], errors="coerce").dt.dayofyear
     vista["día_año_registro"] = pd.to_datetime(vista["fecha_registro"], errors="coerce").dt.dayofyear
     cols_vista = cols[:]
+    if "modulos_disparan" in cols_vista:
+        cols_vista.insert(cols_vista.index("modulos_disparan"), "módulo_vinculado")
     if "fecha_medicion" in cols_vista:
         cols_vista.insert(cols_vista.index("fecha_medicion") + 1, "día_año_medición")
     if "fecha_registro" in cols_vista:

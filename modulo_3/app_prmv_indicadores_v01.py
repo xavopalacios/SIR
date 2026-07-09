@@ -1,6 +1,6 @@
 # ============================================================
 # SIR ACP - Módulo PRMV Indicadores por sujeto de medición
-# Versión v12 alineada a matriz campo-fuente → indicador → pregunta
+# Versión v13 beta funcional alineada a matriz campo-fuente → indicador → pregunta
 # ============================================================
 # - Un solo archivo .py autosuficiente.
 # - No requiere schema.sql ni seed_catalogo.json.
@@ -41,7 +41,7 @@ COLOR_SECUNDARIO_SOCIONAUT = "#00A6A6"
 COLOR_CORAL = "#F05A43"
 COLOR_BORDE = "#D6DEE6"
 
-ARCHIVO_MEMORIA = Path("memoria_modulo_prmv_indicadores_v12.json")
+ARCHIVO_MEMORIA = Path("memoria_modulo_prmv_indicadores_v13.json")
 USUARIO_PROTOTIPO = "usuario_prototipo"
 
 ESTADOS_CUMPLIMIENTO = ["Resuelto", "No resuelto", "No aplica"]
@@ -3862,19 +3862,28 @@ FUENTES_REALES_SIR = {
 }
 
 COLUMNAS_MEDICIONES = [
-    "id_medicion", "id_levantamiento", "formulario", "tipo_sujeto", "modulo_vinculado",
-    "modulo_origen_sujeto", "tabla_origen", "pk_id_sujeto", "id_sujeto_origen",
+    # Núcleo transaccional del prototipo PRMV
+    "id_medicion", "id_levantamiento", "formulario",
+    "tipo_sujeto", "modulo_vinculado", "modulo_origen_sujeto",
+    "tabla_origen", "tabla_origen_sujeto", "pk_id_sujeto", "id_sujeto_origen",
     "id_sujeto", "nombre_sujeto", "descripcion_sujeto", "zona", "id_hogar", "id_comunidad",
+
+    # Catálogo/indicador oficial y trazabilidad de origen
     "id_pregunta", "referencia_indicador", "codigo_indicador", "fuente", "hoja_origen", "fila_origen",
     "capital", "capital_original", "categoria", "subcategoria", "impacto_asociado", "indicador",
     "formula_meta", "medicion_periodicidad", "pregunta", "tipo_respuesta", "catalogo_valores",
-    "resultado_esperado", "cuando_se_llena", "modulo_vinculado", "tabla_origen_sujeto", "pk_id_sujeto", "campos_fuente_prmv", "uso_campo_fuente", "modulos_disparan", "modulos_alimentan_medicion",
-    "tablas_alimentan_medicion", "campos_base_sujeto", "campos_fuente_prmv", "uso_campo_fuente",
+    "resultado_esperado", "cuando_se_llena",
+
+    # Documentación técnica de futura integración con módulos reales
+    "modulos_disparan", "modulos_alimentan_medicion", "tablas_alimentan_medicion",
+    "campos_base_sujeto", "campos_fuente_prmv", "uso_campo_fuente",
     "valor_numerico_configurado", "resolucion_aplicabilidad", "numerador_base", "denominador_base",
-    "relacion_prmv", "estado_validacion", "pendiente_comentario", "resultado_obtenido",
-    "estado_cumplimiento", "valor_numerico", "fecha_medicion", "periodo_medicion", "fuente_informacion",
-    "evidencia_url", "observaciones", "registrado_por", "fecha_registro", "actualizado_por",
-    "fecha_actualizacion", "activo",
+    "relacion_prmv", "estado_validacion", "pendiente_comentario",
+
+    # Respuesta capturada y auditoría
+    "resultado_obtenido", "estado_cumplimiento", "valor_numerico",
+    "fecha_medicion", "periodo_medicion", "fuente_informacion", "evidencia_url", "observaciones",
+    "registrado_por", "fecha_registro", "actualizado_por", "fecha_actualizacion", "activo",
 ]
 
 # ============================================================
@@ -4103,6 +4112,49 @@ def modulos_texto(texto):
     return "; ".join(modulos_desde_texto(texto))
 
 
+def normalizar_modulo_vinculado_row(row):
+    """Devuelve módulos canónicos de referencia sin exigir conexión real.
+
+    En beta esta información solo clasifica/ayuda a filtrar; no bloquea la captura.
+    En integración final se usará para resolver consultas a tablas reales.
+    """
+    texto_directo = normalizar_texto(row.get("modulo_vinculado"))
+    if texto_directo:
+        modulos = []
+        for parte in re.split(r"\s*;\s*", texto_directo):
+            parte = parte.strip()
+            if not parte:
+                continue
+            derivados = modulos_desde_texto(parte)
+            for m in derivados:
+                if m not in modulos and m != "Sin módulo vinculado":
+                    modulos.append(m)
+            # Mantener etiquetas válidas ya escritas en la matriz aunque no se deriven.
+            if parte in MODULOS_CANONICOS and parte not in modulos:
+                modulos.append(parte)
+        return "; ".join(modulos or [texto_directo])
+    texto_fuente = " ".join(
+        normalizar_texto(row.get(c))
+        for c in [
+            "tabla_origen_sujeto", "modulo_origen_sujeto", "modulos_disparan",
+            "modulos_alimentan_medicion", "tablas_alimentan_medicion",
+            "campos_fuente_prmv", "campos_base_sujeto", "uso_campo_fuente", "tipo_sujeto"
+        ]
+    )
+    return modulos_texto(texto_fuente)
+
+
+def deduplicar_columnas(lista):
+    """Conserva el orden y elimina duplicados para evitar DataFrame con columnas repetidas."""
+    salida = []
+    vistos = set()
+    for col in lista:
+        if col not in vistos:
+            salida.append(col)
+            vistos.add(col)
+    return salida
+
+
 def sujeto_modulos_por_tipo(tipo_sujeto):
     tipo = normalizar_tipo_sujeto(tipo_sujeto)
     mapa = {
@@ -4142,8 +4194,9 @@ def catalogo_df():
     df["capital"] = df["capital"].apply(normalizar_capital)
     df["tipo_sujeto_original"] = df["tipo_sujeto"].astype(str)
     df["tipo_sujeto"] = df["tipo_sujeto"].apply(normalizar_tipo_sujeto)
-    df["modulo_vinculado"] = df["modulo_vinculado"].apply(lambda x: normalizar_texto(x) or modulos_texto(x))
-    return df[columnas + ["tipo_sujeto_original"]].copy()
+    df["modulo_vinculado"] = df.apply(normalizar_modulo_vinculado_row, axis=1)
+    columnas_finales = deduplicar_columnas(columnas + ["tipo_sujeto_original"])
+    return df[columnas_finales].copy()
 
 
 def sujetos_df():
@@ -4164,16 +4217,15 @@ def obtener_tipos_sujeto():
 
 
 def obtener_sujetos_por_tipo(tipo_sujeto, modulo_vinculado=""):
+    """Devuelve sujetos simulados por tipo.
+
+    El parámetro modulo_vinculado se conserva para la integración futura, pero en
+    el beta NO filtra de forma estricta porque los módulos reales aún no existen en
+    esta app. Así evitamos que el selector quede vacío cuando el módulo solo es una
+    referencia documental.
+    """
     df = sujetos_df()
-    df = df[df["tipo_sujeto"].astype(str) == str(tipo_sujeto)].copy()
-    if modulo_vinculado:
-        # El módulo vinculado filtra principalmente preguntas. Para sujeto, solo aplicamos
-        # filtro estricto cuando el módulo corresponde directamente a la tabla origen.
-        # Ej.: M02 → interacciones; M08 → casos; M05/M07 → bienes/predios.
-        mask_directa = df["modulo_origen"].astype(str).apply(lambda x: modulo_vinculado in x)
-        if mask_directa.any():
-            df = df[mask_directa]
-    return df
+    return df[df["tipo_sujeto"].astype(str) == str(tipo_sujeto)].copy()
 
 
 def obtener_preguntas_por_tipo(tipo_sujeto):
@@ -4198,9 +4250,17 @@ def obtener_modulos_por_capital(capital):
 
 
 def filtrar_catalogo_por_modulo(df, modulo_vinculado=""):
-    if modulo_vinculado:
-        df = df[df["modulo_vinculado"].astype(str).apply(lambda x: modulo_vinculado in x)]
-    return df
+    """Filtra preguntas por módulo solo cuando la matriz tiene coincidencias.
+
+    En este beta los módulos reales no están conectados; por eso el módulo vinculado
+    funciona como referencia/clasificación y no debe romper la captura. Si el filtro
+    deja el catálogo vacío, se devuelve el catálogo original del capital/tipo para
+    permitir probar el formulario.
+    """
+    if not modulo_vinculado or df.empty:
+        return df
+    filtrado = df[df["modulo_vinculado"].astype(str).apply(lambda x: modulo_vinculado in x)].copy()
+    return filtrado if not filtrado.empty else df
 
 
 def obtener_tipos_sujeto_por_capital(capital, modulo_vinculado=""):
@@ -4287,7 +4347,8 @@ def asegurar_columnas_mediciones(df):
         df["capital"] = df["capital"].apply(normalizar_capital)
     if "tipo_sujeto" in df.columns:
         df["tipo_sujeto"] = df["tipo_sujeto"].apply(normalizar_tipo_sujeto)
-    return df[COLUMNAS_MEDICIONES].copy()
+    cols = deduplicar_columnas(COLUMNAS_MEDICIONES)
+    return df[cols].copy()
 
 
 
@@ -4378,7 +4439,9 @@ def crear_data_simulada_mediciones():
     total_dias = max(1, (fecha_fin_demo - fecha_inicio_demo).days)
 
     for tipo_sujeto in obtener_tipos_sujeto():
-        sujetos = obtener_sujetos_por_tipo(tipo_sujeto).head(2)
+        sujetos_base = obtener_sujetos_por_tipo(tipo_sujeto).reset_index(drop=True)
+        # Dejar el primer sujeto de cada tipo sin mediciones demo para probar captura nueva.
+        sujetos = sujetos_base.iloc[1:3] if len(sujetos_base) > 1 else sujetos_base.head(1)
         preguntas = obtener_preguntas_por_tipo(tipo_sujeto)
         if sujetos.empty or preguntas.empty:
             continue
@@ -4905,7 +4968,7 @@ def mostrar_captura():
             index=0,
             format_func=lambda x: x if x else "Todos los módulos vinculados",
             key=f"captura_modulo_{capital}_{st.session_state.reset_md}",
-            help="Opcional. Filtra preguntas por el módulo/tabla real definido en la matriz corregida.",
+            help="Opcional. En este beta clasifica/filtra preguntas según la matriz; NO exige conexión real al módulo fuente.",
         )
     tipos = obtener_tipos_sujeto_por_capital(capital, modulo_vinculado)
     with c3:
@@ -4970,7 +5033,7 @@ def mostrar_captura():
     sujeto = obtener_sujeto(tipo_sujeto, id_sujeto)
     mostrar_info_sujeto(sujeto)
     if modulo_vinculado:
-        st.caption(f"Filtro activo por módulo vinculado: {modulo_vinculado}")
+        st.caption(f"Filtro activo por módulo vinculado: {modulo_vinculado} · referencia beta, sin conexión real al módulo fuente.")
 
     preguntas, total_ocultas = obtener_preguntas_pendientes(capital, tipo_sujeto, id_sujeto, modulo_vinculado)
     if total_ocultas:
@@ -5318,7 +5381,7 @@ def mostrar_historico(df_filtrado):
     if df_filtrado.empty:
         st.warning("No hay mediciones con los filtros seleccionados.")
         return
-    cols = [
+    cols = deduplicar_columnas([
         "id_levantamiento", "id_medicion", "tipo_sujeto", "modulo_vinculado", "tabla_origen",
         "pk_id_sujeto", "id_sujeto_origen", "id_sujeto", "nombre_sujeto", "capital", "capital_original",
         "categoria", "impacto_asociado", "referencia_indicador", "fuente", "hoja_origen", "fila_origen", "indicador",
@@ -5326,20 +5389,34 @@ def mostrar_historico(df_filtrado):
         "cuando_se_llena", "campos_fuente_prmv", "uso_campo_fuente", "modulos_disparan",
         "tablas_alimentan_medicion", "relacion_prmv", "estado_validacion", "fuente_informacion", "registrado_por", "fecha_registro",
         "actualizado_por", "fecha_actualizacion", "observaciones",
-    ]
-    vista = df_filtrado[cols].copy()
-    if "módulo_vinculado" not in vista.columns and "modulo_vinculado" in vista.columns:
-        vista["módulo_vinculado"] = vista["modulo_vinculado"]
-    vista["día_año_medición"] = pd.to_datetime(vista["fecha_medicion"], errors="coerce").dt.dayofyear
-    vista["día_año_registro"] = pd.to_datetime(vista["fecha_registro"], errors="coerce").dt.dayofyear
-    cols_vista = cols[:]
-    if "modulos_disparan" in cols_vista:
-        cols_vista.insert(cols_vista.index("modulos_disparan"), "módulo_vinculado")
+    ])
+    cols_existentes = [c for c in cols if c in df_filtrado.columns]
+    vista = df_filtrado.loc[:, cols_existentes].copy()
+
+    # Alias visual sin duplicar columnas ni disparar errores de pandas.
+    if "modulo_vinculado" in vista.columns:
+        vista.insert(
+            vista.columns.get_loc("modulo_vinculado") + 1,
+            "módulo_vinculado_visible",
+            vista["modulo_vinculado"].astype(str),
+        )
+
+    vista["día_año_medición"] = pd.to_datetime(vista.get("fecha_medicion"), errors="coerce").dt.dayofyear
+    vista["día_año_registro"] = pd.to_datetime(vista.get("fecha_registro"), errors="coerce").dt.dayofyear
+
+    cols_vista = cols_existentes[:]
+    if "modulo_vinculado" in cols_vista:
+        cols_vista.insert(cols_vista.index("modulo_vinculado") + 1, "módulo_vinculado_visible")
     if "fecha_medicion" in cols_vista:
         cols_vista.insert(cols_vista.index("fecha_medicion") + 1, "día_año_medición")
     if "fecha_registro" in cols_vista:
         cols_vista.insert(cols_vista.index("fecha_registro") + 1, "día_año_registro")
-    st.dataframe(vista[cols_vista].sort_values(["fecha_registro", "id_levantamiento"], ascending=False), use_container_width=True, hide_index=True)
+    cols_vista = deduplicar_columnas([c for c in cols_vista if c in vista.columns])
+
+    sort_cols = [c for c in ["fecha_registro", "id_levantamiento"] if c in vista.columns]
+    if sort_cols:
+        vista = vista.sort_values(sort_cols, ascending=False)
+    st.dataframe(vista[cols_vista], use_container_width=True, hide_index=True)
     st.download_button(
         "Descargar histórico filtrado CSV",
         data=dataframe_descargable(vista[cols_vista]),

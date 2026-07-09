@@ -1,5 +1,5 @@
 # ============================================================
-# SIR ACP - Módulo PMRB Indicadores por sujeto de medición
+# SIR ACP - Módulo PRMV Indicadores por sujeto de medición
 # Versión v6 con formularios en blanco, validaciones, notificaciones y preguntas contraíbles
 # ============================================================
 # - Un solo archivo .py autosuficiente.
@@ -28,7 +28,7 @@ import streamlit as st
 # ============================================================
 
 st.set_page_config(
-    page_title="SIR ACP | Módulo PMRB Indicadores",
+    page_title="SIR ACP | Módulo PRMV Indicadores",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -39,7 +39,7 @@ COLOR_SECUNDARIO_SOCIONAUT = "#00A6A6"
 COLOR_CORAL = "#F05A43"
 COLOR_BORDE = "#D6DEE6"
 
-ARCHIVO_MEMORIA = Path("memoria_modulo_pmrb_indicadores_v6.json")
+ARCHIVO_MEMORIA = Path("memoria_modulo_prmv_indicadores_v8.json")
 USUARIO_PROTOTIPO = "usuario_prototipo"
 
 ESTADOS_CUMPLIMIENTO = ["Cumple", "Parcial", "No cumple", "No aplica", "En proceso", "Sin dato"]
@@ -2599,7 +2599,7 @@ def aplicar_estilos():
                 padding: .85rem 1rem;
                 margin-bottom: 1rem;
             }}
-            .floating-alert {
+            .floating-alert {{
                 position: fixed;
                 top: 76px;
                 right: 24px;
@@ -2611,15 +2611,15 @@ def aplicar_estilos():
                 border: 1px solid var(--sir-border);
                 background: var(--sir-card);
                 color: var(--sir-text);
-            }
-            .floating-alert-success { border-left: 7px solid #10B981; }
-            .floating-alert-error { border-left: 7px solid #DC2626; }
-            .floating-alert-warning { border-left: 7px solid #F59E0B; }
-            .floating-title { font-weight: 950; margin-bottom: .2rem; }
-            .floating-message { opacity:.84; font-size:.9rem; line-height:1.35; }
-            .required-note { color:#DC2626; font-size:.82rem; font-weight:800; margin-top:.15rem; }
-            .question-error { border-left: 5px solid #DC2626; padding-left:.5rem; }
-            .compact-hint { opacity:.72; font-size:.82rem; margin:.2rem 0 .6rem 0; }
+            }}
+            .floating-alert-success {{ border-left: 7px solid #10B981; }}
+            .floating-alert-error {{ border-left: 7px solid #DC2626; }}
+            .floating-alert-warning {{ border-left: 7px solid #F59E0B; }}
+            .floating-title {{ font-weight: 950; margin-bottom: .2rem; }}
+            .floating-message {{ opacity:.84; font-size:.9rem; line-height:1.35; }}
+            .required-note {{ color:#DC2626; font-size:.82rem; font-weight:800; margin-top:.15rem; }}
+            .question-error {{ border-left: 5px solid #DC2626; padding-left:.5rem; }}
+            .compact-hint {{ opacity:.72; font-size:.82rem; margin:.2rem 0 .6rem 0; }}
             .question-card {{
                 border: 1px solid var(--sir-border);
                 border-radius: 18px;
@@ -2671,8 +2671,8 @@ def aplicar_estilos():
 
 
 def mostrar_encabezado():
-    st.markdown('<div class="main-title">Módulo PMRB · Indicadores por sujeto de medición</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-title">SIR ACP · Formularios dinámicos validados contra indicadores oficiales PMRB y M&E por capital</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">Módulo PRMV · Indicadores por sujeto de medición</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-title">SIR ACP · Formularios dinámicos validados contra indicadores oficiales PRMV y M&E por capital</div>', unsafe_allow_html=True)
 
 
 def crear_chip(texto, tipo="default"):
@@ -2922,7 +2922,7 @@ def cargar_memoria_local():
             df = asegurar_columnas_mediciones(pd.DataFrame(payload.get("mediciones", [])))
             return df if not df.empty else crear_data_simulada_mediciones()
         except Exception:
-            st.warning("La memoria local no pudo leerse. Se cargó data simulada del módulo PMRB.")
+            st.warning("La memoria local no pudo leerse. Se cargó data simulada del módulo PRMV.")
     return crear_data_simulada_mediciones()
 
 
@@ -3038,7 +3038,7 @@ def parse_numero(valor):
 
 
 def mostrar_sidebar():
-    st.sidebar.title("Módulo PMRB")
+    st.sidebar.title("Módulo PRMV")
     st.session_state.usuario_md = st.sidebar.text_input(
         "Usuario activo",
         value=st.session_state.usuario_md,
@@ -3654,7 +3654,7 @@ def mostrar_historico(df_filtrado):
     st.download_button(
         "Descargar histórico filtrado CSV",
         data=dataframe_descargable(vista[cols_vista]),
-        file_name="historico_modulo_pmrb_indicadores.csv",
+        file_name="historico_modulo_prmv_indicadores.csv",
         mime="text/csv",
         use_container_width=True,
     )
@@ -3691,7 +3691,7 @@ def mostrar_catalogo():
     st.download_button(
         "Descargar catálogo CSV",
         data=dataframe_descargable(vista[cols]),
-        file_name="catalogo_formularios_indicadores_modulo_pmrb_validado.csv",
+        file_name="catalogo_formularios_indicadores_modulo_prmv_validado.csv",
         mime="text/csv",
         use_container_width=True,
     )

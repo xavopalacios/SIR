@@ -1,6 +1,6 @@
 # ============================================================
 # SIR ACP - Módulo PRMV Indicadores por sujeto de medición
-# Versión v6 con formularios en blanco, validaciones, notificaciones y preguntas contraíbles
+# Versión v9 con clasificación por capital, secciones No aplica y resolución simple
 # ============================================================
 # - Un solo archivo .py autosuficiente.
 # - No requiere schema.sql ni seed_catalogo.json.
@@ -39,10 +39,10 @@ COLOR_SECUNDARIO_SOCIONAUT = "#00A6A6"
 COLOR_CORAL = "#F05A43"
 COLOR_BORDE = "#D6DEE6"
 
-ARCHIVO_MEMORIA = Path("memoria_modulo_prmv_indicadores_v8.json")
+ARCHIVO_MEMORIA = Path("memoria_modulo_prmv_indicadores_v9.json")
 USUARIO_PROTOTIPO = "usuario_prototipo"
 
-ESTADOS_CUMPLIMIENTO = ["Cumple", "Parcial", "No cumple", "No aplica", "En proceso", "Sin dato"]
+ESTADOS_CUMPLIMIENTO = ["Resuelto", "No resuelto", "No aplica"]
 FUENTES_INFORMACION = [
     "Módulo alimentador oficial",
     "Seguimiento operativo",
@@ -2720,6 +2720,45 @@ def obtener_preguntas_por_tipo(tipo_sujeto):
     return df.sort_values(["capital", "categoria", "referencia_indicador", "id_pregunta"])
 
 
+def obtener_capitales():
+    return sorted([c for c in catalogo_df()["capital"].dropna().astype(str).unique().tolist() if c.strip()])
+
+
+def obtener_tipos_sujeto_por_capital(capital):
+    df = catalogo_df()
+    if capital:
+        df = df[df["capital"].astype(str) == str(capital)]
+    return sorted([t for t in df["tipo_sujeto"].dropna().astype(str).unique().tolist() if t.strip()])
+
+
+def obtener_preguntas_por_capital_tipo(capital, tipo_sujeto):
+    df = catalogo_df()
+    if capital:
+        df = df[df["capital"].astype(str) == str(capital)]
+    if tipo_sujeto:
+        df = df[df["tipo_sujeto"].astype(str) == str(tipo_sujeto)]
+    return df.sort_values(["categoria", "referencia_indicador", "id_pregunta"])
+
+
+def obtener_preguntas_pendientes(capital, tipo_sujeto, id_sujeto):
+    preguntas = obtener_preguntas_por_capital_tipo(capital, tipo_sujeto)
+    if preguntas.empty or not id_sujeto:
+        return preguntas, 0
+    data = st.session_state.get("data_md", pd.DataFrame())
+    if data is None or data.empty:
+        return preguntas, 0
+    df = data.copy()
+    if "activo" in df.columns:
+        df = df[df["activo"].astype(str).isin(["1", "True", "true", ""] ) | (df["activo"] == 1)]
+    df = df[(df["tipo_sujeto"].astype(str) == str(tipo_sujeto)) & (df["id_sujeto"].astype(str) == str(id_sujeto))]
+    if df.empty:
+        return preguntas, 0
+    # Si una pregunta ya fue resuelta para este sujeto, no se vuelve a mostrar en captura.
+    resueltas = df[df["estado_cumplimiento"].astype(str).isin(["Resuelto", "Cumple"])] ["id_pregunta"].dropna().astype(str).unique().tolist()
+    pendientes = preguntas[~preguntas["id_pregunta"].astype(str).isin(resueltas)].copy()
+    return pendientes, len(resueltas)
+
+
 def opciones_catalogo(row):
     texto = normalizar_texto(row.get("catalogo_valores"))
     tipo = normalizar_texto(row.get("tipo_respuesta"))
@@ -2740,31 +2779,12 @@ def opciones_catalogo(row):
 
 
 def estado_sugerido(respuesta, esperado=""):
-    r = normalizar_texto(respuesta)
-    rl = r.lower()
-    e = normalizar_texto(esperado).lower()
-    if rl in ["", "sin dato"]:
-        return "Sin dato"
-    if rl in ["no aplica", "n/a", "na"]:
+    r = normalizar_texto(respuesta).lower()
+    if r in ["no aplica", "n/a", "na"]:
         return "No aplica"
-    if rl in ["sí", "si", "cumple", "completo", "realizado", "entregado", "activo", "activa"]:
-        return "Cumple"
-    if rl in ["no", "no cumple", "incompleto", "inactivo", "inactiva"]:
-        return "No cumple"
-    if rl in ["parcial", "cumple parcialmente"]:
-        return "Parcial"
-    try:
-        val = float(str(respuesta).replace("%", ""))
-        if "100%" in e and val >= 100:
-            return "Cumple"
-        minimo = re.search(r"mínimo\s+(\d+(?:\.\d+)?)", e)
-        if minimo and val >= float(minimo.group(1)):
-            return "Cumple"
-        if val > 0:
-            return "En proceso"
-    except Exception:
-        pass
-    return "En proceso"
+    if r in ["sí", "si", "resuelto", "cumple", "completo", "realizado", "entregado", "activo", "activa"]:
+        return "Resuelto"
+    return "No resuelto"
 
 
 def generar_id_levantamiento():
@@ -2815,14 +2835,11 @@ def crear_data_simulada_mediciones():
     trazabilidad temporal de los levantamientos.
     """
     registros = []
-    estados = ["Cumple", "Parcial", "No cumple", "No aplica", "En proceso", "Sin dato"]
+    estados = ["Resuelto", "No resuelto", "No aplica"]
     respuestas_por_estado = {
-        "Cumple": "Sí",
-        "Parcial": "Parcial",
-        "No cumple": "No",
+        "Resuelto": "Sí",
+        "No resuelto": "No",
         "No aplica": "No aplica",
-        "En proceso": "Parcial",
-        "Sin dato": "Sin dato",
     }
     contador_levantamiento = 1
     contador_medicion = 1
@@ -2965,7 +2982,17 @@ def multiselect_con_todos(label, opciones, key, help_text=""):
 
 
 def formatear_sujeto(row):
-    return f"{row.get('id_sujeto')} · {row.get('nombre_sujeto')}"
+    partes = [f"{row.get('id_sujeto')} · {row.get('nombre_sujeto')}"]
+    if normalizar_texto(row.get("id_hogar")):
+        partes.append(f"Hogar: {row.get('id_hogar')}")
+    if normalizar_texto(row.get("id_comunidad")):
+        partes.append(f"Comunidad: {row.get('id_comunidad')}")
+    if normalizar_texto(row.get("zona")):
+        partes.append(f"Zona: {row.get('zona')}")
+    desc = normalizar_texto(row.get("descripcion"))
+    if desc:
+        partes.append(desc)
+    return " · ".join(partes)
 
 
 def obtener_sujeto(tipo_sujeto, id_sujeto):
@@ -3056,10 +3083,10 @@ def mostrar_sidebar():
     df = st.session_state.data_md
     cat = catalogo_df()
     filtros = {}
-    filtros["tipo_sujeto"] = multiselect_con_todos("Tipo de sujeto", obtener_tipos_sujeto(), "f_tipo_sujeto_md")
     filtros["capital"] = multiselect_con_todos("Capital", cat["capital"].dropna().unique().tolist(), "f_capital_md")
+    filtros["tipo_sujeto"] = multiselect_con_todos("Tipo de sujeto", obtener_tipos_sujeto(), "f_tipo_sujeto_md")
     filtros["fuente"] = multiselect_con_todos("Fuente oficial", cat["fuente"].dropna().unique().tolist(), "f_fuente_md")
-    filtros["estado_cumplimiento"] = multiselect_con_todos("Estado", ESTADOS_CUMPLIMIENTO, "f_estado_md")
+    filtros["estado_cumplimiento"] = multiselect_con_todos("Resolución", ESTADOS_CUMPLIMIENTO, "f_estado_md")
     filtros["zona"] = multiselect_con_todos("Zona", sujetos_df()["zona"].dropna().unique().tolist(), "f_zona_md")
     if not df.empty:
         filtros["categoria"] = multiselect_con_todos("Categoría", df["categoria"].dropna().unique().tolist(), "f_categoria_md")
@@ -3080,7 +3107,7 @@ def mostrar_sidebar():
         st.session_state.reset_md += 1
         st.sidebar.success("Data simulada restaurada.")
         st.rerun()
-    st.sidebar.caption("Preguntas embebidas desde la matriz validada. Captura inicia en blanco; el histórico conserva trazabilidad de mediciones por sujeto.")
+    st.sidebar.caption("Captura organizada por capital → tipo de sujeto → sujeto. Las preguntas resueltas ya no se muestran en nuevas capturas.")
     return seccion, filtros
 
 
@@ -3092,8 +3119,8 @@ def mostrar_metricas(df_filtrado):
     indicadores = df_total["indicador"].nunique() if not df_total.empty else 0
     visibles = len(df_filtrado)
     if not df_filtrado.empty:
-        cumple = (df_filtrado["estado_cumplimiento"].astype(str) == "Cumple").sum()
-        porcentaje = round(cumple / len(df_filtrado) * 100, 1)
+        resueltos = (df_filtrado["estado_cumplimiento"].astype(str).isin(["Resuelto", "Cumple"])).sum()
+        porcentaje = round(resueltos / len(df_filtrado) * 100, 1)
     else:
         porcentaje = 0
 
@@ -3103,7 +3130,7 @@ def mostrar_metricas(df_filtrado):
     c3.metric("Sujetos medidos", sujetos)
     c4.metric("Indicadores oficiales", indicadores)
     c5.metric("Registros visibles", visibles)
-    c6.metric("Cumplimiento visible", f"{porcentaje}%")
+    c6.metric("Resueltos visibles", f"{porcentaje}%")
 
 
 def mostrar_info_sujeto(sujeto):
@@ -3127,29 +3154,19 @@ def mostrar_info_sujeto(sujeto):
 
 
 def renderizar_respuesta(row, key_prefix, valor_actual="", requerido_error=""):
-    """Renderiza el resultado obtenido dejando el campo en blanco en captura nueva."""
+    """Renderiza el resultado obtenido. El valor numérico se captura aparte cuando aplique."""
     tipo = normalizar_texto(row.get("tipo_respuesta"))
     opciones = opciones_catalogo(row)
     valor_actual = "" if valor_actual is None else str(valor_actual)
 
-    if "Numérico" in tipo or "Número" in tipo:
+    if "Numérico" in tipo or "Número" in tipo or "Porcentaje" in tipo or "%" in tipo:
+        label = "Resultado obtenido *" if not ("Porcentaje" in tipo or "%" in tipo) else "Resultado obtenido (%) *"
         valor = st.text_input(
-            "Resultado obtenido *",
-            value=valor_actual if valor_actual not in ["Sin dato"] else "",
-            placeholder="Captura un número. Ej.: 850.50",
+            label,
+            value=valor_actual.replace("%", "") if valor_actual not in ["Sin dato", "No aplica"] else "",
+            placeholder="Captura el valor. Ej.: 850.50, 12, 75",
             key=f"{key_prefix}_resp_num",
-            help="Usa este campo para montos, cantidades, salarios, hectáreas, número de personas u otros valores cuantitativos.",
-        )
-        if requerido_error:
-            st.markdown(f'<div class="required-note">{escape(requerido_error)}</div>', unsafe_allow_html=True)
-        return valor
-
-    if "Porcentaje" in tipo or "%" in tipo:
-        valor = st.text_input(
-            "Resultado obtenido (%) *",
-            value=valor_actual.replace("%", "") if valor_actual not in ["Sin dato"] else "",
-            placeholder="Captura un porcentaje de 0 a 100. Ej.: 75",
-            key=f"{key_prefix}_resp_pct",
+            help="Usa este campo para montos, cantidades, salarios, hectáreas, porcentajes u otros valores cuantitativos.",
         )
         if requerido_error:
             st.markdown(f'<div class="required-note">{escape(requerido_error)}</div>', unsafe_allow_html=True)
@@ -3175,6 +3192,7 @@ def renderizar_respuesta(row, key_prefix, valor_actual="", requerido_error=""):
         index=index,
         format_func=lambda x: x if x else "Selecciona...",
         key=f"{key_prefix}_resp_cat",
+        help="Resultado directo observado para el indicador. Si necesitas una cantidad adicional, usa el campo numérico complementario.",
     )
     if requerido_error:
         st.markdown(f'<div class="required-note">{escape(requerido_error)}</div>', unsafe_allow_html=True)
@@ -3211,7 +3229,7 @@ def bloque_pregunta(row, key_prefix, valores_existentes=None, permitir_omitir=Tr
             with c_omit:
                 omitida = st.checkbox("✕", key=f"{key_prefix}_omit", help="Marcar para omitir esta pregunta en este levantamiento. Desmárcala para recuperarla antes de guardar.")
         if omitida:
-            st.info("Pregunta omitida para este levantamiento. Si necesitas dejar trazabilidad, desmarca la ✕ y usa el estado 'No aplica'.")
+            st.info("Pregunta omitida para este levantamiento. Si necesitas dejar trazabilidad, desmarca la ✕ y usa resolución 'No aplica'.")
             return {
                 "omitida": True,
                 "resultado_obtenido": "",
@@ -3223,11 +3241,14 @@ def bloque_pregunta(row, key_prefix, valores_existentes=None, permitir_omitir=Tr
         c1, c2 = st.columns([1.15, 1])
         with c1:
             resultado = renderizar_respuesta(row, key_prefix, valores_existentes.get("resultado_obtenido", ""), errores.get(f"resultado_{qid}", ""))
-        estado_actual = valores_existentes.get("estado_cumplimiento") or ""
+
+        estado_actual = valores_existentes.get("estado_cumplimiento") or valores_existentes.get("estado_resolucion") or ""
+        if estado_actual in ["Cumple", "Parcial", "No cumple", "En proceso", "Sin dato"]:
+            estado_actual = "Resuelto" if estado_actual == "Cumple" else "No resuelto"
         opciones_estado = [""] + ESTADOS_CUMPLIMIENTO
         with c2:
             idx_estado = opciones_estado.index(estado_actual) if estado_actual in opciones_estado else 0
-            estado = st.selectbox("Estado *", opciones_estado, index=idx_estado, format_func=lambda x: x if x else "Selecciona...", key=f"{key_prefix}_estado")
+            estado = st.selectbox("Resolución *", opciones_estado, index=idx_estado, format_func=lambda x: x if x else "Selecciona...", key=f"{key_prefix}_estado", help="Clasifica únicamente si el indicador ya está resuelto, no resuelto o no aplica.")
             if errores.get(f"estado_{qid}"):
                 st.markdown(f'<div class="required-note">{escape(errores.get(f"estado_{qid}"))}</div>', unsafe_allow_html=True)
 
@@ -3242,7 +3263,7 @@ def bloque_pregunta(row, key_prefix, valores_existentes=None, permitir_omitir=Tr
                 value="" if valor_numerico_actual in [None, "nan"] else str(valor_numerico_actual or ""),
                 placeholder="Ej.: monto, cantidad, salario, hectáreas, porcentaje",
                 key=f"{key_prefix}_valor_aux",
-                help="Opcional. Úsalo cuando el catálogo no sea suficiente y necesites registrar una cantidad comparable.",
+                help="Opcional. Úsalo cuando el resultado de catálogo no sea suficiente y necesites registrar una cantidad comparable.",
             )
             if errores.get(f"valor_numerico_{qid}"):
                 st.markdown(f'<div class="required-note">{escape(errores.get(f"valor_numerico_{qid}"))}</div>', unsafe_allow_html=True)
@@ -3290,40 +3311,82 @@ def seleccionar_preguntas_aplicables(preguntas, tipo_sujeto):
 def mostrar_captura():
     st.markdown("#### Captura dinámica de formulario")
     st.markdown(
-        '<div class="screen-help">Selecciona el tipo de sujeto y el registro. La pantalla inicia en blanco para evitar capturas accidentales. El sistema muestra únicamente preguntas formuladas desde indicadores oficiales para ese sujeto.</div>',
+        '<div class="screen-help">La captura se organiza por capital → tipo de sujeto → sujeto. Las preguntas resueltas para ese sujeto ya no aparecen en nuevos levantamientos. Puedes marcar una sección completa como No aplica.</div>',
         unsafe_allow_html=True,
     )
 
-    tipos = obtener_tipos_sujeto()
-    c1, c2 = st.columns([1, 1.4])
+    capitales = obtener_capitales()
+    c1, c2 = st.columns([1, 1.2])
     with c1:
+        capital = st.selectbox(
+            "Capital / clasificación *",
+            [""] + capitales,
+            index=0,
+            format_func=lambda x: x if x else "Selecciona...",
+            key=f"captura_capital_{st.session_state.reset_md}",
+            help="Primero selecciona el capital o clasificación del indicador.",
+        )
+        error_campo("capital")
+    if not capital:
+        st.info("Selecciona un capital para cargar los tipos de sujeto relacionados.")
+        return
+
+    tipos = obtener_tipos_sujeto_por_capital(capital)
+    with c2:
         tipo_sujeto = st.selectbox(
             "Tipo de sujeto *",
             [""] + tipos,
             index=0,
             format_func=lambda x: x if x else "Selecciona...",
-            key=f"captura_tipo_{st.session_state.reset_md}",
+            key=f"captura_tipo_{capital}_{st.session_state.reset_md}",
         )
         error_campo("tipo_sujeto")
     if not tipo_sujeto:
-        st.info("Selecciona un tipo de sujeto para cargar los registros disponibles y sus preguntas aplicables.")
+        st.info("Selecciona el tipo de sujeto para ver los registros disponibles.")
         return
 
     sujetos = obtener_sujetos_por_tipo(tipo_sujeto)
     if sujetos.empty:
         st.warning("No hay sujetos disponibles para este tipo. En integración real se consultarán desde las tablas del SIR.")
         return
+
+    st.markdown("##### Clasificación del sujeto / casos asociados")
+    f1, f2, f3, f4 = st.columns([1, 1, 1, 1.3])
+    with f1:
+        zonas = [""] + sorted(sujetos["zona"].dropna().astype(str).unique().tolist()) if "zona" in sujetos.columns else [""]
+        zona_sel = st.selectbox("Filtrar por zona", zonas, format_func=lambda x: x if x else "Todas", key=f"zona_suj_{tipo_sujeto}_{st.session_state.reset_md}")
+    if zona_sel:
+        sujetos = sujetos[sujetos["zona"].astype(str) == zona_sel]
+    with f2:
+        hogares = [""] + sorted([h for h in sujetos.get("id_hogar", pd.Series(dtype=str)).dropna().astype(str).unique().tolist() if h])
+        hogar_sel = st.selectbox("Filtrar por hogar", hogares, format_func=lambda x: x if x else "Todos", key=f"hogar_suj_{tipo_sujeto}_{st.session_state.reset_md}")
+    if hogar_sel:
+        sujetos = sujetos[sujetos["id_hogar"].astype(str) == hogar_sel]
+    with f3:
+        comunidades = [""] + sorted([c for c in sujetos.get("id_comunidad", pd.Series(dtype=str)).dropna().astype(str).unique().tolist() if c])
+        comunidad_sel = st.selectbox("Filtrar por comunidad", comunidades, format_func=lambda x: x if x else "Todas", key=f"com_suj_{tipo_sujeto}_{st.session_state.reset_md}")
+    if comunidad_sel:
+        sujetos = sujetos[sujetos["id_comunidad"].astype(str) == comunidad_sel]
+    with f4:
+        buscar_sujeto = st.text_input("Buscar sujeto / caso", value="", placeholder="ID, nombre, hogar, comunidad...", key=f"buscar_suj_{tipo_sujeto}_{st.session_state.reset_md}")
+    if buscar_sujeto:
+        txt = buscar_sujeto.lower().strip()
+        sujetos = sujetos[sujetos.astype(str).apply(lambda col: col.str.lower().str.contains(txt, na=False)).any(axis=1)]
+
+    if sujetos.empty:
+        st.warning("No hay sujetos con los filtros seleccionados.")
+        return
+
     opciones_ids = sujetos["id_sujeto"].astype(str).tolist()
     etiquetas = {row["id_sujeto"]: formatear_sujeto(row) for _, row in sujetos.iterrows()}
-    with c2:
-        id_sujeto = st.selectbox(
-            "Registro / sujeto *",
-            [""] + opciones_ids,
-            index=0,
-            format_func=lambda x: etiquetas.get(x, x) if x else "Selecciona...",
-            key=f"captura_sujeto_{tipo_sujeto}_{st.session_state.reset_md}",
-        )
-        error_campo("id_sujeto")
+    id_sujeto = st.selectbox(
+        "Registro / sujeto *",
+        [""] + opciones_ids,
+        index=0,
+        format_func=lambda x: etiquetas.get(x, x) if x else "Selecciona...",
+        key=f"captura_sujeto_{tipo_sujeto}_{capital}_{st.session_state.reset_md}",
+    )
+    error_campo("id_sujeto")
     if not id_sujeto:
         st.info("Selecciona el registro específico que será medido.")
         return
@@ -3331,11 +3394,12 @@ def mostrar_captura():
     sujeto = obtener_sujeto(tipo_sujeto, id_sujeto)
     mostrar_info_sujeto(sujeto)
 
-    preguntas = obtener_preguntas_por_tipo(tipo_sujeto)
+    preguntas, total_ocultas = obtener_preguntas_pendientes(capital, tipo_sujeto, id_sujeto)
+    if total_ocultas:
+        st.success(f"Se ocultaron {total_ocultas} pregunta(s) ya resuelta(s) para este sujeto.")
     if preguntas.empty:
-        st.warning("No hay preguntas configuradas para este tipo de sujeto.")
+        st.info("No quedan preguntas pendientes para este capital, tipo de sujeto y registro. Todo lo aplicable ya está resuelto o no hay preguntas configuradas.")
         return
-    preguntas = seleccionar_preguntas_aplicables(preguntas, tipo_sujeto)
 
     st.markdown("##### Datos generales del levantamiento")
     c1, c2, c3 = st.columns(3)
@@ -3371,11 +3435,34 @@ def mostrar_captura():
         observacion_general = st.text_input("Observación general del levantamiento", placeholder="Opcional. No es obligatoria.", key=f"captura_obs_general_{st.session_state.reset_md}")
 
     st.markdown("##### Preguntas del formulario")
-    st.markdown('<div class="compact-hint">Abre cada pregunta para responderla. Si la contraes, queda visible solo el título de la pregunta.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="compact-hint">Las preguntas están agrupadas por categoría. Puedes marcar una categoría completa como No aplica o abrir cada pregunta para responderla.</div>', unsafe_allow_html=True)
     respuestas = {}
-    for capital, df_capital in preguntas.groupby("capital", dropna=False):
-        with st.expander(f"{capital} · {len(df_capital)} pregunta(s)", expanded=True):
-            for _, row in df_capital.iterrows():
+    secciones_no_aplica = {}
+    for categoria, df_categoria in preguntas.groupby("categoria", dropna=False):
+        titulo_seccion = normalizar_texto(categoria) or "Sin categoría"
+        errores = errores_formulario()
+        ids_cat = df_categoria["id_pregunta"].astype(str).tolist()
+        expandir = any((f"resultado_{qid}" in errores or f"estado_{qid}" in errores or f"valor_numerico_{qid}" in errores) for qid in ids_cat)
+        with st.expander(f"{titulo_seccion} · {len(df_categoria)} pregunta(s)", expanded=expandir):
+            no_aplica_categoria = st.checkbox(
+                "Marcar toda esta sección/categoría como No aplica",
+                key=f"cat_no_aplica_{abs(hash(titulo_seccion))}_{st.session_state.reset_md}",
+                help="Guarda todas las preguntas de esta categoría como No aplica y evita responder una por una.",
+            )
+            secciones_no_aplica[titulo_seccion] = no_aplica_categoria
+            if no_aplica_categoria:
+                st.info("Esta sección se guardará completa como No aplica para conservar trazabilidad.")
+                for _, row in df_categoria.iterrows():
+                    respuestas[row.get("id_pregunta")] = {
+                        "omitida": False,
+                        "resultado_obtenido": "No aplica",
+                        "estado_cumplimiento": "No aplica",
+                        "observaciones": "Sección/categoría marcada como No aplica.",
+                        "valor_numerico": "",
+                        "valor_numerico_texto": "",
+                    }
+                continue
+            for _, row in df_categoria.iterrows():
                 key = f"cap_{row.get('id_pregunta')}_{st.session_state.reset_md}"
                 respuestas[row.get("id_pregunta")] = bloque_pregunta(row.to_dict(), key)
 
@@ -3387,6 +3474,8 @@ def mostrar_captura():
 
     if guardar:
         errores_nuevos = {}
+        if not capital:
+            errores_nuevos["capital"] = "Selecciona el capital o clasificación."
         if not tipo_sujeto:
             errores_nuevos["tipo_sujeto"] = "Selecciona el tipo de sujeto."
         if not id_sujeto:
@@ -3406,9 +3495,9 @@ def mostrar_captura():
             estado = normalizar_texto(r.get("estado_cumplimiento"))
             resultado = normalizar_texto(r.get("resultado_obtenido"))
             if not estado:
-                errores_nuevos[f"estado_{qid}"] = "Selecciona el estado."
+                errores_nuevos[f"estado_{qid}"] = "Selecciona si está resuelto, no resuelto o no aplica."
             if estado != "No aplica" and valor_vacio(resultado):
-                errores_nuevos[f"resultado_{qid}"] = "Captura el resultado obtenido o marca No aplica."
+                errores_nuevos[f"resultado_{qid}"] = "Captura el resultado obtenido o marca resolución No aplica."
             tipo_resp = normalizar_texto(q.get("tipo_respuesta"))
             requiere_numero = "Numérico" in tipo_resp or "Número" in tipo_resp or "Porcentaje" in tipo_resp or "%" in tipo_resp
             valor_num_txt = normalizar_texto(r.get("valor_numerico_texto"))
@@ -3490,7 +3579,7 @@ def mostrar_captura():
         st.session_state.data_md = asegurar_columnas_mediciones(pd.concat([st.session_state.data_md, nuevo_df], ignore_index=True))
         guardar_memoria_local()
         st.session_state.form_errors_md = {}
-        registrar_notificacion("success", "Formulario guardado", f"Levantamiento {id_levantamiento} guardado con {len(registros)} medición(es). El formulario quedó en blanco para una nueva captura.")
+        registrar_notificacion("success", "Formulario guardado", f"Levantamiento {id_levantamiento} guardado con {len(registros)} medición(es). Las preguntas resueltas no aparecerán en próximas capturas del mismo sujeto.")
         st.session_state.reset_md += 1
         st.rerun()
 
@@ -3638,7 +3727,7 @@ def mostrar_historico(df_filtrado):
     cols = [
         "id_levantamiento", "id_medicion", "tipo_sujeto", "id_sujeto", "nombre_sujeto", "capital",
         "categoria", "impacto_asociado", "referencia_indicador", "fuente", "hoja_origen", "fila_origen", "indicador",
-        "pregunta", "resultado_obtenido", "estado_cumplimiento", "fecha_medicion", "periodo_medicion",
+        "pregunta", "resultado_obtenido", "valor_numerico", "estado_cumplimiento", "fecha_medicion", "periodo_medicion",
         "cuando_se_llena", "fuente_informacion", "registrado_por", "fecha_registro",
         "actualizado_por", "fecha_actualizacion", "observaciones",
     ]

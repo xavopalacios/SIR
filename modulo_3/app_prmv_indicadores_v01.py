@@ -1,6 +1,6 @@
 # ============================================================
-# SIR ACP · Módulo PRMV Indicadores · v17 beta funcional
-# 26 preguntas + proyecto/modalidad + predio + tooltips + data demo ampliada
+# SIR ACP · Módulo PRMV Indicadores · v18 beta funcional
+# 26 preguntas + proyecto/modalidad + predio + tooltips + data demo ampliada + matriz completa de testing
 # ============================================================
 # Archivo autosuficiente. No requiere SQL ni JSON externo.
 # Fuente funcional del catálogo: Preguntas_PRMV_26_Indicadores.xlsx · hoja 01_Preguntas_PRMV26 · columna C como proyectos PRMV
@@ -30,7 +30,7 @@ st.set_page_config(page_title="SIR ACP | PRMV 26 Indicadores", page_icon="📊",
 COLOR_PRIMARIO = "#073B5A"
 COLOR_SECUNDARIO = "#00A6A6"
 COLOR_BORDE = "#D6DEE6"
-ARCHIVO_MEMORIA = Path("memoria_modulo_prmv_indicadores_v17.json")
+ARCHIVO_MEMORIA = Path("memoria_modulo_prmv_indicadores_v18.json")
 USUARIO_PROTOTIPO = "usuario_prototipo"
 MODALIDADES_PRMV = ["Individual", "Colectivo"]
 RESULTADOS_BINARIOS = ["Sí", "No"]
@@ -67,11 +67,22 @@ TOOLTIPS = {
 
 EJEMPLOS_TESTING = [
     "Individual · Restablecimiento de actividades económicas · Predio PRE-0001 · Familia López: captura proyecto productivo formulado/implementado.",
+    "Colectivo · Restablecimiento de actividades económicas · Predio PRE-0003 · Familia Rodríguez: prueba restablecimiento económico en ruta colectiva.",
     "Colectivo · Fortalecimiento de organizaciones productivas comunitarias · Predio PRE-0002 · OBC: prueba participación y fortalecimiento comunitario.",
-    "Individual · Formación para el trabajo e información para el empleo · Predio PRE-0007 · Persona: prueba trabajadores y formación para empleo.",
-    "Colectivo · Acompañamiento psicosocial · Predio PRE-0008 · Familia o interacción: prueba seguimiento psicosocial.",
-    "Colectivo · Enfoque de género · Predio PRE-0012 · Persona: prueba mujer/lideresa y participación.",
+    "Colectivo · Fortalecimiento de organizaciones productivas comunitarias · Predio PRE-0014 · OBC: prueba infraestructura/comunidad y organización asociada.",
+    "Individual · Capacitación y asistencia técnica · Predio PRE-0001 · Actividad: prueba visitas técnicas y capacitación por hogar.",
+    "Colectivo · Capacitación y asistencia técnica · Predio PRE-0003 · Actividad: prueba capacitaciones colectivas por comunidad.",
     "Colectivo · Establecimiento de huertas caseras · Predio PRE-0005 · Familia: prueba componente productivo-natural.",
+    "Individual · Formación para el trabajo e información para el empleo · Predio PRE-0007 · Persona: prueba trabajadores y formación para empleo.",
+    "Colectivo · Formación para el trabajo e información para el empleo · Predio PRE-0005 · Actividad: prueba feria/actividad de empleo colectiva.",
+    "Individual · Acompañamiento psicosocial · Predio PRE-0011 · Familia: prueba hogar vulnerable individual.",
+    "Colectivo · Acompañamiento psicosocial · Predio PRE-0008 · Familia: prueba acompañamiento psicosocial colectivo.",
+    "Colectivo · Acompañamiento psicosocial · Predio PRE-0012 · Actividad: prueba jornada psicosocial colectiva.",
+    "Colectivo · Enfoque de género · Predio PRE-0012 · Persona: prueba mujer/lideresa y participación.",
+    "Colectivo · Enfoque de género · Predio PRE-0008 · Familia: prueba enfoque de género en hogares colectivos.",
+    "Individual · Protección social y productivos · Predio PRE-0010 · Familia: prueba orientación individual.",
+    "Colectivo · Protección social y productivos · Predio PRE-0009 · Familia: prueba acceso colectivo a programas productivos/sociales.",
+    "Colectivo · Protección social y productivos · Predio PRE-0012 · Comunidad: prueba comunidad vinculada a proyecto social/productivo.",
 ]
 
 CATALOGO_PREGUNTAS_26 = [
@@ -903,6 +914,117 @@ INTERACCIONES_DEMO = [{'id_sujeto': 'INT-001', 'nombre_sujeto': 'Capacitación B
 COMUNIDADES_DEMO = [{'id_sujeto': 'COM-0001', 'nombre_sujeto': 'El Roble', 'id_lugar_poblado': 'COM-0001', 'comunidad': 'El Roble', 'zona': 'Zona 1', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-006', 'PROY-008']}, {'id_sujeto': 'COM-0002', 'nombre_sujeto': 'La Esperanza', 'id_lugar_poblado': 'COM-0002', 'comunidad': 'La Esperanza', 'zona': 'Zona 1', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-006', 'PROY-007']}, {'id_sujeto': 'COM-0003', 'nombre_sujeto': 'Nuevo Horizonte', 'id_lugar_poblado': 'COM-0003', 'comunidad': 'Nuevo Horizonte', 'zona': 'Zona 2', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-008']}, {'id_sujeto': 'COM-0004', 'nombre_sujeto': 'Santa Clara', 'id_lugar_poblado': 'COM-0004', 'comunidad': 'Santa Clara', 'zona': 'Zona 3', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-004', 'PROY-008']}, {'id_sujeto': 'COM-0005', 'nombre_sujeto': 'Las Palmas', 'id_lugar_poblado': 'COM-0005', 'comunidad': 'Las Palmas', 'zona': 'Zona 3', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-005', 'PROY-008']}, {'id_sujeto': 'COM-0006', 'nombre_sujeto': 'San Miguel', 'id_lugar_poblado': 'COM-0006', 'comunidad': 'San Miguel', 'zona': 'Zona 4', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-006', 'PROY-007', 'PROY-008']}]
 
 
+
+# ============================================================
+# DATA DEMO AMPLIADA PARA TESTING COMPLETO
+# ============================================================
+# Esta capa amplía los ejemplos internos sin conectar módulos reales.
+# Objetivo: permitir probar todas las combinaciones relevantes de:
+# proyecto/componente + modalidad + capital + predio + sujeto PRMV.
+# En integración real, estos datos se reemplazan por lecturas de M01/M02/M05/M07.
+
+def ampliar_data_demo_testing_v18():
+    def add_unique(lista, item, key):
+        if not any(x.get(key) == item.get(key) for x in lista):
+            lista.append(item)
+
+    hogares_extra = [
+        {'id_hogar': 'HOG-0013', 'codigo_hogar_campo': 'FAM-013', 'nombre_referencia_hogar': 'Familia Ortega', 'id_lugar_poblado': 'COM-0007', 'comunidad': 'Quebrada Azul', 'zona': 'Zona 4', 'tipo_afectacion': 'Proyecto productivo individual', 'estado_residencia': 'Censado'},
+        {'id_hogar': 'HOG-0014', 'codigo_hogar_campo': 'FAM-014', 'nombre_referencia_hogar': 'Familia Salazar', 'id_lugar_poblado': 'COM-0007', 'comunidad': 'Quebrada Azul', 'zona': 'Zona 4', 'tipo_afectacion': 'Organización productiva comunitaria', 'estado_residencia': 'Censado'},
+        {'id_hogar': 'HOG-0015', 'codigo_hogar_campo': 'FAM-015', 'nombre_referencia_hogar': 'Familia Navarro', 'id_lugar_poblado': 'COM-0008', 'comunidad': 'Río Verde', 'zona': 'Zona 5', 'tipo_afectacion': 'Capacitación y asistencia técnica', 'estado_residencia': 'Censado'},
+        {'id_hogar': 'HOG-0016', 'codigo_hogar_campo': 'FAM-016', 'nombre_referencia_hogar': 'Familia Méndez', 'id_lugar_poblado': 'COM-0008', 'comunidad': 'Río Verde', 'zona': 'Zona 5', 'tipo_afectacion': 'Huertas caseras', 'estado_residencia': 'Censado'},
+        {'id_hogar': 'HOG-0017', 'codigo_hogar_campo': 'FAM-017', 'nombre_referencia_hogar': 'Familia Cedeño', 'id_lugar_poblado': 'COM-0009', 'comunidad': 'Altos del Lago', 'zona': 'Zona 5', 'tipo_afectacion': 'Formación para empleo', 'estado_residencia': 'Censado'},
+        {'id_hogar': 'HOG-0018', 'codigo_hogar_campo': 'FAM-018', 'nombre_referencia_hogar': 'Familia Jiménez', 'id_lugar_poblado': 'COM-0009', 'comunidad': 'Altos del Lago', 'zona': 'Zona 5', 'tipo_afectacion': 'Acompañamiento psicosocial', 'estado_residencia': 'Censado'},
+        {'id_hogar': 'HOG-0019', 'codigo_hogar_campo': 'FAM-019', 'nombre_referencia_hogar': 'Familia Pineda', 'id_lugar_poblado': 'COM-0010', 'comunidad': 'La Loma', 'zona': 'Zona 6', 'tipo_afectacion': 'Enfoque de género', 'estado_residencia': 'Censado'},
+        {'id_hogar': 'HOG-0020', 'codigo_hogar_campo': 'FAM-020', 'nombre_referencia_hogar': 'Familia Solís', 'id_lugar_poblado': 'COM-0010', 'comunidad': 'La Loma', 'zona': 'Zona 6', 'tipo_afectacion': 'Protección social y productiva', 'estado_residencia': 'Censado'},
+    ]
+    for h in hogares_extra:
+        add_unique(HOGARES_M01_DEMO, h, 'id_hogar')
+
+    predios_extra = [
+        {'id_predio': 'PRE-0015', 'nombre_predio': 'Predio Quebrada Azul 15', 'id_hogar': 'HOG-0013', 'id_lugar_poblado': 'COM-0007', 'comunidad': 'Quebrada Azul', 'zona': 'Zona 4', 'uso_principal': 'Proyecto económico individual'},
+        {'id_predio': 'PRE-0016', 'nombre_predio': 'Predio Quebrada Azul 16', 'id_hogar': 'HOG-0014', 'id_lugar_poblado': 'COM-0007', 'comunidad': 'Quebrada Azul', 'zona': 'Zona 4', 'uso_principal': 'Organización productiva comunitaria'},
+        {'id_predio': 'PRE-0017', 'nombre_predio': 'Predio Río Verde 17', 'id_hogar': 'HOG-0015', 'id_lugar_poblado': 'COM-0008', 'comunidad': 'Río Verde', 'zona': 'Zona 5', 'uso_principal': 'Capacitación y asistencia técnica'},
+        {'id_predio': 'PRE-0018', 'nombre_predio': 'Predio Río Verde 18', 'id_hogar': 'HOG-0016', 'id_lugar_poblado': 'COM-0008', 'comunidad': 'Río Verde', 'zona': 'Zona 5', 'uso_principal': 'Huerta casera'},
+        {'id_predio': 'PRE-0019', 'nombre_predio': 'Predio Altos del Lago 19', 'id_hogar': 'HOG-0017', 'id_lugar_poblado': 'COM-0009', 'comunidad': 'Altos del Lago', 'zona': 'Zona 5', 'uso_principal': 'Formación para el trabajo'},
+        {'id_predio': 'PRE-0020', 'nombre_predio': 'Predio Altos del Lago 20', 'id_hogar': 'HOG-0018', 'id_lugar_poblado': 'COM-0009', 'comunidad': 'Altos del Lago', 'zona': 'Zona 5', 'uso_principal': 'Acompañamiento psicosocial'},
+        {'id_predio': 'PRE-0021', 'nombre_predio': 'Predio La Loma 21', 'id_hogar': 'HOG-0019', 'id_lugar_poblado': 'COM-0010', 'comunidad': 'La Loma', 'zona': 'Zona 6', 'uso_principal': 'Enfoque de género'},
+        {'id_predio': 'PRE-0022', 'nombre_predio': 'Predio La Loma 22', 'id_hogar': 'HOG-0020', 'id_lugar_poblado': 'COM-0010', 'comunidad': 'La Loma', 'zona': 'Zona 6', 'uso_principal': 'Protección social y productiva'},
+        {'id_predio': 'PRE-0023', 'nombre_predio': 'Predio Comunitario Quebrada Azul', 'id_hogar': 'HOG-0014', 'id_lugar_poblado': 'COM-0007', 'comunidad': 'Quebrada Azul', 'zona': 'Zona 4', 'uso_principal': 'Centro comunitario productivo'},
+        {'id_predio': 'PRE-0024', 'nombre_predio': 'Predio Comunitario La Loma', 'id_hogar': 'HOG-0019', 'id_lugar_poblado': 'COM-0010', 'comunidad': 'La Loma', 'zona': 'Zona 6', 'uso_principal': 'Espacio de mujeres y emprendimiento'},
+    ]
+    for p in predios_extra:
+        add_unique(PREDIOS_M05_DEMO, p, 'id_predio')
+
+    personas_extra = [
+        {'id_persona': 'PER-0015', 'nombre': 'Teresa Ortega', 'id_hogar': 'HOG-0013', 'sexo': 'Mujer', 'edad': 34, 'ocupacion': 'Emprendedora'},
+        {'id_persona': 'PER-0016', 'nombre': 'Jorge Ortega', 'id_hogar': 'HOG-0013', 'sexo': 'Hombre', 'edad': 39, 'ocupacion': 'Agricultor'},
+        {'id_persona': 'PER-0017', 'nombre': 'Marta Salazar', 'id_hogar': 'HOG-0014', 'sexo': 'Mujer', 'edad': 46, 'ocupacion': 'Presidenta OBC'},
+        {'id_persona': 'PER-0018', 'nombre': 'Nicolás Navarro', 'id_hogar': 'HOG-0015', 'sexo': 'Hombre', 'edad': 28, 'ocupacion': 'Aprendiz técnico'},
+        {'id_persona': 'PER-0019', 'nombre': 'Claudia Méndez', 'id_hogar': 'HOG-0016', 'sexo': 'Mujer', 'edad': 41, 'ocupacion': 'Productora de huerta'},
+        {'id_persona': 'PER-0020', 'nombre': 'Ricardo Cedeño', 'id_hogar': 'HOG-0017', 'sexo': 'Hombre', 'edad': 30, 'ocupacion': 'Buscador de empleo'},
+        {'id_persona': 'PER-0021', 'nombre': 'Elisa Jiménez', 'id_hogar': 'HOG-0018', 'sexo': 'Mujer', 'edad': 62, 'ocupacion': 'Cuidadora'},
+        {'id_persona': 'PER-0022', 'nombre': 'Diana Pineda', 'id_hogar': 'HOG-0019', 'sexo': 'Mujer', 'edad': 24, 'ocupacion': 'Lideresa joven'},
+        {'id_persona': 'PER-0023', 'nombre': 'Alba Solís', 'id_hogar': 'HOG-0020', 'sexo': 'Mujer', 'edad': 58, 'ocupacion': 'Ama de casa'},
+        {'id_persona': 'PER-0024', 'nombre': 'Raúl Solís', 'id_hogar': 'HOG-0020', 'sexo': 'Hombre', 'edad': 60, 'ocupacion': 'Jornalero'},
+    ]
+    for per in personas_extra:
+        add_unique(PERSONAS_M01_DEMO, per, 'id_persona')
+
+    comunidades_extra = [
+        {'id_sujeto': 'COM-0007', 'nombre_sujeto': 'Quebrada Azul', 'id_lugar_poblado': 'COM-0007', 'comunidad': 'Quebrada Azul', 'zona': 'Zona 4', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-002', 'PROY-003', 'PROY-008']},
+        {'id_sujeto': 'COM-0008', 'nombre_sujeto': 'Río Verde', 'id_lugar_poblado': 'COM-0008', 'comunidad': 'Río Verde', 'zona': 'Zona 5', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-003', 'PROY-004', 'PROY-006']},
+        {'id_sujeto': 'COM-0009', 'nombre_sujeto': 'Altos del Lago', 'id_lugar_poblado': 'COM-0009', 'comunidad': 'Altos del Lago', 'zona': 'Zona 5', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-005', 'PROY-006', 'PROY-008']},
+        {'id_sujeto': 'COM-0010', 'nombre_sujeto': 'La Loma', 'id_lugar_poblado': 'COM-0010', 'comunidad': 'La Loma', 'zona': 'Zona 6', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-007', 'PROY-008']},
+    ]
+    for c in comunidades_extra:
+        add_unique(COMUNIDADES_DEMO, c, 'id_sujeto')
+
+    obc_extra = [
+        {'id_sujeto': 'OBC-006', 'nombre_sujeto': 'Asociación Productiva Quebrada Azul', 'id_lugar_poblado': 'COM-0007', 'comunidad': 'Quebrada Azul', 'zona': 'Zona 4', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-002', 'PROY-003']},
+        {'id_sujeto': 'OBC-007', 'nombre_sujeto': 'Red de Huertas Río Verde', 'id_lugar_poblado': 'COM-0008', 'comunidad': 'Río Verde', 'zona': 'Zona 5', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-002', 'PROY-004']},
+        {'id_sujeto': 'OBC-008', 'nombre_sujeto': 'Comité de Empleo Altos del Lago', 'id_lugar_poblado': 'COM-0009', 'comunidad': 'Altos del Lago', 'zona': 'Zona 5', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-002', 'PROY-005']},
+        {'id_sujeto': 'OBC-009', 'nombre_sujeto': 'Mesa de Mujeres La Loma', 'id_lugar_poblado': 'COM-0010', 'comunidad': 'La Loma', 'zona': 'Zona 6', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-002', 'PROY-007', 'PROY-008']},
+    ]
+    for o in obc_extra:
+        add_unique(OBC_DEMO, o, 'id_sujeto')
+
+    interacciones_extra = [
+        {'id_sujeto': 'INT-007', 'nombre_sujeto': 'Taller proyecto productivo · Quebrada Azul', 'id_lugar_poblado': 'COM-0007', 'comunidad': 'Quebrada Azul', 'zona': 'Zona 4', 'modalidad_prmv': 'Individual', 'proyectos_ids': ['PROY-001', 'PROY-003']},
+        {'id_sujeto': 'INT-008', 'nombre_sujeto': 'Capacitación OBC · Quebrada Azul', 'id_lugar_poblado': 'COM-0007', 'comunidad': 'Quebrada Azul', 'zona': 'Zona 4', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-002', 'PROY-003']},
+        {'id_sujeto': 'INT-009', 'nombre_sujeto': 'Día de campo huertas · Río Verde', 'id_lugar_poblado': 'COM-0008', 'comunidad': 'Río Verde', 'zona': 'Zona 5', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-004']},
+        {'id_sujeto': 'INT-010', 'nombre_sujeto': 'Rueda de empleo · Altos del Lago', 'id_lugar_poblado': 'COM-0009', 'comunidad': 'Altos del Lago', 'zona': 'Zona 5', 'modalidad_prmv': 'Individual', 'proyectos_ids': ['PROY-005']},
+        {'id_sujeto': 'INT-011', 'nombre_sujeto': 'Sesión psicosocial · Altos del Lago', 'id_lugar_poblado': 'COM-0009', 'comunidad': 'Altos del Lago', 'zona': 'Zona 5', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-006']},
+        {'id_sujeto': 'INT-012', 'nombre_sujeto': 'Encuentro de mujeres · La Loma', 'id_lugar_poblado': 'COM-0010', 'comunidad': 'La Loma', 'zona': 'Zona 6', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-007']},
+        {'id_sujeto': 'INT-013', 'nombre_sujeto': 'Orientación protección social · La Loma', 'id_lugar_poblado': 'COM-0010', 'comunidad': 'La Loma', 'zona': 'Zona 6', 'modalidad_prmv': 'Individual', 'proyectos_ids': ['PROY-008']},
+    ]
+    for i in interacciones_extra:
+        add_unique(INTERACCIONES_DEMO, i, 'id_sujeto')
+
+ampliar_data_demo_testing_v18()
+
+
+def tabla_casos_testing():
+    """Matriz visible para que testers sepan qué combinaciones probar dentro del sistema."""
+    data = [
+        ['Restablecimiento de actividades económicas', 'Individual', 'Capital económico', 'PRE-0015', 'Familia', 'HOG-0013 / Familia Ortega', 'Proyecto productivo individual formulado/validado'],
+        ['Restablecimiento de actividades económicas', 'Colectivo', 'Capital económico', 'PRE-0003', 'Familia', 'HOG-0003 / Familia Rodríguez', 'Ruta colectiva con actividad económica'],
+        ['Fortalecimiento de organizaciones productivas comunitarias', 'Colectivo', 'Capital social', 'PRE-0023', 'Organización comunitaria / OBC', 'OBC-006 / Asociación Productiva Quebrada Azul', 'OBC fortalecida y participando'],
+        ['Fortalecimiento de organizaciones productivas comunitarias', 'Colectivo', 'Capital social', 'PRE-0024', 'Organización comunitaria / OBC', 'OBC-009 / Mesa de Mujeres La Loma', 'OBC con enfoque de género'],
+        ['Capacitación y asistencia técnica para la producción y el emprendimiento', 'Individual', 'Capital humano', 'PRE-0017', 'Actividad / visita / interacción', 'INT-007 / Taller proyecto productivo', 'Interacción técnica individual'],
+        ['Capacitación y asistencia técnica para la producción y el emprendimiento', 'Colectivo', 'Capital humano', 'PRE-0016', 'Actividad / visita / interacción', 'INT-008 / Capacitación OBC', 'Capacitación colectiva de organización'],
+        ['Establecimiento de huertas caseras', 'Colectivo', 'Capital natural', 'PRE-0018', 'Familia', 'HOG-0016 / Familia Méndez', 'Huerta casera productiva'],
+        ['Formación para el trabajo e información para el empleo', 'Individual', 'Capital humano', 'PRE-0019', 'Persona', 'PER-0020 / Ricardo Cedeño', 'Persona en formación laboral'],
+        ['Formación para el trabajo e información para el empleo', 'Colectivo', 'Capital económico', 'PRE-0005', 'Actividad / visita / interacción', 'INT-006 / Feria de empleo', 'Actividad colectiva de empleo'],
+        ['Acompañamiento psicosocial', 'Individual', 'Capital humano', 'PRE-0020', 'Familia', 'HOG-0018 / Familia Jiménez', 'Hogar vulnerable individual'],
+        ['Acompañamiento psicosocial', 'Colectivo', 'Capital humano', 'PRE-0020', 'Actividad / visita / interacción', 'INT-011 / Sesión psicosocial', 'Actividad psicosocial colectiva'],
+        ['Enfoque de género', 'Colectivo', 'Capital social', 'PRE-0021', 'Persona', 'PER-0022 / Diana Pineda', 'Mujer/lideresa joven'],
+        ['Enfoque de género', 'Colectivo', 'Capital social', 'PRE-0024', 'Organización comunitaria / OBC', 'OBC-009 / Mesa de Mujeres La Loma', 'Organización de mujeres'],
+        ['Orientación y acompañamiento para el acceso a programas de protección social y productivos', 'Individual', 'Capital humano', 'PRE-0022', 'Familia', 'HOG-0020 / Familia Solís', 'Protección social individual'],
+        ['Orientación y acompañamiento para el acceso a programas de protección social y productivos', 'Colectivo', 'Capital humano', 'PRE-0024', 'Comunidad / lugar poblado', 'COM-0010 / La Loma', 'Comunidad con orientación a programas'],
+    ]
+    return pd.DataFrame(data, columns=['Proyecto', 'Modalidad', 'Capital sugerido', 'Predio', 'Sujeto PRMV', 'Registro esperado', 'Qué valida'])
+
 def aplicar_estilos():
     st.markdown(f"""
         <style>
@@ -923,8 +1045,8 @@ def aplicar_estilos():
 
 
 def encabezado():
-    st.markdown('<div class="main-title">Módulo PRMV · 26 indicadores por proyecto, predio y modalidad</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-title">Beta funcional con clasificación de familias, proyectos desde columna C, predios vinculados y preguntas oficiales PRMV 26.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">Módulo PRMV · 26 indicadores por proyecto, predio y modalidad · v18 testing</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-title">Beta funcional con clasificación de familias, proyectos desde columna C, predios vinculados, preguntas oficiales PRMV 26 y matriz ampliada de casos de prueba.</div>', unsafe_allow_html=True)
 
 
 def normalizar(valor):
@@ -1150,6 +1272,145 @@ def crear_data_simulada():
     return levantamientos, respuestas, historial
 
 
+
+# Reemplazo v18: clasifica TODAS las familias demo disponibles, incluyendo las añadidas,
+# para cubrir más combinaciones de prueba sin conectar todavía M01 real.
+def crear_familias_demo():
+    proyectos = {p['id_proyecto']: p for p in PROYECTOS_BASE_PRMV}
+    config_map = {
+        'HOG-0001': ('Individual', ['PROY-001','PROY-003','PROY-005','PROY-008']),
+        'HOG-0002': ('Colectivo', ['PROY-002','PROY-004','PROY-006','PROY-007']),
+        'HOG-0003': ('Colectivo', ['PROY-001','PROY-003','PROY-006']),
+        'HOG-0004': ('Individual', ['PROY-001','PROY-005','PROY-008']),
+        'HOG-0005': ('Colectivo', ['PROY-004','PROY-006','PROY-007']),
+        'HOG-0006': ('Colectivo', ['PROY-002','PROY-003','PROY-006','PROY-008']),
+        'HOG-0007': ('Individual', ['PROY-001','PROY-005','PROY-008']),
+        'HOG-0008': ('Colectivo', ['PROY-003','PROY-006','PROY-007']),
+        'HOG-0009': ('Colectivo', ['PROY-004','PROY-008']),
+        'HOG-0010': ('Individual', ['PROY-005','PROY-008']),
+        'HOG-0011': ('Individual', ['PROY-006','PROY-008']),
+        'HOG-0012': ('Colectivo', ['PROY-002','PROY-007','PROY-008']),
+        'HOG-0013': ('Individual', ['PROY-001','PROY-003']),
+        'HOG-0014': ('Colectivo', ['PROY-002','PROY-003','PROY-008']),
+        'HOG-0015': ('Individual', ['PROY-003','PROY-005']),
+        'HOG-0016': ('Colectivo', ['PROY-004','PROY-006']),
+        'HOG-0017': ('Individual', ['PROY-005','PROY-008']),
+        'HOG-0018': ('Individual', ['PROY-006','PROY-008']),
+        'HOG-0019': ('Colectivo', ['PROY-002','PROY-007','PROY-008']),
+        'HOG-0020': ('Individual', ['PROY-008','PROY-005']),
+    }
+    out=[]
+    for h in HOGARES_M01_DEMO:
+        modalidad, ids = config_map.get(h['id_hogar'], ('Individual', ['PROY-001']))
+        out.append({
+            'id_familia_prmv': f"FPRMV-{h['id_hogar'].split('-')[-1]}",
+            'id_hogar': h['id_hogar'],
+            'codigo_hogar_campo': h['codigo_hogar_campo'],
+            'nombre_referencia_hogar': h['nombre_referencia_hogar'],
+            'id_lugar_poblado': h['id_lugar_poblado'],
+            'comunidad': h['comunidad'],
+            'zona': h['zona'],
+            'modalidad_prmv': modalidad,
+            'proyectos_ids': ids,
+            'componentes_ids': sorted({proyectos[i]['id_componente'] for i in ids if i in proyectos}),
+            'fecha_clasificacion': '2026-01-15',
+            'clasificado_por': USUARIO_PROTOTIPO,
+            'estado': 'Activo',
+            'observaciones': 'Clasificación demo beta ampliada v18 para testing de todas las combinaciones principales.',
+        })
+    return out
+
+
+def crear_data_simulada():
+    """Histórico inicial generado desde la matriz de casos posible del beta.
+
+    Se crea al menos un levantamiento para muchas combinaciones proyecto/modalidad/sujeto,
+    cuidando que existan predios y sujetos vinculados para poder editar/historizar.
+    """
+    levantamientos=[]; respuestas=[]; historial=[]
+    qdf = pd.DataFrame(CATALOGO_PREGUNTAS_26)
+    fechas = [date(2026,1,18), date(2026,1,30), date(2026,2,12), date(2026,2,28), date(2026,3,15), date(2026,3,29), date(2026,4,9), date(2026,4,24), date(2026,5,6), date(2026,5,22), date(2026,6,7), date(2026,6,25), date(2026,7,4), date(2026,7,16), date(2026,7,28)]
+    idx = 0
+    for proyecto in PROYECTOS_BASE_PRMV:
+        id_comp = proyecto['id_componente']
+        for modalidad in MODALIDADES_PRMV:
+            df_base = qdf[(qdf['id_componente'] == id_comp) & (qdf['modalidad_aplicable'].apply(lambda x: modalidad_aplica(x, modalidad)))].copy()
+            if df_base.empty:
+                continue
+            for tipo_sujeto in sorted(df_base['sujeto_grupo'].dropna().unique().tolist()):
+                predios = predios_por_filtros(modalidad=modalidad, id_proyecto=proyecto['id_proyecto'], id_componente=id_comp)
+                elegido = None
+                sujetos = []
+                for p in predios:
+                    posibles = obtener_sujetos(tipo_sujeto, id_comp, proyecto['id_proyecto'], modalidad, predio=p)
+                    if posibles:
+                        elegido = p
+                        sujetos = posibles
+                        break
+                if not elegido or not sujetos:
+                    continue
+                sujeto = sujetos[idx % len(sujetos)]
+                dfq = df_base[df_base['sujeto_grupo'] == tipo_sujeto].copy()
+                if dfq.empty:
+                    continue
+                fecha_med = fechas[idx % len(fechas)]
+                id_lev = generar_id('LEV')
+                lev = {
+                    'id_levantamiento': id_lev,
+                    'id_componente': id_comp,
+                    'componente_prmv': proyecto['componente_prmv'],
+                    'id_proyecto': proyecto['id_proyecto'],
+                    'nombre_proyecto': proyecto['nombre_proyecto'],
+                    'modalidad_prmv': modalidad,
+                    'capital': dfq.iloc[0]['capital'],
+                    'tipo_sujeto': tipo_sujeto,
+                    'id_sujeto': sujeto['id_sujeto'],
+                    'nombre_sujeto': sujeto['nombre_sujeto'],
+                    'tabla_origen': sujeto.get('tabla_origen',''),
+                    'pk_origen': sujeto.get('pk_origen',''),
+                    'id_predio': elegido['id_predio'],
+                    'nombre_predio': elegido['nombre_predio'],
+                    'fecha_medicion': fecha_med.isoformat(),
+                    'fecha_registro': (fecha_med + timedelta(days=1)).isoformat() + f" {8 + (idx % 9):02d}:30:00",
+                    'registrado_por': USUARIO_PROTOTIPO,
+                    'observacion_general': f"Ejemplo beta v18: {proyecto['nombre_proyecto']} · {modalidad} · {tipo_sujeto} · {elegido['id_predio']}.",
+                }
+                levantamientos.append(lev)
+                for j, (_, q) in enumerate(dfq.head(2).iterrows()):
+                    respuestas.append({
+                        'id_respuesta': generar_id('RSP'),
+                        'id_levantamiento': id_lev,
+                        'id_pregunta': q['id_pregunta'],
+                        'id_componente': id_comp,
+                        'componente_prmv': proyecto['componente_prmv'],
+                        'id_proyecto': proyecto['id_proyecto'],
+                        'nombre_proyecto': proyecto['nombre_proyecto'],
+                        'modalidad_prmv': modalidad,
+                        'capital': q['capital'],
+                        'tipo_sujeto': tipo_sujeto,
+                        'id_sujeto': sujeto['id_sujeto'],
+                        'nombre_sujeto': sujeto['nombre_sujeto'],
+                        'id_predio': elegido['id_predio'],
+                        'nombre_predio': elegido['nombre_predio'],
+                        'indicador_oficial': q['indicador_oficial'],
+                        'pregunta_visible': q['pregunta_visible'],
+                        'resultado_obtenido': 'Sí' if (idx + j) % 3 != 0 else 'No',
+                        'valor_numerico': float(25 + ((idx * 7 + j * 13) % 76)),
+                        'observacion': f"Dato simulado v18 para probar {proyecto['nombre_proyecto']} / {modalidad} / {tipo_sujeto}.",
+                        'fecha_medicion': fecha_med.isoformat(),
+                        'fecha_registro': lev['fecha_registro'],
+                        'registrado_por': USUARIO_PROTOTIPO,
+                        'fecha_actualizacion': '',
+                        'actualizado_por': '',
+                        'campos_base': q.get('campos_base',''),
+                        'fuente_sujeto_beta': q.get('fuente_sujeto_beta',''),
+                        'formula_oficial': q.get('formula_oficial',''),
+                        'meta_oficial': q.get('meta_oficial',''),
+                    })
+                historial.append({'id_historial': generar_id('HIS'), 'id_levantamiento': id_lev, 'id_respuesta': '', 'accion': 'creación demo v18', 'fecha_evento': fecha_hora(), 'usuario': USUARIO_PROTOTIPO, 'detalle': f"Levantamiento simulado para {proyecto['nombre_proyecto']} · {modalidad} · {tipo_sujeto}."})
+                idx += 1
+    return levantamientos, respuestas, historial
+
 def inicializar_estado(force=False):
     mem = None if force else cargar_memoria()
     if mem:
@@ -1336,6 +1597,7 @@ def mostrar_clasificacion_familias():
     st.markdown('<div class="hint-box">Selecciona hogares simulados desde M01.hogares, asigna modalidad PRMV fija y marca uno o varios proyectos PRMV de la columna C del Excel. Esta capa controla qué preguntas aparecen después.</div>', unsafe_allow_html=True)
     with st.expander('Ejemplos rápidos para testing', expanded=False):
         st.markdown('\n'.join([f"- {escape(e)}" for e in EJEMPLOS_TESTING]), unsafe_allow_html=True)
+        st.dataframe(tabla_casos_testing(), use_container_width=True, hide_index=True)
     hogares_labels = [f"{h['id_hogar']} · {h['nombre_referencia_hogar']} · {h['comunidad']} · {h['zona']}" for h in HOGARES_M01_DEMO]
     with st.form('form_clasificacion_familia'):
         col1, col2 = st.columns([2,1])
@@ -1415,6 +1677,7 @@ def mostrar_captura():
     st.markdown('<div class="hint-box">La captura se filtra por proyecto, modalidad, capital, predio y sujeto. Las preguntas no aplicables se omiten; la respuesta guardada solo puede ser Sí o No.</div>', unsafe_allow_html=True)
     with st.expander('Guía rápida de pruebas', expanded=False):
         st.markdown('\n'.join([f"- {escape(e)}" for e in EJEMPLOS_TESTING]), unsafe_allow_html=True)
+        st.dataframe(tabla_casos_testing(), use_container_width=True, hide_index=True)
     filtros=selector_filtros_base('cap', incluir_sujeto=True)
     if not filtros['sujeto'] or filtros['tipo_sujeto']=='Todos los sujetos': st.stop()
     mostrar_info_sujeto(filtros['sujeto'])

@@ -1,9 +1,9 @@
 # ============================================================
-# SIR ACP · Módulo PRMV Indicadores · v15 beta funcional
+# SIR ACP · Módulo PRMV Indicadores · v16 beta funcional
 # 26 preguntas + capa de proyecto/componente + modalidad familiar
 # ============================================================
 # Archivo autosuficiente. No requiere SQL ni JSON externo.
-# Fuente funcional del catálogo: Estructura_PRMV_26_Preguntas_Proyecto_Modalidad.xlsx
+# Fuente funcional del catálogo: Preguntas_PRMV_26_Indicadores.xlsx · hoja 01_Preguntas_PRMV26 · columna C como proyectos PRMV
 #
 # Enfoque beta:
 # - Simula M01.hogares, M01.personas, OBC, interacciones y comunidades.
@@ -30,7 +30,7 @@ st.set_page_config(page_title="SIR ACP | PRMV 26 Indicadores", page_icon="📊",
 COLOR_PRIMARIO = "#073B5A"
 COLOR_SECUNDARIO = "#00A6A6"
 COLOR_BORDE = "#D6DEE6"
-ARCHIVO_MEMORIA = Path("memoria_modulo_prmv_indicadores_v15.json")
+ARCHIVO_MEMORIA = Path("memoria_modulo_prmv_indicadores_v16.json")
 USUARIO_PROTOTIPO = "usuario_prototipo"
 MODALIDADES_PRMV = ["Individual", "Colectivo"]
 RESULTADOS_BINARIOS = ["Sí", "No"]
@@ -39,7 +39,7 @@ CATALOGO_PREGUNTAS_26 = [
   {
     "id_pregunta": "PRMV26-001",
     "id_componente": "COMP-1121",
-    "componente_prmv": "11.2.1 · Restablecimiento de actividades económicas",
+    "componente_prmv": "Restablecimiento de actividades económicas",
     "capital": "Capital económico",
     "modalidad_aplicable": "Individual / Colectivo",
     "ruta_original": "Mixta / según ruta de negociación",
@@ -63,7 +63,7 @@ CATALOGO_PREGUNTAS_26 = [
   {
     "id_pregunta": "PRMV26-002",
     "id_componente": "COMP-1121",
-    "componente_prmv": "11.2.1 · Restablecimiento de actividades económicas",
+    "componente_prmv": "Restablecimiento de actividades económicas",
     "capital": "Capital económico",
     "modalidad_aplicable": "Individual / Colectivo",
     "ruta_original": "Mixta / según ruta de negociación",
@@ -87,7 +87,7 @@ CATALOGO_PREGUNTAS_26 = [
   {
     "id_pregunta": "PRMV26-003",
     "id_componente": "COMP-1121",
-    "componente_prmv": "11.2.1 · Restablecimiento de actividades económicas",
+    "componente_prmv": "Restablecimiento de actividades económicas",
     "capital": "Capital económico",
     "modalidad_aplicable": "Individual / Colectivo",
     "ruta_original": "Mixta / seguimiento posterior",
@@ -111,7 +111,7 @@ CATALOGO_PREGUNTAS_26 = [
   {
     "id_pregunta": "PRMV26-004",
     "id_componente": "COMP-1122",
-    "componente_prmv": "11.2.2 · Fortalecimiento de organizaciones productivas comunitarias",
+    "componente_prmv": "Fortalecimiento de organizaciones productivas comunitarias",
     "capital": "Capital social",
     "modalidad_aplicable": "Colectivo",
     "ruta_original": "Comunitaria",
@@ -135,7 +135,7 @@ CATALOGO_PREGUNTAS_26 = [
   {
     "id_pregunta": "PRMV26-005",
     "id_componente": "COMP-1122",
-    "componente_prmv": "11.2.2 · Fortalecimiento de organizaciones productivas comunitarias",
+    "componente_prmv": "Fortalecimiento de organizaciones productivas comunitarias",
     "capital": "Capital social",
     "modalidad_aplicable": "Colectivo",
     "ruta_original": "Comunitaria",
@@ -159,7 +159,7 @@ CATALOGO_PREGUNTAS_26 = [
   {
     "id_pregunta": "PRMV26-006",
     "id_componente": "COMP-1122",
-    "componente_prmv": "11.2.2 · Fortalecimiento de organizaciones productivas comunitarias",
+    "componente_prmv": "Fortalecimiento de organizaciones productivas comunitarias",
     "capital": "Capital social",
     "modalidad_aplicable": "Colectivo",
     "ruta_original": "Comunitaria",
@@ -183,7 +183,7 @@ CATALOGO_PREGUNTAS_26 = [
   {
     "id_pregunta": "PRMV26-007",
     "id_componente": "COMP-1123",
-    "componente_prmv": "11.2.3 · Capacitación y asistencia técnica para la producción y el emprendimiento",
+    "componente_prmv": "Capacitación y asistencia técnica para la producción y el emprendimiento",
     "capital": "Capital económico / Capital humano",
     "modalidad_aplicable": "Individual / Colectivo",
     "ruta_original": "Mixta / según ruta de negociación",
@@ -207,7 +207,7 @@ CATALOGO_PREGUNTAS_26 = [
   {
     "id_pregunta": "PRMV26-008",
     "id_componente": "COMP-1123",
-    "componente_prmv": "11.2.3 · Capacitación y asistencia técnica para la producción y el emprendimiento",
+    "componente_prmv": "Capacitación y asistencia técnica para la producción y el emprendimiento",
     "capital": "Capital económico / Capital humano",
     "modalidad_aplicable": "Individual / Colectivo",
     "ruta_original": "Mixta / actividad programada",
@@ -231,7 +231,7 @@ CATALOGO_PREGUNTAS_26 = [
   {
     "id_pregunta": "PRMV26-009",
     "id_componente": "COMP-1123",
-    "componente_prmv": "11.2.3 · Capacitación y asistencia técnica para la producción y el emprendimiento",
+    "componente_prmv": "Capacitación y asistencia técnica para la producción y el emprendimiento",
     "capital": "Capital económico / Capital humano",
     "modalidad_aplicable": "Individual / Colectivo",
     "ruta_original": "Mixta / asistencia técnica",
@@ -255,7 +255,7 @@ CATALOGO_PREGUNTAS_26 = [
   {
     "id_pregunta": "PRMV26-010",
     "id_componente": "COMP-1124",
-    "componente_prmv": "11.2.4 · Establecimiento de huertas caseras",
+    "componente_prmv": "Establecimiento de huertas caseras",
     "capital": "Capital económico / Capital natural",
     "modalidad_aplicable": "Colectivo",
     "ruta_original": "Colectiva / vivienda de reposición rural",
@@ -279,7 +279,7 @@ CATALOGO_PREGUNTAS_26 = [
   {
     "id_pregunta": "PRMV26-011",
     "id_componente": "COMP-1125",
-    "componente_prmv": "11.2.5 · Formación para el trabajo e información para el empleo",
+    "componente_prmv": "Formación para el trabajo e información para el empleo",
     "capital": "Capital económico / Capital humano",
     "modalidad_aplicable": "Individual / Colectivo",
     "ruta_original": "Mixta / información y empleo",
@@ -303,7 +303,7 @@ CATALOGO_PREGUNTAS_26 = [
   {
     "id_pregunta": "PRMV26-012",
     "id_componente": "COMP-1125",
-    "componente_prmv": "11.2.5 · Formación para el trabajo e información para el empleo",
+    "componente_prmv": "Formación para el trabajo e información para el empleo",
     "capital": "Capital económico / Capital humano",
     "modalidad_aplicable": "Individual / Colectivo",
     "ruta_original": "Mixta / formación laboral",
@@ -327,7 +327,7 @@ CATALOGO_PREGUNTAS_26 = [
   {
     "id_pregunta": "PRMV26-013",
     "id_componente": "COMP-1125",
-    "componente_prmv": "11.2.5 · Formación para el trabajo e información para el empleo",
+    "componente_prmv": "Formación para el trabajo e información para el empleo",
     "capital": "Capital económico / Capital humano",
     "modalidad_aplicable": "Individual / Colectivo",
     "ruta_original": "Mixta / inserción laboral",
@@ -351,7 +351,7 @@ CATALOGO_PREGUNTAS_26 = [
   {
     "id_pregunta": "PRMV26-014",
     "id_componente": "COMP-1126",
-    "componente_prmv": "11.2.6 · Acompañamiento psicosocial",
+    "componente_prmv": "Acompañamiento psicosocial",
     "capital": "Capital humano",
     "modalidad_aplicable": "Individual / Colectivo",
     "ruta_original": "Mixta / transversal",
@@ -375,7 +375,7 @@ CATALOGO_PREGUNTAS_26 = [
   {
     "id_pregunta": "PRMV26-015",
     "id_componente": "COMP-1126",
-    "componente_prmv": "11.2.6 · Acompañamiento psicosocial",
+    "componente_prmv": "Acompañamiento psicosocial",
     "capital": "Capital humano",
     "modalidad_aplicable": "Individual / Colectivo",
     "ruta_original": "Mixta / acompañamiento psicosocial",
@@ -399,7 +399,7 @@ CATALOGO_PREGUNTAS_26 = [
   {
     "id_pregunta": "PRMV26-016",
     "id_componente": "COMP-1126",
-    "componente_prmv": "11.2.6 · Acompañamiento psicosocial",
+    "componente_prmv": "Acompañamiento psicosocial",
     "capital": "Capital humano",
     "modalidad_aplicable": "Individual / Colectivo",
     "ruta_original": "Mixta / acompañamiento psicosocial",
@@ -423,7 +423,7 @@ CATALOGO_PREGUNTAS_26 = [
   {
     "id_pregunta": "PRMV26-017",
     "id_componente": "COMP-1126",
-    "componente_prmv": "11.2.6 · Acompañamiento psicosocial",
+    "componente_prmv": "Acompañamiento psicosocial",
     "capital": "Capital humano",
     "modalidad_aplicable": "Individual / Colectivo",
     "ruta_original": "Mixta / seguimiento postraslado",
@@ -447,7 +447,7 @@ CATALOGO_PREGUNTAS_26 = [
   {
     "id_pregunta": "PRMV26-018",
     "id_componente": "COMP-1127",
-    "componente_prmv": "11.2.7 · Enfoque de género",
+    "componente_prmv": "Enfoque de género",
     "capital": "Capital social / Capital humano",
     "modalidad_aplicable": "Individual / Colectivo",
     "ruta_original": "Mixta / enfoque de género",
@@ -471,7 +471,7 @@ CATALOGO_PREGUNTAS_26 = [
   {
     "id_pregunta": "PRMV26-019",
     "id_componente": "COMP-1127",
-    "componente_prmv": "11.2.7 · Enfoque de género",
+    "componente_prmv": "Enfoque de género",
     "capital": "Capital social / Capital humano",
     "modalidad_aplicable": "Individual / Colectivo",
     "ruta_original": "Mixta / enfoque de género y medios de vida",
@@ -495,7 +495,7 @@ CATALOGO_PREGUNTAS_26 = [
   {
     "id_pregunta": "PRMV26-020",
     "id_componente": "COMP-1127",
-    "componente_prmv": "11.2.7 · Enfoque de género",
+    "componente_prmv": "Enfoque de género",
     "capital": "Capital social / Capital humano",
     "modalidad_aplicable": "Individual / Colectivo",
     "ruta_original": "Mixta / enfoque de género",
@@ -519,7 +519,7 @@ CATALOGO_PREGUNTAS_26 = [
   {
     "id_pregunta": "PRMV26-021",
     "id_componente": "COMP-1127",
-    "componente_prmv": "11.2.7 · Enfoque de género",
+    "componente_prmv": "Enfoque de género",
     "capital": "Capital social / Capital humano",
     "modalidad_aplicable": "Individual / Colectivo",
     "ruta_original": "Mixta / liderazgo y participación",
@@ -543,7 +543,7 @@ CATALOGO_PREGUNTAS_26 = [
   {
     "id_pregunta": "PRMV26-022",
     "id_componente": "COMP-1127",
-    "componente_prmv": "11.2.7 · Enfoque de género",
+    "componente_prmv": "Enfoque de género",
     "capital": "Capital social / Capital humano",
     "modalidad_aplicable": "Individual / Colectivo",
     "ruta_original": "Mixta / formación y participación",
@@ -567,7 +567,7 @@ CATALOGO_PREGUNTAS_26 = [
   {
     "id_pregunta": "PRMV26-023",
     "id_componente": "COMP-1128",
-    "componente_prmv": "11.2.8 · Orientación y acompañamiento para el acceso a programas de protección social y productivos",
+    "componente_prmv": "Orientación y acompañamiento para el acceso a programas de protección social y productivos",
     "capital": "Capital humano",
     "modalidad_aplicable": "Individual / Colectivo",
     "ruta_original": "Mixta / protección social",
@@ -591,7 +591,7 @@ CATALOGO_PREGUNTAS_26 = [
   {
     "id_pregunta": "PRMV26-024",
     "id_componente": "COMP-1128",
-    "componente_prmv": "11.2.8 · Orientación y acompañamiento para el acceso a programas de protección social y productivos",
+    "componente_prmv": "Orientación y acompañamiento para el acceso a programas de protección social y productivos",
     "capital": "Capital humano",
     "modalidad_aplicable": "Individual / Colectivo",
     "ruta_original": "Mixta / protección social",
@@ -615,7 +615,7 @@ CATALOGO_PREGUNTAS_26 = [
   {
     "id_pregunta": "PRMV26-025",
     "id_componente": "COMP-1128",
-    "componente_prmv": "11.2.8 · Orientación y acompañamiento para el acceso a programas de protección social y productivos",
+    "componente_prmv": "Orientación y acompañamiento para el acceso a programas de protección social y productivos",
     "capital": "Capital humano",
     "modalidad_aplicable": "Individual / Colectivo",
     "ruta_original": "Mixta / protección social",
@@ -639,7 +639,7 @@ CATALOGO_PREGUNTAS_26 = [
   {
     "id_pregunta": "PRMV26-026",
     "id_componente": "COMP-1128",
-    "componente_prmv": "11.2.8 · Orientación y acompañamiento para el acceso a programas de protección social y productivos",
+    "componente_prmv": "Orientación y acompañamiento para el acceso a programas de protección social y productivos",
     "capital": "Capital humano",
     "modalidad_aplicable": "Individual / Colectivo",
     "ruta_original": "Mixta / protección social",
@@ -664,7 +664,7 @@ CATALOGO_PREGUNTAS_26 = [
 CATALOGO_COMPONENTES_PRMV = [
   {
     "id_componente": "COMP-1121",
-    "componente_prmv": "11.2.1 · Restablecimiento de actividades económicas",
+    "componente_prmv": "Restablecimiento de actividades económicas",
     "modalidades_presentes": "Individual / Colectivo",
     "preguntas_asociadas": "3",
     "capitales": "Capital económico",
@@ -673,7 +673,7 @@ CATALOGO_COMPONENTES_PRMV = [
   },
   {
     "id_componente": "COMP-1122",
-    "componente_prmv": "11.2.2 · Fortalecimiento de organizaciones productivas comunitarias",
+    "componente_prmv": "Fortalecimiento de organizaciones productivas comunitarias",
     "modalidades_presentes": "Colectivo",
     "preguntas_asociadas": "3",
     "capitales": "Capital social",
@@ -682,7 +682,7 @@ CATALOGO_COMPONENTES_PRMV = [
   },
   {
     "id_componente": "COMP-1123",
-    "componente_prmv": "11.2.3 · Capacitación y asistencia técnica para la producción y el emprendimiento",
+    "componente_prmv": "Capacitación y asistencia técnica para la producción y el emprendimiento",
     "modalidades_presentes": "Individual / Colectivo",
     "preguntas_asociadas": "3",
     "capitales": "Capital económico / Capital humano",
@@ -691,7 +691,7 @@ CATALOGO_COMPONENTES_PRMV = [
   },
   {
     "id_componente": "COMP-1124",
-    "componente_prmv": "11.2.4 · Establecimiento de huertas caseras",
+    "componente_prmv": "Establecimiento de huertas caseras",
     "modalidades_presentes": "Colectivo",
     "preguntas_asociadas": "1",
     "capitales": "Capital económico / Capital natural",
@@ -700,7 +700,7 @@ CATALOGO_COMPONENTES_PRMV = [
   },
   {
     "id_componente": "COMP-1125",
-    "componente_prmv": "11.2.5 · Formación para el trabajo e información para el empleo",
+    "componente_prmv": "Formación para el trabajo e información para el empleo",
     "modalidades_presentes": "Individual / Colectivo",
     "preguntas_asociadas": "3",
     "capitales": "Capital económico / Capital humano",
@@ -709,7 +709,7 @@ CATALOGO_COMPONENTES_PRMV = [
   },
   {
     "id_componente": "COMP-1126",
-    "componente_prmv": "11.2.6 · Acompañamiento psicosocial",
+    "componente_prmv": "Acompañamiento psicosocial",
     "modalidades_presentes": "Individual / Colectivo",
     "preguntas_asociadas": "4",
     "capitales": "Capital humano",
@@ -718,7 +718,7 @@ CATALOGO_COMPONENTES_PRMV = [
   },
   {
     "id_componente": "COMP-1127",
-    "componente_prmv": "11.2.7 · Enfoque de género",
+    "componente_prmv": "Enfoque de género",
     "modalidades_presentes": "Individual / Colectivo",
     "preguntas_asociadas": "5",
     "capitales": "Capital social / Capital humano",
@@ -727,7 +727,7 @@ CATALOGO_COMPONENTES_PRMV = [
   },
   {
     "id_componente": "COMP-1128",
-    "componente_prmv": "11.2.8 · Orientación y acompañamiento para el acceso a programas de protección social y productivos",
+    "componente_prmv": "Orientación y acompañamiento para el acceso a programas de protección social y productivos",
     "modalidades_presentes": "Individual / Colectivo",
     "preguntas_asociadas": "4",
     "capitales": "Capital humano",
@@ -738,9 +738,9 @@ CATALOGO_COMPONENTES_PRMV = [
 PROYECTOS_BASE_PRMV = [
   {
     "id_proyecto": "PROY-001",
-    "nombre_proyecto": "Proyecto asociado a 11.2.1",
+    "nombre_proyecto": "Restablecimiento de actividades económicas",
     "id_componente": "COMP-1121",
-    "componente_prmv": "11.2.1 · Restablecimiento de actividades económicas",
+    "componente_prmv": "Restablecimiento de actividades económicas",
     "activo": True,
     "editable_usuario": True,
     "observaciones": "Registro demo; en la app debe poder agregarse, desactivarse o modificarse.",
@@ -749,9 +749,9 @@ PROYECTOS_BASE_PRMV = [
   },
   {
     "id_proyecto": "PROY-002",
-    "nombre_proyecto": "Proyecto asociado a 11.2.2",
+    "nombre_proyecto": "Fortalecimiento de organizaciones productivas comunitarias",
     "id_componente": "COMP-1122",
-    "componente_prmv": "11.2.2 · Fortalecimiento de organizaciones productivas comunitarias",
+    "componente_prmv": "Fortalecimiento de organizaciones productivas comunitarias",
     "activo": True,
     "editable_usuario": True,
     "observaciones": "Registro demo; en la app debe poder agregarse, desactivarse o modificarse.",
@@ -760,9 +760,9 @@ PROYECTOS_BASE_PRMV = [
   },
   {
     "id_proyecto": "PROY-003",
-    "nombre_proyecto": "Proyecto asociado a 11.2.3",
+    "nombre_proyecto": "Capacitación y asistencia técnica para la producción y el emprendimiento",
     "id_componente": "COMP-1123",
-    "componente_prmv": "11.2.3 · Capacitación y asistencia técnica para la producción y el emprendimiento",
+    "componente_prmv": "Capacitación y asistencia técnica para la producción y el emprendimiento",
     "activo": True,
     "editable_usuario": True,
     "observaciones": "Registro demo; en la app debe poder agregarse, desactivarse o modificarse.",
@@ -771,9 +771,9 @@ PROYECTOS_BASE_PRMV = [
   },
   {
     "id_proyecto": "PROY-004",
-    "nombre_proyecto": "Proyecto asociado a 11.2.4",
+    "nombre_proyecto": "Establecimiento de huertas caseras",
     "id_componente": "COMP-1124",
-    "componente_prmv": "11.2.4 · Establecimiento de huertas caseras",
+    "componente_prmv": "Establecimiento de huertas caseras",
     "activo": True,
     "editable_usuario": True,
     "observaciones": "Registro demo; en la app debe poder agregarse, desactivarse o modificarse.",
@@ -782,9 +782,9 @@ PROYECTOS_BASE_PRMV = [
   },
   {
     "id_proyecto": "PROY-005",
-    "nombre_proyecto": "Proyecto asociado a 11.2.5",
+    "nombre_proyecto": "Formación para el trabajo e información para el empleo",
     "id_componente": "COMP-1125",
-    "componente_prmv": "11.2.5 · Formación para el trabajo e información para el empleo",
+    "componente_prmv": "Formación para el trabajo e información para el empleo",
     "activo": True,
     "editable_usuario": True,
     "observaciones": "Registro demo; en la app debe poder agregarse, desactivarse o modificarse.",
@@ -793,9 +793,9 @@ PROYECTOS_BASE_PRMV = [
   },
   {
     "id_proyecto": "PROY-006",
-    "nombre_proyecto": "Proyecto asociado a 11.2.6",
+    "nombre_proyecto": "Acompañamiento psicosocial",
     "id_componente": "COMP-1126",
-    "componente_prmv": "11.2.6 · Acompañamiento psicosocial",
+    "componente_prmv": "Acompañamiento psicosocial",
     "activo": True,
     "editable_usuario": True,
     "observaciones": "Registro demo; en la app debe poder agregarse, desactivarse o modificarse.",
@@ -804,9 +804,9 @@ PROYECTOS_BASE_PRMV = [
   },
   {
     "id_proyecto": "PROY-007",
-    "nombre_proyecto": "Proyecto asociado a 11.2.7",
+    "nombre_proyecto": "Enfoque de género",
     "id_componente": "COMP-1127",
-    "componente_prmv": "11.2.7 · Enfoque de género",
+    "componente_prmv": "Enfoque de género",
     "activo": True,
     "editable_usuario": True,
     "observaciones": "Registro demo; en la app debe poder agregarse, desactivarse o modificarse.",
@@ -815,9 +815,9 @@ PROYECTOS_BASE_PRMV = [
   },
   {
     "id_proyecto": "PROY-008",
-    "nombre_proyecto": "Proyecto asociado a 11.2.8",
+    "nombre_proyecto": "Orientación y acompañamiento para el acceso a programas de protección social y productivos",
     "id_componente": "COMP-1128",
-    "componente_prmv": "11.2.8 · Orientación y acompañamiento para el acceso a programas de protección social y productivos",
+    "componente_prmv": "Orientación y acompañamiento para el acceso a programas de protección social y productivos",
     "activo": True,
     "editable_usuario": True,
     "observaciones": "Registro demo; en la app debe poder agregarse, desactivarse o modificarse.",
@@ -861,6 +861,16 @@ HOGARES_M01_DEMO = [
     {"id_hogar": "HOG-0006", "codigo_hogar_campo": "FAM-006", "nombre_referencia_hogar": "Familia Castro", "id_lugar_poblado": "COM-0002", "comunidad": "La Esperanza", "zona": "Zona 2", "tipo_afectacion": "Mixta", "estado_residencia": "Censado"},
     {"id_hogar": "HOG-0007", "codigo_hogar_campo": "FAM-007", "nombre_referencia_hogar": "Familia Morales", "id_lugar_poblado": "COM-0005", "comunidad": "Las Palmas", "zona": "Zona 3", "tipo_afectacion": "Económica", "estado_residencia": "No censado"},
     {"id_hogar": "HOG-0008", "codigo_hogar_campo": "FAM-008", "nombre_referencia_hogar": "Familia Herrera", "id_lugar_poblado": "COM-0003", "comunidad": "Nuevo Horizonte", "zona": "Zona 2", "tipo_afectacion": "Vivienda y terreno", "estado_residencia": "Censado"},
+]
+PREDIOS_M05_DEMO = [
+    {"id_predio": "PRE-0001", "nombre_predio": "Predio El Roble 01", "id_hogar": "HOG-0001", "id_lugar_poblado": "COM-0001", "comunidad": "El Roble", "zona": "Zona 1", "uso_principal": "Vivienda y producción"},
+    {"id_predio": "PRE-0002", "nombre_predio": "Predio La Esperanza 02", "id_hogar": "HOG-0002", "id_lugar_poblado": "COM-0002", "comunidad": "La Esperanza", "zona": "Zona 1", "uso_principal": "Comunitario / productivo"},
+    {"id_predio": "PRE-0003", "nombre_predio": "Predio Nuevo Horizonte 03", "id_hogar": "HOG-0003", "id_lugar_poblado": "COM-0003", "comunidad": "Nuevo Horizonte", "zona": "Zona 2", "uso_principal": "Productivo"},
+    {"id_predio": "PRE-0004", "nombre_predio": "Predio El Roble 04", "id_hogar": "HOG-0004", "id_lugar_poblado": "COM-0001", "comunidad": "El Roble", "zona": "Zona 1", "uso_principal": "Vivienda"},
+    {"id_predio": "PRE-0005", "nombre_predio": "Predio Santa Clara 05", "id_hogar": "HOG-0005", "id_lugar_poblado": "COM-0004", "comunidad": "Santa Clara", "zona": "Zona 3", "uso_principal": "Productivo"},
+    {"id_predio": "PRE-0006", "nombre_predio": "Predio La Esperanza 06", "id_hogar": "HOG-0006", "id_lugar_poblado": "COM-0002", "comunidad": "La Esperanza", "zona": "Zona 2", "uso_principal": "Mixto"},
+    {"id_predio": "PRE-0007", "nombre_predio": "Predio Las Palmas 07", "id_hogar": "HOG-0007", "id_lugar_poblado": "COM-0005", "comunidad": "Las Palmas", "zona": "Zona 3", "uso_principal": "Económico"},
+    {"id_predio": "PRE-0008", "nombre_predio": "Predio Nuevo Horizonte 08", "id_hogar": "HOG-0008", "id_lugar_poblado": "COM-0003", "comunidad": "Nuevo Horizonte", "zona": "Zona 2", "uso_principal": "Vivienda y terreno"},
 ]
 
 PERSONAS_M01_DEMO = [
@@ -910,8 +920,8 @@ def aplicar_estilos():
 
 
 def encabezado():
-    st.markdown('<div class="main-title">Módulo PRMV · 26 indicadores por proyecto y modalidad</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-title">Beta funcional con clasificación de familias, componentes/proyectos dinámicos y preguntas oficiales PRMV 26.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">Módulo PRMV · 26 indicadores por proyecto, predio y modalidad</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-title">Beta funcional con clasificación de familias, proyectos desde columna C, predios vinculados y preguntas oficiales PRMV 26.</div>', unsafe_allow_html=True)
 
 
 def normalizar(valor):
@@ -1051,6 +1061,8 @@ def crear_data_simulada():
                 'fecha_medicion': fecha_med.isoformat(),
                 'fecha_registro': (fecha_med + timedelta(days=1)).isoformat() + ' 09:00:00',
                 'registrado_por': USUARIO_PROTOTIPO,
+                'id_predio': next((p['id_predio'] for p in PREDIOS_M05_DEMO if p['id_hogar']==fam['id_hogar']), ''),
+                'nombre_predio': next((p['nombre_predio'] for p in PREDIOS_M05_DEMO if p['id_hogar']==fam['id_hogar']), ''),
                 'observacion_general': 'Registro simulado para pruebas de histórico.',
             })
             for _, q in qs.head(2).iterrows():
@@ -1066,6 +1078,8 @@ def crear_data_simulada():
                     'tipo_sujeto': 'Familia',
                     'id_sujeto': fam['id_hogar'],
                     'nombre_sujeto': fam['nombre_referencia_hogar'],
+                    'id_predio': next((p['id_predio'] for p in PREDIOS_M05_DEMO if p['id_hogar']==fam['id_hogar']), ''),
+                    'nombre_predio': next((p['nombre_predio'] for p in PREDIOS_M05_DEMO if p['id_hogar']==fam['id_hogar']), ''),
                     'indicador_oficial': q['indicador_oficial'],
                     'pregunta_visible': q['pregunta_visible'],
                     'resultado_obtenido': 'Sí' if (i + len(respuestas)) % 3 != 0 else 'No',
@@ -1111,16 +1125,41 @@ def resetear_memoria():
 
 
 def etiqueta_proyecto(p):
-    estado = 'Activo' if p.get('activo', True) else 'Inactivo'
-    return f"{p.get('id_proyecto')} · {p.get('nombre_proyecto')} · {p.get('id_componente')} · {estado}"
+    # Los proyectos PRMV salen de la columna C del Excel validado.
+    # Se muestra solo el texto del proyecto/componente, sin numeración.
+    return f"{p.get('nombre_proyecto')}"
 
 
 def etiqueta_componente(c):
-    return f"{c.get('id_componente')} · {c.get('componente_prmv')}"
+    return f"{c.get('componente_prmv')}"
 
 
 def proyectos_por_componente(id_componente, solo_activos=True):
     return [p for p in st.session_state.proyectos_prmv if p.get('id_componente') == id_componente and (p.get('activo', True) or not solo_activos)]
+
+
+def proyecto_por_id(id_proyecto):
+    return next((p for p in st.session_state.proyectos_prmv if p.get('id_proyecto') == id_proyecto), None)
+
+
+def predio_label(p):
+    return f"{p.get('id_predio')} · {p.get('nombre_predio')} · Hogar: {p.get('id_hogar')} · Comunidad: {p.get('comunidad')}"
+
+
+def predios_por_filtros(modalidad=None, id_proyecto=None, id_componente=None):
+    familias = st.session_state.get('familias_prmv', [])
+    ids_hogar = set()
+    for f in familias:
+        if modalidad and f.get('modalidad_prmv') != modalidad:
+            continue
+        if id_proyecto and id_proyecto not in f.get('proyectos_ids', []):
+            continue
+        if id_componente and id_componente not in f.get('componentes_ids', []):
+            continue
+        ids_hogar.add(f.get('id_hogar'))
+    if not ids_hogar:
+        return []
+    return [p for p in PREDIOS_M05_DEMO if p.get('id_hogar') in ids_hogar]
 
 
 def sujeto_label(s):
@@ -1140,14 +1179,28 @@ def preguntas_filtradas(id_componente, modalidad, capital=None, tipo_sujeto=None
     return df.copy()
 
 
-def obtener_sujetos(tipo_sujeto, id_componente, id_proyecto, modalidad):
+def obtener_sujetos(tipo_sujeto, id_componente, id_proyecto, modalidad, predio=None):
+    """Devuelve sujetos simulados vinculados al predio seleccionado.
+
+    Integración futura:
+    - El predio debe leerse desde M05.predios.id_predio.
+    - El vínculo familia/predio se resuelve por predios.id_hogar -> M01.hogares.id_hogar.
+    - Personas se resuelven por M01.personas.id_hogar.
+    - Comunidad/OBC/interacciones se filtran por predios.id_lugar_poblado.
+    """
     sujetos=[]
+    id_hogar_predio = predio.get('id_hogar') if predio else None
+    id_lugar_predio = predio.get('id_lugar_poblado') if predio else None
+    id_predio = predio.get('id_predio') if predio else ''
+    nombre_predio = predio.get('nombre_predio') if predio else ''
+
     if tipo_sujeto == 'Familia':
         for f in st.session_state.familias_prmv:
             if modalidad and f.get('modalidad_prmv') != modalidad: continue
             if id_proyecto and id_proyecto not in f.get('proyectos_ids', []): continue
             if id_componente and id_componente not in f.get('componentes_ids', []): continue
-            sujetos.append({'id_sujeto': f['id_hogar'], 'nombre_sujeto': f['nombre_referencia_hogar'], 'modalidad_prmv': f['modalidad_prmv'], 'proyectos_ids': f.get('proyectos_ids', []), 'componentes_ids': f.get('componentes_ids', []), 'zona': f.get('zona',''), 'comunidad': f.get('comunidad',''), 'tabla_origen': 'M01.hogares', 'pk_origen': 'id_hogar'})
+            if id_hogar_predio and f.get('id_hogar') != id_hogar_predio: continue
+            sujetos.append({'id_sujeto': f['id_hogar'], 'nombre_sujeto': f['nombre_referencia_hogar'], 'modalidad_prmv': f['modalidad_prmv'], 'proyectos_ids': f.get('proyectos_ids', []), 'componentes_ids': f.get('componentes_ids', []), 'zona': f.get('zona',''), 'comunidad': f.get('comunidad',''), 'tabla_origen': 'M01.hogares', 'pk_origen': 'id_hogar', 'id_hogar': f['id_hogar'], 'id_predio': id_predio, 'nombre_predio': nombre_predio})
     elif tipo_sujeto == 'Persona':
         fams = {f['id_hogar']: f for f in st.session_state.familias_prmv}
         for p in PERSONAS_M01_DEMO:
@@ -1156,16 +1209,17 @@ def obtener_sujetos(tipo_sujeto, id_componente, id_proyecto, modalidad):
             if modalidad and fam.get('modalidad_prmv') != modalidad: continue
             if id_proyecto and id_proyecto not in fam.get('proyectos_ids', []): continue
             if id_componente and id_componente not in fam.get('componentes_ids', []): continue
-            sujetos.append({'id_sujeto': p['id_persona'], 'nombre_sujeto': p['nombre'], 'modalidad_prmv': fam.get('modalidad_prmv'), 'proyectos_ids': fam.get('proyectos_ids', []), 'componentes_ids': fam.get('componentes_ids', []), 'zona': fam.get('zona',''), 'comunidad': fam.get('comunidad',''), 'tabla_origen': 'M01.personas', 'pk_origen': 'id_persona', 'id_hogar': p['id_hogar']})
+            if id_hogar_predio and p.get('id_hogar') != id_hogar_predio: continue
+            sujetos.append({'id_sujeto': p['id_persona'], 'nombre_sujeto': p['nombre'], 'modalidad_prmv': fam.get('modalidad_prmv'), 'proyectos_ids': fam.get('proyectos_ids', []), 'componentes_ids': fam.get('componentes_ids', []), 'zona': fam.get('zona',''), 'comunidad': fam.get('comunidad',''), 'tabla_origen': 'M01.personas', 'pk_origen': 'id_persona', 'id_hogar': p['id_hogar'], 'id_predio': id_predio, 'nombre_predio': nombre_predio})
     elif tipo_sujeto == 'Organización comunitaria / OBC':
-        base = OBC_DEMO; tabla='Módulo comunitario/OBC'; pk='id_organizacion/id_actor'
-        for s in base:
+        for s in OBC_DEMO:
             if modalidad and s.get('modalidad_prmv') != modalidad: continue
             if id_proyecto and id_proyecto not in s.get('proyectos_ids', []): continue
             if id_componente:
                 pids=[p['id_proyecto'] for p in st.session_state.proyectos_prmv if p.get('id_componente')==id_componente]
                 if not set(pids).intersection(s.get('proyectos_ids', [])): continue
-            d=s.copy(); d['tabla_origen']=tabla; d['pk_origen']=pk; sujetos.append(d)
+            if id_lugar_predio and s.get('id_lugar_poblado') != id_lugar_predio: continue
+            d=s.copy(); d['tabla_origen']='Módulo comunitario/OBC'; d['pk_origen']='id_organizacion/id_actor'; d['id_predio']=id_predio; d['nombre_predio']=nombre_predio; sujetos.append(d)
     elif tipo_sujeto == 'Actividad / visita / interacción':
         for s in INTERACCIONES_DEMO:
             if modalidad and s.get('modalidad_prmv') != modalidad: continue
@@ -1173,7 +1227,8 @@ def obtener_sujetos(tipo_sujeto, id_componente, id_proyecto, modalidad):
             if id_componente:
                 pids=[p['id_proyecto'] for p in st.session_state.proyectos_prmv if p.get('id_componente')==id_componente]
                 if not set(pids).intersection(s.get('proyectos_ids', [])): continue
-            d=s.copy(); d['tabla_origen']='M02.interacciones'; d['pk_origen']='id_interaccion'; sujetos.append(d)
+            if id_lugar_predio and s.get('id_lugar_poblado') != id_lugar_predio: continue
+            d=s.copy(); d['tabla_origen']='M02.interacciones'; d['pk_origen']='id_interaccion'; d['id_predio']=id_predio; d['nombre_predio']=nombre_predio; sujetos.append(d)
     elif tipo_sujeto == 'Comunidad / lugar poblado':
         for s in COMUNIDADES_DEMO:
             if modalidad and s.get('modalidad_prmv') != modalidad: continue
@@ -1181,8 +1236,10 @@ def obtener_sujetos(tipo_sujeto, id_componente, id_proyecto, modalidad):
             if id_componente:
                 pids=[p['id_proyecto'] for p in st.session_state.proyectos_prmv if p.get('id_componente')==id_componente]
                 if not set(pids).intersection(s.get('proyectos_ids', [])): continue
-            d=s.copy(); d['tabla_origen']='M01.lugares_poblados'; d['pk_origen']='id_lugar_poblado'; sujetos.append(d)
+            if id_lugar_predio and s.get('id_lugar_poblado') != id_lugar_predio: continue
+            d=s.copy(); d['tabla_origen']='M01.lugares_poblados'; d['pk_origen']='id_lugar_poblado'; d['id_predio']=id_predio; d['nombre_predio']=nombre_predio; sujetos.append(d)
     return sujetos
+
 
 
 def notificar(tipo, msg):
@@ -1193,58 +1250,43 @@ def mostrar_info_sujeto(sujeto):
     st.markdown('<div class="subject-card">', unsafe_allow_html=True)
     st.markdown(f'<div class="subject-kicker">Sujeto seleccionado · {escape(str(sujeto.get("tabla_origen", "fuente beta")))}</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="subject-name">{escape(sujeto.get("id_sujeto", ""))} · {escape(sujeto.get("nombre_sujeto", ""))}</div>', unsafe_allow_html=True)
-    chips = [f"Modalidad: {sujeto.get('modalidad_prmv','')}", f"Zona: {sujeto.get('zona','')}", f"Comunidad: {sujeto.get('comunidad','')}", f"PK: {sujeto.get('pk_origen','')}"]
+    chips = [
+        f"Predio: {sujeto.get('id_predio','')}",
+        f"Modalidad: {sujeto.get('modalidad_prmv','')}",
+        f"Zona: {sujeto.get('zona','')}",
+        f"Comunidad: {sujeto.get('comunidad','')}",
+        f"PK: {sujeto.get('pk_origen','')}",
+    ]
     st.markdown(''.join([f'<span class="chip chip-blue">{escape(c)}</span>' for c in chips if c and not c.endswith(': ')]), unsafe_allow_html=True)
+    if sujeto.get('nombre_predio'):
+        st.caption('Predio seleccionado: ' + str(sujeto.get('nombre_predio')))
     st.markdown('</div>', unsafe_allow_html=True)
 
 
+
 def mostrar_proyectos_componentes():
-    st.markdown('<div class="section-title">Proyecto / componentes PRMV</div>', unsafe_allow_html=True)
-    st.markdown('<div class="hint-box">Administra el catálogo dinámico de proyectos. Cada proyecto se asocia a un componente PRMV. Los componentes vienen de las 26 preguntas.</div>', unsafe_allow_html=True)
+    # Pantalla no incluida en el menú. Se conserva solo como referencia técnica.
+    st.markdown('<div class="section-title">Catálogo de proyectos PRMV</div>', unsafe_allow_html=True)
+    st.markdown('<div class="hint-box">Los proyectos PRMV salen de la columna C del Excel validado. En esta versión no se agregan ni editan manualmente.</div>', unsafe_allow_html=True)
     dfp = proyectos_df()
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric('Proyectos totales', len(dfp))
-    c2.metric('Activos', int(dfp['activo'].sum()) if not dfp.empty and 'activo' in dfp else 0)
-    c3.metric('Componentes', len(CATALOGO_COMPONENTES_PRMV))
-    c4.metric('Preguntas PRMV', len(CATALOGO_PREGUNTAS_26))
-    with st.expander('Agregar nuevo proyecto', expanded=False):
-        with st.form('form_nuevo_proyecto'):
-            nombre = st.text_input('Nombre del proyecto *')
-            comp_labels = [etiqueta_componente(c) for c in CATALOGO_COMPONENTES_PRMV]
-            comp_sel = st.selectbox('Componente PRMV asociado *', comp_labels)
-            activo = st.checkbox('Proyecto activo', value=True)
-            obs = st.text_area('Observaciones')
-            if st.form_submit_button('Guardar proyecto'):
-                if not nombre.strip():
-                    notificar('error', 'Debes escribir el nombre del proyecto.')
-                else:
-                    comp = CATALOGO_COMPONENTES_PRMV[comp_labels.index(comp_sel)]
-                    nuevo = {'id_proyecto': f"PROY-{len(st.session_state.proyectos_prmv)+1:03d}", 'nombre_proyecto': nombre.strip(), 'id_componente': comp['id_componente'], 'componente_prmv': comp['componente_prmv'], 'activo': activo, 'editable_usuario': True, 'observaciones': obs.strip(), 'fecha_creacion': date.today().isoformat(), 'creado_por': st.session_state.usuario}
-                    st.session_state.proyectos_prmv.append(nuevo); guardar_memoria(); notificar('ok', 'Proyecto agregado correctamente.'); st.rerun()
-    with st.expander('Activar / desactivar proyecto', expanded=False):
-        if st.session_state.proyectos_prmv:
-            labels=[etiqueta_proyecto(p) for p in st.session_state.proyectos_prmv]
-            sel=st.selectbox('Proyecto', labels)
-            idx=labels.index(sel); actual=st.session_state.proyectos_prmv[idx]
-            nuevo_estado=st.checkbox('Activo', value=bool(actual.get('activo', True)), key='estado_proyecto_toggle')
-            nueva_obs=st.text_area('Observaciones del proyecto', value=actual.get('observaciones',''))
-            if st.button('Actualizar proyecto'):
-                st.session_state.proyectos_prmv[idx]['activo']=nuevo_estado; st.session_state.proyectos_prmv[idx]['observaciones']=nueva_obs; guardar_memoria(); notificar('ok','Proyecto actualizado.'); st.rerun()
-    st.dataframe(dfp, use_container_width=True, hide_index=True)
+    cols = ['id_proyecto', 'nombre_proyecto', 'activo', 'fecha_creacion', 'creado_por']
+    cols = [c for c in cols if c in dfp.columns]
+    st.dataframe(dfp[cols], use_container_width=True, hide_index=True)
+
 
 
 def mostrar_clasificacion_familias():
     st.markdown('<div class="section-title">Clasificación de familias PRMV</div>', unsafe_allow_html=True)
-    st.markdown('<div class="hint-box">Selecciona hogares simulados desde M01.hogares, asigna modalidad PRMV fija y marca uno o varios proyectos/componentes. Esta capa controla qué preguntas aparecen después.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="hint-box">Selecciona hogares simulados desde M01.hogares, asigna modalidad PRMV fija y marca uno o varios proyectos PRMV de la columna C del Excel. Esta capa controla qué preguntas aparecen después.</div>', unsafe_allow_html=True)
     hogares_labels = [f"{h['id_hogar']} · {h['nombre_referencia_hogar']} · {h['comunidad']} · {h['zona']}" for h in HOGARES_M01_DEMO]
     with st.form('form_clasificacion_familia'):
         col1, col2 = st.columns([2,1])
         hogar_sel = col1.selectbox('Hogar M01 *', hogares_labels, index=None, placeholder='Selecciona un hogar...')
         modalidad = col2.radio('Modalidad PRMV *', MODALIDADES_PRMV, horizontal=True)
-        st.markdown('**Proyectos asociados al hogar / familia**')
+        st.markdown('**Proyectos PRMV asociados al hogar / familia**')
         proyecto_ids=[]; activos=lista_proyectos_activos(); cols=st.columns(2)
         for i,p in enumerate(activos):
-            label=f"{p['id_proyecto']} · {p['nombre_proyecto']}\n{p['id_componente']} · {p['componente_prmv']}"
+            label=f"{p['nombre_proyecto']}"
             if cols[i%2].checkbox(label, key=f"chk_clas_{p['id_proyecto']}"):
                 proyecto_ids.append(p['id_proyecto'])
         obs=st.text_area('Observaciones de clasificación')
@@ -1260,44 +1302,57 @@ def mostrar_clasificacion_familias():
                 st.session_state.familias_prmv.append(nueva); guardar_memoria(); notificar('ok','Familia clasificada correctamente.'); st.rerun()
     df=familias_df()
     if not df.empty:
-        vista=df.copy(); vista['proyectos_asociados']=vista['proyectos_ids'].apply(lambda x: '; '.join(x) if isinstance(x,list) else str(x)); vista['componentes_asociados']=vista['componentes_ids'].apply(lambda x: '; '.join(x) if isinstance(x,list) else str(x))
+        vista=df.copy(); vista['proyectos_asociados']=vista['proyectos_ids'].apply(lambda x: '; '.join([proyecto_por_id(i).get('nombre_proyecto', i) if proyecto_por_id(i) else i for i in x]) if isinstance(x,list) else str(x)); vista['componentes_asociados']=vista['componentes_ids'].apply(lambda x: '; '.join([etiqueta_componente(componente_por_id(i)) if componente_por_id(i) else i for i in x]) if isinstance(x,list) else str(x))
         st.dataframe(vista[['id_hogar','nombre_referencia_hogar','modalidad_prmv','proyectos_asociados','componentes_asociados','comunidad','zona','fecha_clasificacion','clasificado_por']], use_container_width=True, hide_index=True)
     else: st.info('Todavía no hay familias clasificadas.')
 
 
 def selector_filtros_base(prefix, incluir_sujeto=True):
-    comps=CATALOGO_COMPONENTES_PRMV; comp_labels=[etiqueta_componente(c) for c in comps]
-    col1,col2,col3=st.columns([2.2,1,1.4])
-    comp_sel=col1.selectbox('Componente PRMV *', comp_labels, key=f'{prefix}_comp')
-    comp=comps[comp_labels.index(comp_sel)]; id_comp=comp['id_componente']
-    modalidad=col2.selectbox('Modalidad *', MODALIDADES_PRMV, key=f'{prefix}_modalidad')
-    proyectos=proyectos_por_componente(id_comp, solo_activos=True)
-    proy_labels=['Todos los proyectos del componente']+[etiqueta_proyecto(p) for p in proyectos]
-    proy_sel=col3.selectbox('Proyecto vinculado', proy_labels, key=f'{prefix}_proyecto')
-    proyecto=None; id_proyecto=''
-    if proy_sel!='Todos los proyectos del componente' and proyectos:
-        proyecto=proyectos[proy_labels.index(proy_sel)-1]; id_proyecto=proyecto['id_proyecto']
-    dfq=preguntas_filtradas(id_comp, modalidad)
-    capitals=['Todos los capitales']+sorted(dfq['capital'].dropna().unique().tolist()) if not dfq.empty else ['Todos los capitales']
-    sujetos=['Todos los sujetos']+sorted(dfq['sujeto_grupo'].dropna().unique().tolist()) if not dfq.empty else ['Todos los sujetos']
-    col4,col5=st.columns(2)
-    capital=col4.selectbox('Capital', capitals, key=f'{prefix}_capital')
-    tipo_sujeto=col5.selectbox('Sujeto PRMV', sujetos, key=f'{prefix}_tipo_sujeto')
-    sujeto=None
-    if incluir_sujeto and tipo_sujeto!='Todos los sujetos':
-        sujeto_options=obtener_sujetos(tipo_sujeto,id_comp,id_proyecto,modalidad)
+    # Proyecto PRMV = texto de la columna C del Excel validado, sin numeración.
+    proyectos = lista_proyectos_activos()
+    proy_labels = [etiqueta_proyecto(p) for p in proyectos]
+    col1, col2, col3 = st.columns([2.2, 1, 1.4])
+    proy_sel = col1.selectbox('Proyecto *', proy_labels, key=f'{prefix}_proyecto')
+    proyecto = proyectos[proy_labels.index(proy_sel)]
+    id_proyecto = proyecto['id_proyecto']
+    id_comp = proyecto['id_componente']
+    comp = componente_por_id(id_comp) or {'id_componente': id_comp, 'componente_prmv': proyecto.get('nombre_proyecto', '')}
+    modalidad = col2.selectbox('Modalidad *', MODALIDADES_PRMV, key=f'{prefix}_modalidad')
+
+    dfq = preguntas_filtradas(id_comp, modalidad)
+    capitals = sorted(dfq['capital'].dropna().unique().tolist()) if not dfq.empty else []
+    capital = col3.selectbox('Capital *', capitals, key=f'{prefix}_capital') if capitals else 'Todos los capitales'
+
+    predios = predios_por_filtros(modalidad=modalidad, id_proyecto=id_proyecto, id_componente=id_comp)
+    predio = None
+    col4, col5 = st.columns([1.5, 1.3])
+    if predios:
+        predio_labels = [predio_label(p) for p in predios]
+        predio_sel = col4.selectbox('Predio vinculado *', predio_labels, key=f'{prefix}_predio')
+        predio = predios[predio_labels.index(predio_sel)]
+    else:
+        col4.info('No hay predios simulados vinculados a ese proyecto/modalidad.')
+
+    dfq2 = preguntas_filtradas(id_comp, modalidad, capital)
+    sujetos = sorted(dfq2['sujeto_grupo'].dropna().unique().tolist()) if not dfq2.empty else []
+    tipo_sujeto = col5.selectbox('Sujeto PRMV *', sujetos, key=f'{prefix}_tipo_sujeto') if sujetos else 'Todos los sujetos'
+
+    sujeto = None
+    if incluir_sujeto and tipo_sujeto != 'Todos los sujetos' and predio:
+        sujeto_options = obtener_sujetos(tipo_sujeto, id_comp, id_proyecto, modalidad, predio=predio)
         if sujeto_options:
-            labels=[sujeto_label(s) for s in sujeto_options]
-            sujeto_sel=st.selectbox('Registro / sujeto *', labels, key=f'{prefix}_sujeto')
-            sujeto=sujeto_options[labels.index(sujeto_sel)]
+            labels = [sujeto_label(s) for s in sujeto_options]
+            sujeto_sel = st.selectbox('Registro / sujeto vinculado al predio *', labels, key=f'{prefix}_sujeto')
+            sujeto = sujeto_options[labels.index(sujeto_sel)]
         else:
-            st.info('No hay registros simulados para esa combinación. Revisa clasificación de familias o selecciona otro proyecto/modalidad.')
-    return {'componente':comp,'id_componente':id_comp,'modalidad':modalidad,'proyecto':proyecto,'id_proyecto':id_proyecto,'capital':capital,'tipo_sujeto':tipo_sujeto,'sujeto':sujeto}
+            st.info('No hay sujetos simulados vinculados a ese predio para el sujeto/capital seleccionado.')
+    return {'componente': comp, 'id_componente': id_comp, 'modalidad': modalidad, 'proyecto': proyecto, 'id_proyecto': id_proyecto, 'capital': capital, 'tipo_sujeto': tipo_sujeto, 'predio': predio, 'id_predio': predio.get('id_predio') if predio else '', 'sujeto': sujeto}
+
 
 
 def mostrar_captura():
-    st.markdown('<div class="section-title">Captura PRMV 26</div>', unsafe_allow_html=True)
-    st.markdown('<div class="hint-box">La captura se filtra por componente/proyecto, modalidad, capital y sujeto. Las preguntas no aplicables se omiten; la respuesta guardada solo puede ser Sí o No.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Captura</div>', unsafe_allow_html=True)
+    st.markdown('<div class="hint-box">La captura se filtra por proyecto, modalidad, capital, predio y sujeto. Las preguntas no aplicables se omiten; la respuesta guardada solo puede ser Sí o No.</div>', unsafe_allow_html=True)
     filtros=selector_filtros_base('cap', incluir_sujeto=True)
     if not filtros['sujeto'] or filtros['tipo_sujeto']=='Todos los sujetos': st.stop()
     mostrar_info_sujeto(filtros['sujeto'])
@@ -1333,11 +1388,11 @@ def mostrar_captura():
             pids=sujeto.get('proyectos_ids', [])
             proyecto=next((p for p in st.session_state.proyectos_prmv if p['id_proyecto'] in pids and p['id_componente']==filtros['id_componente']), None)
         id_lev=generar_id('LEV')
-        lev={'id_levantamiento':id_lev,'id_componente':comp['id_componente'],'componente_prmv':comp['componente_prmv'],'id_proyecto':proyecto['id_proyecto'] if proyecto else '','nombre_proyecto':proyecto['nombre_proyecto'] if proyecto else 'Todos / no especificado','modalidad_prmv':filtros['modalidad'],'capital':filtros['capital'],'tipo_sujeto':filtros['tipo_sujeto'],'id_sujeto':sujeto['id_sujeto'],'nombre_sujeto':sujeto['nombre_sujeto'],'tabla_origen':sujeto.get('tabla_origen',''),'pk_origen':sujeto.get('pk_origen',''),'fecha_medicion':fecha_medicion.isoformat(),'fecha_registro':fecha_hora(),'registrado_por':st.session_state.usuario,'observacion_general':obs_general}
+        lev={'id_levantamiento':id_lev,'id_componente':comp['id_componente'],'componente_prmv':comp['componente_prmv'],'id_proyecto':proyecto['id_proyecto'] if proyecto else '','nombre_proyecto':proyecto['nombre_proyecto'] if proyecto else 'Todos / no especificado','modalidad_prmv':filtros['modalidad'],'capital':filtros['capital'],'tipo_sujeto':filtros['tipo_sujeto'],'id_sujeto':sujeto['id_sujeto'],'nombre_sujeto':sujeto['nombre_sujeto'],'tabla_origen':sujeto.get('tabla_origen',''),'pk_origen':sujeto.get('pk_origen',''),'id_predio':filtros.get('id_predio',''),'nombre_predio':filtros.get('predio',{}).get('nombre_predio','') if filtros.get('predio') else '','fecha_medicion':fecha_medicion.isoformat(),'fecha_registro':fecha_hora(),'registrado_por':st.session_state.usuario,'observacion_general':obs_general}
         st.session_state.levantamientos_prmv.append(lev)
         for r in respuestas:
             row=r['row']
-            st.session_state.respuestas_prmv.append({'id_respuesta':generar_id('RSP'),'id_levantamiento':id_lev,'id_pregunta':row['id_pregunta'],'id_componente':comp['id_componente'],'componente_prmv':comp['componente_prmv'],'id_proyecto':lev['id_proyecto'],'nombre_proyecto':lev['nombre_proyecto'],'modalidad_prmv':filtros['modalidad'],'capital':row['capital'],'tipo_sujeto':filtros['tipo_sujeto'],'id_sujeto':sujeto['id_sujeto'],'nombre_sujeto':sujeto['nombre_sujeto'],'indicador_oficial':row['indicador_oficial'],'pregunta_visible':row['pregunta_visible'],'resultado_obtenido':r['resultado'],'valor_numerico':r['valor_num'],'observacion':r['observacion'],'fecha_medicion':fecha_medicion.isoformat(),'fecha_registro':lev['fecha_registro'],'registrado_por':st.session_state.usuario,'fecha_actualizacion':'','actualizado_por':'','campos_base':row.get('campos_base',''),'fuente_sujeto_beta':row.get('fuente_sujeto_beta',''),'formula_oficial':row.get('formula_oficial',''),'meta_oficial':row.get('meta_oficial','')})
+            st.session_state.respuestas_prmv.append({'id_respuesta':generar_id('RSP'),'id_levantamiento':id_lev,'id_pregunta':row['id_pregunta'],'id_componente':comp['id_componente'],'componente_prmv':comp['componente_prmv'],'id_proyecto':lev['id_proyecto'],'nombre_proyecto':lev['nombre_proyecto'],'modalidad_prmv':filtros['modalidad'],'capital':row['capital'],'tipo_sujeto':filtros['tipo_sujeto'],'id_sujeto':sujeto['id_sujeto'],'nombre_sujeto':sujeto['nombre_sujeto'],'id_predio':filtros.get('id_predio',''),'nombre_predio':filtros.get('predio',{}).get('nombre_predio','') if filtros.get('predio') else '','indicador_oficial':row['indicador_oficial'],'pregunta_visible':row['pregunta_visible'],'resultado_obtenido':r['resultado'],'valor_numerico':r['valor_num'],'observacion':r['observacion'],'fecha_medicion':fecha_medicion.isoformat(),'fecha_registro':lev['fecha_registro'],'registrado_por':st.session_state.usuario,'fecha_actualizacion':'','actualizado_por':'','campos_base':row.get('campos_base',''),'fuente_sujeto_beta':row.get('fuente_sujeto_beta',''),'formula_oficial':row.get('formula_oficial',''),'meta_oficial':row.get('meta_oficial','')})
         st.session_state.historial_prmv.append({'id_historial':generar_id('HIS'),'id_levantamiento':id_lev,'id_respuesta':'','accion':'creación','fecha_evento':fecha_hora(),'usuario':st.session_state.usuario,'detalle':f"Levantamiento con {len(respuestas)} respuesta(s)."})
         guardar_memoria(); notificar('ok','Levantamiento guardado correctamente. El formulario quedó listo para nueva captura.'); st.rerun()
 
@@ -1348,13 +1403,14 @@ def filtrar_levantamientos_con_filtros(prefix):
     if df.empty or not filtros['sujeto']: return filtros, pd.DataFrame()
     mask=(df['id_componente']==filtros['id_componente']) & (df['modalidad_prmv']==filtros['modalidad']) & (df['tipo_sujeto']==filtros['tipo_sujeto']) & (df['id_sujeto']==filtros['sujeto']['id_sujeto'])
     if filtros['id_proyecto']: mask=mask & (df['id_proyecto']==filtros['id_proyecto'])
+    if filtros.get('id_predio') and 'id_predio' in df.columns: mask=mask & (df['id_predio']==filtros['id_predio'])
     if filtros['capital']!='Todos los capitales': mask=mask & (df['capital']==filtros['capital'])
     return filtros, df[mask].copy()
 
 
 def mostrar_edicion():
     st.markdown('<div class="section-title">Edición de levantamientos</div>', unsafe_allow_html=True)
-    st.markdown('<div class="hint-box">Usa los mismos filtros de captura: componente/proyecto, modalidad, capital y sujeto. Luego selecciona el levantamiento a modificar.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="hint-box">Usa los mismos filtros de captura: proyecto, modalidad, capital, predio y sujeto. Luego selecciona el levantamiento a modificar.</div>', unsafe_allow_html=True)
     filtros, dflev=filtrar_levantamientos_con_filtros('edit')
     if dflev.empty: st.info('No hay levantamientos para esa combinación.'); st.stop()
     labels=[f"{r['id_levantamiento']} · {r['fecha_medicion']} · {r['nombre_proyecto']} · {r['nombre_sujeto']}" for _,r in dflev.iterrows()]
@@ -1388,41 +1444,48 @@ def mostrar_edicion():
 
 def mostrar_historico():
     st.markdown('<div class="section-title">Histórico y trazabilidad</div>', unsafe_allow_html=True)
-    st.markdown('<div class="hint-box">Consulta mediciones por componente/proyecto, modalidad, capital, sujeto y fechas. Se muestran respuestas guardadas; no se guardan preguntas omitidas como No aplica.</div>', unsafe_allow_html=True)
-    comp_labels=['Todos los componentes']+[etiqueta_componente(c) for c in CATALOGO_COMPONENTES_PRMV]
-    c1,c2,c3=st.columns([2,1,1.4])
-    comp_sel=c1.selectbox('Componente PRMV', comp_labels, key='hist_comp')
-    id_comp='' if comp_sel=='Todos los componentes' else CATALOGO_COMPONENTES_PRMV[comp_labels.index(comp_sel)-1]['id_componente']
-    modalidad=c2.selectbox('Modalidad', ['Todas']+MODALIDADES_PRMV, key='hist_mod')
-    proyectos=[p for p in st.session_state.proyectos_prmv if (not id_comp or p.get('id_componente')==id_comp)]
-    proy_labels=['Todos los proyectos']+[etiqueta_proyecto(p) for p in proyectos]
-    proy_sel=c3.selectbox('Proyecto', proy_labels, key='hist_proy')
-    id_proy='' if proy_sel=='Todos los proyectos' else proyectos[proy_labels.index(proy_sel)-1]['id_proyecto']
-    dfq=preguntas_df()
-    if id_comp: dfq=dfq[dfq['id_componente']==id_comp]
-    caps=['Todos los capitales']+sorted(dfq['capital'].dropna().unique().tolist()) if not dfq.empty else ['Todos los capitales']
-    sujs=['Todos los sujetos']+sorted(dfq['sujeto_grupo'].dropna().unique().tolist()) if not dfq.empty else ['Todos los sujetos']
-    c4,c5,c6=st.columns([1.2,1.2,1.6])
-    capital=c4.selectbox('Capital', caps, key='hist_cap')
-    tipo_sujeto=c5.selectbox('Sujeto PRMV', sujs, key='hist_suj')
-    texto=c6.text_input('Buscar en histórico', placeholder='ID, familia, proyecto, pregunta...', key='hist_buscar')
-    c7,c8=st.columns(2)
-    fmin=c7.date_input('Fecha medición desde', value=None, key='hist_fmin')
-    fmax=c8.date_input('Fecha medición hasta', value=None, key='hist_fmax')
-    df=respuestas_df()
-    if df.empty: st.info('No hay respuestas registradas.'); st.stop()
-    if id_comp: df=df[df['id_componente']==id_comp]
-    if id_proy: df=df[df['id_proyecto']==id_proy]
-    if modalidad!='Todas': df=df[df['modalidad_prmv']==modalidad]
-    if capital!='Todos los capitales': df=df[df['capital']==capital]
-    if tipo_sujeto!='Todos los sujetos': df=df[df['tipo_sujeto']==tipo_sujeto]
+    st.markdown('<div class="hint-box">Consulta mediciones por proyecto, modalidad, capital, predio, sujeto y fechas. Se muestran respuestas guardadas; no se guardan preguntas omitidas como No aplica.</div>', unsafe_allow_html=True)
+    proyectos = lista_proyectos_activos()
+    proy_labels = ['Todos los proyectos'] + [etiqueta_proyecto(p) for p in proyectos]
+    c1, c2, c3 = st.columns([2.2, 1, 1.4])
+    proy_sel = c1.selectbox('Proyecto', proy_labels, key='hist_proy')
+    proyecto = None if proy_sel == 'Todos los proyectos' else proyectos[proy_labels.index(proy_sel)-1]
+    id_proy = proyecto['id_proyecto'] if proyecto else ''
+    id_comp = proyecto['id_componente'] if proyecto else ''
+    modalidad = c2.selectbox('Modalidad', ['Todas'] + MODALIDADES_PRMV, key='hist_mod')
+    dfq = preguntas_df()
+    if id_comp:
+        dfq = dfq[dfq['id_componente'] == id_comp]
+    caps = ['Todos los capitales'] + sorted(dfq['capital'].dropna().unique().tolist()) if not dfq.empty else ['Todos los capitales']
+    capital = c3.selectbox('Capital', caps, key='hist_cap')
+
+    c4, c5, c6 = st.columns([1.5, 1.2, 1.8])
+    predios = predios_por_filtros(modalidad=None if modalidad == 'Todas' else modalidad, id_proyecto=id_proy or None, id_componente=id_comp or None)
+    predio_labels = ['Todos los predios'] + [predio_label(p) for p in predios]
+    predio_sel = c4.selectbox('Predio', predio_labels, key='hist_predio')
+    id_predio = '' if predio_sel == 'Todos los predios' else predios[predio_labels.index(predio_sel)-1]['id_predio']
+    sujs = ['Todos los sujetos'] + sorted(dfq['sujeto_grupo'].dropna().unique().tolist()) if not dfq.empty else ['Todos los sujetos']
+    tipo_sujeto = c5.selectbox('Sujeto PRMV', sujs, key='hist_suj')
+    texto = c6.text_input('Buscar en histórico', placeholder='ID, familia, proyecto, predio, pregunta...', key='hist_buscar')
+    c7, c8 = st.columns(2)
+    fmin = c7.date_input('Fecha medición desde', value=None, key='hist_fmin')
+    fmax = c8.date_input('Fecha medición hasta', value=None, key='hist_fmax')
+    df = respuestas_df()
+    if df.empty:
+        st.info('No hay respuestas registradas.'); st.stop()
+    if id_comp: df = df[df['id_componente'] == id_comp]
+    if id_proy: df = df[df['id_proyecto'] == id_proy]
+    if modalidad != 'Todas': df = df[df['modalidad_prmv'] == modalidad]
+    if capital != 'Todos los capitales': df = df[df['capital'] == capital]
+    if id_predio and 'id_predio' in df.columns: df = df[df['id_predio'] == id_predio]
+    if tipo_sujeto != 'Todos los sujetos': df = df[df['tipo_sujeto'] == tipo_sujeto]
     if texto.strip():
-        t=normalizar(texto); df=df[df.apply(lambda r: t in normalizar(' '.join([str(x) for x in r.values])), axis=1)]
-    if fmin: df=df[pd.to_datetime(df['fecha_medicion'], errors='coerce') >= pd.to_datetime(fmin)]
-    if fmax: df=df[pd.to_datetime(df['fecha_medicion'], errors='coerce') <= pd.to_datetime(fmax)]
-    m1,m2,m3,m4=st.columns(4)
+        t = normalizar(texto); df = df[df.apply(lambda r: t in normalizar(' '.join([str(x) for x in r.values])), axis=1)]
+    if fmin: df = df[pd.to_datetime(df['fecha_medicion'], errors='coerce') >= pd.to_datetime(fmin)]
+    if fmax: df = df[pd.to_datetime(df['fecha_medicion'], errors='coerce') <= pd.to_datetime(fmax)]
+    m1,m2,m3,m4 = st.columns(4)
     m1.metric('Respuestas', len(df)); m2.metric('Sí', int((df['resultado_obtenido']=='Sí').sum()) if not df.empty else 0); m3.metric('No', int((df['resultado_obtenido']=='No').sum()) if not df.empty else 0); m4.metric('Sujetos únicos', int(df['id_sujeto'].nunique()) if not df.empty else 0)
-    cols=['fecha_medicion','id_componente','nombre_proyecto','modalidad_prmv','capital','tipo_sujeto','id_sujeto','nombre_sujeto','id_pregunta','indicador_oficial','pregunta_visible','resultado_obtenido','valor_numerico','observacion','registrado_por','fecha_registro','fecha_actualizacion','actualizado_por']
+    cols=['fecha_medicion','nombre_proyecto','modalidad_prmv','capital','id_predio','nombre_predio','tipo_sujeto','id_sujeto','nombre_sujeto','id_pregunta','indicador_oficial','pregunta_visible','resultado_obtenido','valor_numerico','observacion','registrado_por','fecha_registro','fecha_actualizacion','actualizado_por']
     cols=[c for c in cols if c in df.columns]
     st.dataframe(df[cols].sort_values(['fecha_medicion','id_sujeto'], ascending=[False, True]), use_container_width=True, hide_index=True)
     st.download_button('Descargar histórico CSV', data=df[cols].to_csv(index=False).encode('utf-8-sig'), file_name='historico_prmv26.csv', mime='text/csv')
@@ -1432,18 +1495,19 @@ def mostrar_historico():
         else: st.dataframe(h.sort_values('fecha_evento', ascending=False), use_container_width=True, hide_index=True)
 
 
+
 def mostrar_sidebar():
     with st.sidebar:
         st.markdown('### SIR ACP · PRMV 26')
         st.session_state.usuario = st.text_input('Usuario', value=st.session_state.get('usuario', USUARIO_PROTOTIPO))
-        seccion = st.radio('Sección de trabajo', ['Proyectos / componentes', 'Clasificación de familias', 'Captura PRMV 26', 'Edición', 'Histórico'], index=2)
+        seccion = st.radio('Sección de trabajo', ['Clasificación de familias', 'Captura', 'Edición', 'Histórico'], index=1)
         st.divider()
         if st.button('Guardar memoria local'):
             guardar_memoria(); st.success('Memoria guardada.')
         if st.button('Reiniciar data simulada'):
             resetear_memoria(); st.success('Data simulada reiniciada.'); st.rerun()
         st.caption(f'Memoria: {ARCHIVO_MEMORIA.name}')
-        st.caption('Modalidad fija: Individual / Colectivo. Proyecto/componente dinámico.')
+        st.caption('Modalidad fija: Individual / Colectivo. Proyectos desde columna C del Excel.')
         return seccion
 
 
@@ -1452,9 +1516,8 @@ def main():
     inicializar_estado()
     seccion=mostrar_sidebar()
     encabezado()
-    if seccion == 'Proyectos / componentes': mostrar_proyectos_componentes()
-    elif seccion == 'Clasificación de familias': mostrar_clasificacion_familias()
-    elif seccion == 'Captura PRMV 26': mostrar_captura()
+    if seccion == 'Clasificación de familias': mostrar_clasificacion_familias()
+    elif seccion == 'Captura': mostrar_captura()
     elif seccion == 'Edición': mostrar_edicion()
     elif seccion == 'Histórico': mostrar_historico()
 

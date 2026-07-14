@@ -1,5 +1,5 @@
 # ============================================================
-# SIR ACP · Módulo PRMV Indicadores · v19 beta funcional
+# SIR ACP · Módulo PRMV Indicadores · v20 beta funcional
 # 26 preguntas + proyecto/modalidad + predio + tooltips + data demo ampliada + matriz completa de testing
 # ============================================================
 # Archivo autosuficiente. No requiere SQL ni JSON externo.
@@ -30,7 +30,7 @@ st.set_page_config(page_title="SIR ACP | PRMV 26 Indicadores", page_icon="📊",
 COLOR_PRIMARIO = "#073B5A"
 COLOR_SECUNDARIO = "#00A6A6"
 COLOR_BORDE = "#D6DEE6"
-ARCHIVO_MEMORIA = Path("memoria_modulo_prmv_indicadores_v19.json")
+ARCHIVO_MEMORIA = Path("memoria_modulo_prmv_indicadores_v20.json")
 USUARIO_PROTOTIPO = "usuario_prototipo"
 MODALIDADES_PRMV = ["Individual", "Colectivo"]
 RESULTADOS_BINARIOS = ["Sí", "No"]
@@ -1005,14 +1005,14 @@ ampliar_data_demo_testing_v18()
 
 
 # ============================================================
-# v19 · DATA DEMO INTERNA Y RELACIÓN PREDIO ↔ MÚLTIPLES HOGARES
+# v20 · DATA DEMO INTERNA Y RELACIÓN PREDIO ↔ MÚLTIPLES HOGARES
 # ============================================================
 # En el sistema real, la tabla M05.predios no debe asumirse como 1 predio = 1 hogar.
 # Para el beta se modela una tabla puente lógica: predio_hogar_m05_demo.
 # La interfaz muestra solo id_predio + número de hogares ligados; el detalle se usa
 # internamente para filtrar familias/personas vinculadas al predio seleccionado.
 
-def ampliar_data_demo_testing_v19():
+def ampliar_data_demo_testing_v20():
     def add_unique(lista, item, key):
         if not any(x.get(key) == item.get(key) for x in lista):
             lista.append(item)
@@ -1098,7 +1098,7 @@ def ampliar_data_demo_testing_v19():
     for it in interacciones_extra:
         add_unique(INTERACCIONES_DEMO, it, 'id_sujeto')
 
-ampliar_data_demo_testing_v19()
+ampliar_data_demo_testing_v20()
 
 
 def construir_relaciones_predio_hogar_demo():
@@ -1178,7 +1178,7 @@ def aplicar_estilos():
 
 
 def encabezado():
-    st.markdown('<div class="main-title">Módulo PRMV · 26 indicadores por proyecto, predio y modalidad · v19 testing</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">Módulo PRMV · 26 indicadores por proyecto, predio y modalidad · v20 testing</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title">Beta funcional con clasificación de familias, proyectos desde columna C, predios con múltiples hogares vinculados, preguntas oficiales PRMV 26 y data interna ampliada para pruebas.</div>', unsafe_allow_html=True)
 
 
@@ -1407,7 +1407,7 @@ def crear_data_simulada():
 
 
 
-# Reemplazo v19: clasifica TODAS las familias demo disponibles, incluyendo las añadidas,
+# Reemplazo v20: clasifica TODAS las familias demo disponibles, incluyendo las añadidas,
 # para cubrir combinaciones internas reales de prueba: individual/colectivo, todos los proyectos y múltiples predios.
 def crear_familias_demo():
     proyectos = {p['id_proyecto']: p for p in PROYECTOS_BASE_PRMV}
@@ -1462,7 +1462,7 @@ def crear_familias_demo():
             'fecha_clasificacion': '2026-01-15',
             'clasificado_por': USUARIO_PROTOTIPO,
             'estado': 'Activo',
-            'observaciones': 'Clasificación demo beta ampliada v19 para testing interno con predios multi-hogar.',
+            'observaciones': 'Clasificación demo beta ampliada v20 para testing interno con predios multi-hogar.',
         })
     return out
 
@@ -1520,7 +1520,7 @@ def crear_data_simulada():
                     'fecha_medicion': fecha_med.isoformat(),
                     'fecha_registro': (fecha_med + timedelta(days=1)).isoformat() + f" {8 + (idx % 9):02d}:30:00",
                     'registrado_por': USUARIO_PROTOTIPO,
-                    'observacion_general': f"Dato beta v19: {proyecto['nombre_proyecto']} · {modalidad} · {tipo_sujeto} · {elegido['id_predio']}.",
+                    'observacion_general': f"Dato beta v20: {proyecto['nombre_proyecto']} · {modalidad} · {tipo_sujeto} · {elegido['id_predio']}.",
                 }
                 levantamientos.append(lev)
                 for j, (_, q) in enumerate(dfq.head(2).iterrows()):
@@ -1544,7 +1544,7 @@ def crear_data_simulada():
                         'pregunta_visible': q['pregunta_visible'],
                         'resultado_obtenido': 'Sí' if (idx + j) % 3 != 0 else 'No',
                         'valor_numerico': float(25 + ((idx * 7 + j * 13) % 76)),
-                        'observacion': f"Dato simulado v19 para probar {proyecto['nombre_proyecto']} / {modalidad} / {tipo_sujeto}.",
+                        'observacion': f"Dato simulado v20 para probar {proyecto['nombre_proyecto']} / {modalidad} / {tipo_sujeto}.",
                         'fecha_medicion': fecha_med.isoformat(),
                         'fecha_registro': lev['fecha_registro'],
                         'registrado_por': USUARIO_PROTOTIPO,
@@ -1555,7 +1555,7 @@ def crear_data_simulada():
                         'formula_oficial': q.get('formula_oficial',''),
                         'meta_oficial': q.get('meta_oficial',''),
                     })
-                historial.append({'id_historial': generar_id('HIS'), 'id_levantamiento': id_lev, 'id_respuesta': '', 'accion': 'creación demo v19', 'fecha_evento': fecha_hora(), 'usuario': USUARIO_PROTOTIPO, 'detalle': f"Levantamiento simulado para {proyecto['nombre_proyecto']} · {modalidad} · {tipo_sujeto}."})
+                historial.append({'id_historial': generar_id('HIS'), 'id_levantamiento': id_lev, 'id_respuesta': '', 'accion': 'creación demo v20', 'fecha_evento': fecha_hora(), 'usuario': USUARIO_PROTOTIPO, 'detalle': f"Levantamiento simulado para {proyecto['nombre_proyecto']} · {modalidad} · {tipo_sujeto}."})
                 idx += 1
     return levantamientos, respuestas, historial
 
@@ -1770,9 +1770,6 @@ def mostrar_proyectos_componentes():
 def mostrar_clasificacion_familias():
     st.markdown('<div class="section-title">Clasificación de familias PRMV</div>', unsafe_allow_html=True)
     st.markdown('<div class="hint-box">Selecciona hogares simulados desde M01.hogares, asigna modalidad PRMV fija y marca uno o varios proyectos PRMV de la columna C del Excel. Esta capa controla qué preguntas aparecen después.</div>', unsafe_allow_html=True)
-    with st.expander('Datos demo disponibles para testing', expanded=False):
-        st.markdown('\n'.join([f"- {escape(e)}" for e in EJEMPLOS_TESTING]), unsafe_allow_html=True)
-        st.dataframe(tabla_casos_testing(), use_container_width=True, hide_index=True)
     hogares_labels = [f"{h['id_hogar']} · {h['nombre_referencia_hogar']} · {h['comunidad']} · {h['zona']}" for h in HOGARES_M01_DEMO]
     with st.form('form_clasificacion_familia'):
         col1, col2 = st.columns([2,1])
@@ -1853,9 +1850,6 @@ def selector_filtros_base(prefix, incluir_sujeto=True):
 def mostrar_captura():
     st.markdown('<div class="section-title">Captura</div>', unsafe_allow_html=True)
     st.markdown('<div class="hint-box">La captura se filtra por proyecto, modalidad, capital, predio y sujeto. Las preguntas no aplicables se omiten; la respuesta guardada solo puede ser Sí o No.</div>', unsafe_allow_html=True)
-    with st.expander('Guía rápida de pruebas', expanded=False):
-        st.markdown('\n'.join([f"- {escape(e)}" for e in EJEMPLOS_TESTING]), unsafe_allow_html=True)
-        st.dataframe(tabla_casos_testing(), use_container_width=True, hide_index=True)
     filtros=selector_filtros_base('cap', incluir_sujeto=True)
     if not filtros['sujeto'] or filtros['tipo_sujeto']=='Todos los sujetos': st.stop()
     mostrar_info_sujeto(filtros['sujeto'])
@@ -1879,12 +1873,12 @@ def mostrar_captura():
                     if row.get('formula_oficial'):
                         st.caption('Fórmula: ' + str(row.get('formula_oficial'))[:350])
                     if row.get('valor_numerico_config'):
-                        st.caption('Valor numérico sugerido: ' + str(row.get('valor_numerico_config'))[:300])
+                        st.caption('Valor sugerido: ' + str(row.get('valor_numerico_config'))[:300])
                     if st.checkbox('✕ Omitir esta pregunta', key=f'cap_omit_{qid}', help=TOOLTIPS['omitir_pregunta']):
                         continue
                     c1,c2,c3=st.columns([1,1,2])
                     resultado=c1.radio('Resultado obtenido *', RESULTADOS_BINARIOS, horizontal=True, key=f'cap_res_{qid}', help=TOOLTIPS['resultado'])
-                    valor_num=c2.number_input('Valor numérico', value=None, step=1.0, format='%f', key=f'cap_num_{qid}', help=TOOLTIPS['valor_num'])
+                    valor_num=c2.number_input('Valor', value=None, step=1.0, format='%f', key=f'cap_num_{qid}', help=TOOLTIPS['valor_num'])
                     obs=c3.text_input('Observación específica', key=f'cap_obs_{qid}', help=TOOLTIPS['obs_pregunta'])
                     respuestas.append({'row':row.to_dict(),'resultado':resultado,'valor_num':valor_num,'observacion':obs})
     if st.button('Guardar levantamiento PRMV', type='primary', help='Guarda el levantamiento y sus respuestas en memoria local beta.'):
@@ -1935,7 +1929,7 @@ def mostrar_edicion():
                 res=c1.radio('Resultado obtenido', RESULTADOS_BINARIOS, index=RESULTADOS_BINARIOS.index(row['resultado_obtenido']) if row['resultado_obtenido'] in RESULTADOS_BINARIOS else 0, horizontal=True, key=f"edit_res_{row['id_respuesta']}", help=TOOLTIPS['resultado'])
                 try: val_actual=float(row['valor_numerico']) if row['valor_numerico'] not in [None,'','nan'] else None
                 except Exception: val_actual=None
-                num=c2.number_input('Valor numérico', value=val_actual, step=1.0, format='%f', key=f"edit_num_{row['id_respuesta']}", help=TOOLTIPS['valor_num'])
+                num=c2.number_input('Valor', value=val_actual, step=1.0, format='%f', key=f"edit_num_{row['id_respuesta']}", help=TOOLTIPS['valor_num'])
                 obs=c3.text_input('Observación', value=str(row.get('observacion','')), key=f"edit_obs_{row['id_respuesta']}", help=TOOLTIPS['obs_pregunta'])
                 cambios.append((row['id_respuesta'], res, num, obs))
         guardar=st.form_submit_button('Guardar cambios', help='Actualiza las respuestas y deja registro de auditoría.')
@@ -2011,9 +2005,6 @@ def mostrar_sidebar():
         st.session_state.usuario = st.text_input('Usuario', value=st.session_state.get('usuario', USUARIO_PROTOTIPO), help=TOOLTIPS['usuario'])
         seccion = st.radio('Sección de trabajo', ['Clasificación de familias', 'Captura', 'Edición', 'Histórico'], index=1, help=TOOLTIPS['seccion'])
         st.divider()
-        with st.expander('Datos demo para testing', expanded=False):
-            for e in EJEMPLOS_TESTING:
-                st.caption('• ' + e)
         if st.button('Guardar memoria local', help=TOOLTIPS['guardar_memoria']):
             guardar_memoria(); st.success('Memoria guardada.')
         if st.button('Reiniciar data simulada', help=TOOLTIPS['reiniciar']):

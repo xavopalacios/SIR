@@ -1,5 +1,5 @@
 # ============================================================
-# SIR ACP · Módulo PRMV Indicadores · v18 beta funcional
+# SIR ACP · Módulo PRMV Indicadores · v19 beta funcional
 # 26 preguntas + proyecto/modalidad + predio + tooltips + data demo ampliada + matriz completa de testing
 # ============================================================
 # Archivo autosuficiente. No requiere SQL ni JSON externo.
@@ -30,7 +30,7 @@ st.set_page_config(page_title="SIR ACP | PRMV 26 Indicadores", page_icon="📊",
 COLOR_PRIMARIO = "#073B5A"
 COLOR_SECUNDARIO = "#00A6A6"
 COLOR_BORDE = "#D6DEE6"
-ARCHIVO_MEMORIA = Path("memoria_modulo_prmv_indicadores_v18.json")
+ARCHIVO_MEMORIA = Path("memoria_modulo_prmv_indicadores_v19.json")
 USUARIO_PROTOTIPO = "usuario_prototipo"
 MODALIDADES_PRMV = ["Individual", "Colectivo"]
 RESULTADOS_BINARIOS = ["Sí", "No"]
@@ -47,9 +47,9 @@ TOOLTIPS = {
     "obs_clasificacion": "Campo opcional para justificar o documentar la clasificación de la familia.",
     "proyecto": "Proyecto/componente PRMV. Sale de la columna C del Excel; no se agrega manualmente en esta versión.",
     "capital": "Capital asociado a las preguntas del proyecto y modalidad seleccionados.",
-    "predio": "Predio demo del M05 vinculado al hogar/comunidad. Sirve para filtrar sujetos asociados a ese predio.",
+    "predio": "Predio demo del M05. Un predio puede estar ligado a varios hogares; por eso se muestra solo el código del predio y el número de hogares vinculados.",
     "sujeto_prmv": "Tipo de sujeto que debe responder las preguntas: Familia, Persona, OBC o Actividad/interacción.",
-    "registro_sujeto": "Registro específico vinculado al predio seleccionado. En integración real vendrá de las tablas fuente.",
+    "registro_sujeto": "Registro específico vinculado al predio seleccionado. Para Familia/Persona se filtra por los hogares ligados al predio; para Comunidad/OBC/Interacción se filtra por el lugar poblado asociado.",
     "fecha_medicion": "Fecha en que se realizó o levantó la información en campo. La ingresa el usuario.",
     "obs_general": "Observación general del levantamiento. No es obligatoria.",
     "omitir_seccion": "Marca esto cuando toda la sección no aplica al caso. No se guardará como respuesta.",
@@ -1004,6 +1004,139 @@ def ampliar_data_demo_testing_v18():
 ampliar_data_demo_testing_v18()
 
 
+# ============================================================
+# v19 · DATA DEMO INTERNA Y RELACIÓN PREDIO ↔ MÚLTIPLES HOGARES
+# ============================================================
+# En el sistema real, la tabla M05.predios no debe asumirse como 1 predio = 1 hogar.
+# Para el beta se modela una tabla puente lógica: predio_hogar_m05_demo.
+# La interfaz muestra solo id_predio + número de hogares ligados; el detalle se usa
+# internamente para filtrar familias/personas vinculadas al predio seleccionado.
+
+def ampliar_data_demo_testing_v19():
+    def add_unique(lista, item, key):
+        if not any(x.get(key) == item.get(key) for x in lista):
+            lista.append(item)
+
+    hogares_extra = [
+        {'id_hogar': 'HOG-0021', 'codigo_hogar_campo': 'FAM-021', 'nombre_referencia_hogar': 'Familia Hernández', 'id_lugar_poblado': 'COM-0011', 'comunidad': 'Palma Real', 'zona': 'Zona 6', 'tipo_afectacion': 'Restablecimiento económico colectivo', 'estado_residencia': 'Censado'},
+        {'id_hogar': 'HOG-0022', 'codigo_hogar_campo': 'FAM-022', 'nombre_referencia_hogar': 'Familia Domínguez', 'id_lugar_poblado': 'COM-0011', 'comunidad': 'Palma Real', 'zona': 'Zona 6', 'tipo_afectacion': 'Restablecimiento económico individual', 'estado_residencia': 'Censado'},
+        {'id_hogar': 'HOG-0023', 'codigo_hogar_campo': 'FAM-023', 'nombre_referencia_hogar': 'Familia Caballero', 'id_lugar_poblado': 'COM-0012', 'comunidad': 'El Mirador', 'zona': 'Zona 7', 'tipo_afectacion': 'Capacitación técnica', 'estado_residencia': 'Censado'},
+        {'id_hogar': 'HOG-0024', 'codigo_hogar_campo': 'FAM-024', 'nombre_referencia_hogar': 'Familia Valdés', 'id_lugar_poblado': 'COM-0012', 'comunidad': 'El Mirador', 'zona': 'Zona 7', 'tipo_afectacion': 'Organización productiva comunitaria', 'estado_residencia': 'Censado'},
+        {'id_hogar': 'HOG-0025', 'codigo_hogar_campo': 'FAM-025', 'nombre_referencia_hogar': 'Familia Acosta', 'id_lugar_poblado': 'COM-0013', 'comunidad': 'Bajo Grande', 'zona': 'Zona 7', 'tipo_afectacion': 'Huerta casera / seguridad alimentaria', 'estado_residencia': 'Censado'},
+        {'id_hogar': 'HOG-0026', 'codigo_hogar_campo': 'FAM-026', 'nombre_referencia_hogar': 'Familia Montenegro', 'id_lugar_poblado': 'COM-0013', 'comunidad': 'Bajo Grande', 'zona': 'Zona 7', 'tipo_afectacion': 'Empleo y formación', 'estado_residencia': 'Censado'},
+        {'id_hogar': 'HOG-0027', 'codigo_hogar_campo': 'FAM-027', 'nombre_referencia_hogar': 'Familia Vargas', 'id_lugar_poblado': 'COM-0014', 'comunidad': 'Punta Alegre', 'zona': 'Zona 8', 'tipo_afectacion': 'Acompañamiento psicosocial', 'estado_residencia': 'Censado'},
+        {'id_hogar': 'HOG-0028', 'codigo_hogar_campo': 'FAM-028', 'nombre_referencia_hogar': 'Familia Ávila', 'id_lugar_poblado': 'COM-0014', 'comunidad': 'Punta Alegre', 'zona': 'Zona 8', 'tipo_afectacion': 'Enfoque de género y liderazgo', 'estado_residencia': 'Censado'},
+        {'id_hogar': 'HOG-0029', 'codigo_hogar_campo': 'FAM-029', 'nombre_referencia_hogar': 'Familia Cárdenas', 'id_lugar_poblado': 'COM-0015', 'comunidad': 'Los Cedros', 'zona': 'Zona 8', 'tipo_afectacion': 'Protección social individual', 'estado_residencia': 'Censado'},
+        {'id_hogar': 'HOG-0030', 'codigo_hogar_campo': 'FAM-030', 'nombre_referencia_hogar': 'Familia Murillo', 'id_lugar_poblado': 'COM-0015', 'comunidad': 'Los Cedros', 'zona': 'Zona 8', 'tipo_afectacion': 'Protección social colectiva', 'estado_residencia': 'Censado'},
+        {'id_hogar': 'HOG-0031', 'codigo_hogar_campo': 'FAM-031', 'nombre_referencia_hogar': 'Familia Espinoza', 'id_lugar_poblado': 'COM-0016', 'comunidad': 'La Ribera', 'zona': 'Zona 9', 'tipo_afectacion': 'Proyecto productivo / capacitación', 'estado_residencia': 'No censado'},
+        {'id_hogar': 'HOG-0032', 'codigo_hogar_campo': 'FAM-032', 'nombre_referencia_hogar': 'Familia Franco', 'id_lugar_poblado': 'COM-0016', 'comunidad': 'La Ribera', 'zona': 'Zona 9', 'tipo_afectacion': 'Huerta y organización comunitaria', 'estado_residencia': 'Censado'},
+    ]
+    for h in hogares_extra:
+        add_unique(HOGARES_M01_DEMO, h, 'id_hogar')
+
+    predios_extra = [
+        {'id_predio': 'PRE-0025', 'nombre_predio': 'Predio Palma Real A', 'id_hogar': 'HOG-0021', 'id_lugar_poblado': 'COM-0011', 'comunidad': 'Palma Real', 'zona': 'Zona 6', 'uso_principal': 'Predio multi-hogar productivo'},
+        {'id_predio': 'PRE-0026', 'nombre_predio': 'Predio Palma Real B', 'id_hogar': 'HOG-0022', 'id_lugar_poblado': 'COM-0011', 'comunidad': 'Palma Real', 'zona': 'Zona 6', 'uso_principal': 'Vivienda / actividad económica'},
+        {'id_predio': 'PRE-0027', 'nombre_predio': 'Predio El Mirador A', 'id_hogar': 'HOG-0023', 'id_lugar_poblado': 'COM-0012', 'comunidad': 'El Mirador', 'zona': 'Zona 7', 'uso_principal': 'Capacitación / centro comunitario'},
+        {'id_predio': 'PRE-0028', 'nombre_predio': 'Predio Bajo Grande A', 'id_hogar': 'HOG-0025', 'id_lugar_poblado': 'COM-0013', 'comunidad': 'Bajo Grande', 'zona': 'Zona 7', 'uso_principal': 'Huertas familiares'},
+        {'id_predio': 'PRE-0029', 'nombre_predio': 'Predio Punta Alegre A', 'id_hogar': 'HOG-0027', 'id_lugar_poblado': 'COM-0014', 'comunidad': 'Punta Alegre', 'zona': 'Zona 8', 'uso_principal': 'Acompañamiento / género'},
+        {'id_predio': 'PRE-0030', 'nombre_predio': 'Predio Los Cedros A', 'id_hogar': 'HOG-0029', 'id_lugar_poblado': 'COM-0015', 'comunidad': 'Los Cedros', 'zona': 'Zona 8', 'uso_principal': 'Protección social/productiva'},
+        {'id_predio': 'PRE-0031', 'nombre_predio': 'Predio La Ribera A', 'id_hogar': 'HOG-0031', 'id_lugar_poblado': 'COM-0016', 'comunidad': 'La Ribera', 'zona': 'Zona 9', 'uso_principal': 'Proyecto productivo y capacitación'},
+        {'id_predio': 'PRE-0032', 'nombre_predio': 'Predio La Ribera Comunitario', 'id_hogar': 'HOG-0032', 'id_lugar_poblado': 'COM-0016', 'comunidad': 'La Ribera', 'zona': 'Zona 9', 'uso_principal': 'Organización comunitaria / huerta'},
+    ]
+    for p in predios_extra:
+        add_unique(PREDIOS_M05_DEMO, p, 'id_predio')
+
+    personas_extra = [
+        {'id_persona': 'PER-0025', 'nombre': 'Elías Hernández', 'id_hogar': 'HOG-0021', 'sexo': 'Hombre', 'edad': 43, 'ocupacion': 'Productor'},
+        {'id_persona': 'PER-0026', 'nombre': 'Lidia Domínguez', 'id_hogar': 'HOG-0022', 'sexo': 'Mujer', 'edad': 37, 'ocupacion': 'Emprendedora'},
+        {'id_persona': 'PER-0027', 'nombre': 'Samuel Caballero', 'id_hogar': 'HOG-0023', 'sexo': 'Hombre', 'edad': 26, 'ocupacion': 'Aprendiz'},
+        {'id_persona': 'PER-0028', 'nombre': 'Rina Valdés', 'id_hogar': 'HOG-0024', 'sexo': 'Mujer', 'edad': 49, 'ocupacion': 'Dirigente OBC'},
+        {'id_persona': 'PER-0029', 'nombre': 'Isabel Acosta', 'id_hogar': 'HOG-0025', 'sexo': 'Mujer', 'edad': 42, 'ocupacion': 'Productora de huerta'},
+        {'id_persona': 'PER-0030', 'nombre': 'Tomás Montenegro', 'id_hogar': 'HOG-0026', 'sexo': 'Hombre', 'edad': 32, 'ocupacion': 'Jornalero'},
+        {'id_persona': 'PER-0031', 'nombre': 'Esther Vargas', 'id_hogar': 'HOG-0027', 'sexo': 'Mujer', 'edad': 65, 'ocupacion': 'Cuidadora'},
+        {'id_persona': 'PER-0032', 'nombre': 'Paola Ávila', 'id_hogar': 'HOG-0028', 'sexo': 'Mujer', 'edad': 29, 'ocupacion': 'Lideresa'},
+        {'id_persona': 'PER-0033', 'nombre': 'Hugo Cárdenas', 'id_hogar': 'HOG-0029', 'sexo': 'Hombre', 'edad': 58, 'ocupacion': 'Agricultor'},
+        {'id_persona': 'PER-0034', 'nombre': 'Nayeli Murillo', 'id_hogar': 'HOG-0030', 'sexo': 'Mujer', 'edad': 35, 'ocupacion': 'Comercio'},
+        {'id_persona': 'PER-0035', 'nombre': 'Omar Espinoza', 'id_hogar': 'HOG-0031', 'sexo': 'Hombre', 'edad': 41, 'ocupacion': 'Técnico agrícola'},
+        {'id_persona': 'PER-0036', 'nombre': 'Maribel Franco', 'id_hogar': 'HOG-0032', 'sexo': 'Mujer', 'edad': 45, 'ocupacion': 'Coordinadora comunitaria'},
+    ]
+    for p in personas_extra:
+        add_unique(PERSONAS_M01_DEMO, p, 'id_persona')
+
+    comunidades_extra = [
+        {'id_sujeto': 'COM-0011', 'nombre_sujeto': 'Palma Real', 'id_lugar_poblado': 'COM-0011', 'comunidad': 'Palma Real', 'zona': 'Zona 6', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-001','PROY-002','PROY-003','PROY-008']},
+        {'id_sujeto': 'COM-0012', 'nombre_sujeto': 'El Mirador', 'id_lugar_poblado': 'COM-0012', 'comunidad': 'El Mirador', 'zona': 'Zona 7', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-002','PROY-003','PROY-006']},
+        {'id_sujeto': 'COM-0013', 'nombre_sujeto': 'Bajo Grande', 'id_lugar_poblado': 'COM-0013', 'comunidad': 'Bajo Grande', 'zona': 'Zona 7', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-004','PROY-006','PROY-008']},
+        {'id_sujeto': 'COM-0014', 'nombre_sujeto': 'Punta Alegre', 'id_lugar_poblado': 'COM-0014', 'comunidad': 'Punta Alegre', 'zona': 'Zona 8', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-006','PROY-007','PROY-008']},
+        {'id_sujeto': 'COM-0015', 'nombre_sujeto': 'Los Cedros', 'id_lugar_poblado': 'COM-0015', 'comunidad': 'Los Cedros', 'zona': 'Zona 8', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-005','PROY-008']},
+        {'id_sujeto': 'COM-0016', 'nombre_sujeto': 'La Ribera', 'id_lugar_poblado': 'COM-0016', 'comunidad': 'La Ribera', 'zona': 'Zona 9', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-002','PROY-003','PROY-004','PROY-008']},
+    ]
+    for c in comunidades_extra:
+        add_unique(COMUNIDADES_DEMO, c, 'id_sujeto')
+
+    obc_extra = [
+        {'id_sujeto': 'OBC-010', 'nombre_sujeto': 'Asociación Palma Real Productiva', 'id_lugar_poblado': 'COM-0011', 'comunidad': 'Palma Real', 'zona': 'Zona 6', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-002','PROY-003','PROY-008']},
+        {'id_sujeto': 'OBC-011', 'nombre_sujeto': 'Comité El Mirador Emprende', 'id_lugar_poblado': 'COM-0012', 'comunidad': 'El Mirador', 'zona': 'Zona 7', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-002','PROY-003']},
+        {'id_sujeto': 'OBC-012', 'nombre_sujeto': 'Red de Huertas Bajo Grande', 'id_lugar_poblado': 'COM-0013', 'comunidad': 'Bajo Grande', 'zona': 'Zona 7', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-002','PROY-004','PROY-008']},
+        {'id_sujeto': 'OBC-013', 'nombre_sujeto': 'Mesa de Mujeres Punta Alegre', 'id_lugar_poblado': 'COM-0014', 'comunidad': 'Punta Alegre', 'zona': 'Zona 8', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-002','PROY-007','PROY-008']},
+        {'id_sujeto': 'OBC-014', 'nombre_sujeto': 'Comité Social Los Cedros', 'id_lugar_poblado': 'COM-0015', 'comunidad': 'Los Cedros', 'zona': 'Zona 8', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-002','PROY-006','PROY-008']},
+        {'id_sujeto': 'OBC-015', 'nombre_sujeto': 'Cooperativa La Ribera', 'id_lugar_poblado': 'COM-0016', 'comunidad': 'La Ribera', 'zona': 'Zona 9', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-002','PROY-003','PROY-004']},
+    ]
+    for o in obc_extra:
+        add_unique(OBC_DEMO, o, 'id_sujeto')
+
+    interacciones_extra = [
+        {'id_sujeto': 'INT-013', 'nombre_sujeto': 'Taller económico · Palma Real', 'id_lugar_poblado': 'COM-0011', 'comunidad': 'Palma Real', 'zona': 'Zona 6', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-001','PROY-003']},
+        {'id_sujeto': 'INT-014', 'nombre_sujeto': 'Visita técnica individual · Palma Real', 'id_lugar_poblado': 'COM-0011', 'comunidad': 'Palma Real', 'zona': 'Zona 6', 'modalidad_prmv': 'Individual', 'proyectos_ids': ['PROY-001','PROY-003']},
+        {'id_sujeto': 'INT-015', 'nombre_sujeto': 'Capacitación OBC · El Mirador', 'id_lugar_poblado': 'COM-0012', 'comunidad': 'El Mirador', 'zona': 'Zona 7', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-002','PROY-003']},
+        {'id_sujeto': 'INT-016', 'nombre_sujeto': 'Jornada huertas · Bajo Grande', 'id_lugar_poblado': 'COM-0013', 'comunidad': 'Bajo Grande', 'zona': 'Zona 7', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-004']},
+        {'id_sujeto': 'INT-017', 'nombre_sujeto': 'Sesión psicosocial · Punta Alegre', 'id_lugar_poblado': 'COM-0014', 'comunidad': 'Punta Alegre', 'zona': 'Zona 8', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-006','PROY-007']},
+        {'id_sujeto': 'INT-018', 'nombre_sujeto': 'Orientación empleo · Los Cedros', 'id_lugar_poblado': 'COM-0015', 'comunidad': 'Los Cedros', 'zona': 'Zona 8', 'modalidad_prmv': 'Individual', 'proyectos_ids': ['PROY-005','PROY-008']},
+        {'id_sujeto': 'INT-019', 'nombre_sujeto': 'Taller integral · La Ribera', 'id_lugar_poblado': 'COM-0016', 'comunidad': 'La Ribera', 'zona': 'Zona 9', 'modalidad_prmv': 'Colectivo', 'proyectos_ids': ['PROY-003','PROY-004','PROY-008']},
+    ]
+    for it in interacciones_extra:
+        add_unique(INTERACCIONES_DEMO, it, 'id_sujeto')
+
+ampliar_data_demo_testing_v19()
+
+
+def construir_relaciones_predio_hogar_demo():
+    relaciones = []
+    def add(id_predio, id_hogar):
+        if id_predio and id_hogar and not any(r['id_predio'] == id_predio and r['id_hogar'] == id_hogar for r in relaciones):
+            relaciones.append({'id_predio': id_predio, 'id_hogar': id_hogar})
+
+    # Relación base heredada de los predios demo.
+    for p in PREDIOS_M05_DEMO:
+        add(p.get('id_predio'), p.get('id_hogar'))
+
+    # Relaciones muchos-a-muchos para probar predios con varios hogares ligados.
+    extras = {
+        'PRE-0001': ['HOG-0001','HOG-0004','HOG-0013'],
+        'PRE-0002': ['HOG-0002','HOG-0006','HOG-0014'],
+        'PRE-0003': ['HOG-0003','HOG-0008','HOG-0015'],
+        'PRE-0005': ['HOG-0005','HOG-0009','HOG-0016'],
+        'PRE-0007': ['HOG-0007','HOG-0010','HOG-0017'],
+        'PRE-0011': ['HOG-0011','HOG-0018'],
+        'PRE-0012': ['HOG-0012','HOG-0019'],
+        'PRE-0025': ['HOG-0021','HOG-0022'],
+        'PRE-0026': ['HOG-0022','HOG-0021'],
+        'PRE-0027': ['HOG-0023','HOG-0024'],
+        'PRE-0028': ['HOG-0025','HOG-0026','HOG-0032'],
+        'PRE-0029': ['HOG-0027','HOG-0028'],
+        'PRE-0030': ['HOG-0029','HOG-0030'],
+        'PRE-0031': ['HOG-0031','HOG-0032'],
+        'PRE-0032': ['HOG-0032','HOG-0024','HOG-0025'],
+    }
+    for id_predio, hogares in extras.items():
+        for id_hogar in hogares:
+            add(id_predio, id_hogar)
+    return relaciones
+
+PREDIOS_HOGARES_M05_DEMO = construir_relaciones_predio_hogar_demo()
+
+
 def tabla_casos_testing():
     """Matriz visible para que testers sepan qué combinaciones probar dentro del sistema."""
     data = [
@@ -1045,8 +1178,8 @@ def aplicar_estilos():
 
 
 def encabezado():
-    st.markdown('<div class="main-title">Módulo PRMV · 26 indicadores por proyecto, predio y modalidad · v18 testing</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-title">Beta funcional con clasificación de familias, proyectos desde columna C, predios vinculados, preguntas oficiales PRMV 26 y matriz ampliada de casos de prueba.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">Módulo PRMV · 26 indicadores por proyecto, predio y modalidad · v19 testing</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-title">Beta funcional con clasificación de familias, proyectos desde columna C, predios con múltiples hogares vinculados, preguntas oficiales PRMV 26 y data interna ampliada para pruebas.</div>', unsafe_allow_html=True)
 
 
 def normalizar(valor):
@@ -1231,6 +1364,7 @@ def crear_data_simulada():
             'pk_origen': sujeto.get('pk_origen',''),
             'id_predio': predio['id_predio'],
             'nombre_predio': predio['nombre_predio'],
+            'hogares_ligados_predio': len(hogares_ids_por_predio(predio['id_predio'])),
             'fecha_medicion': fecha_med.isoformat(),
             'fecha_registro': (fecha_med + timedelta(days=1)).isoformat() + f" {9 + (i % 7):02d}:00:00",
             'registrado_por': USUARIO_PROTOTIPO,
@@ -1273,8 +1407,8 @@ def crear_data_simulada():
 
 
 
-# Reemplazo v18: clasifica TODAS las familias demo disponibles, incluyendo las añadidas,
-# para cubrir más combinaciones de prueba sin conectar todavía M01 real.
+# Reemplazo v19: clasifica TODAS las familias demo disponibles, incluyendo las añadidas,
+# para cubrir combinaciones internas reales de prueba: individual/colectivo, todos los proyectos y múltiples predios.
 def crear_familias_demo():
     proyectos = {p['id_proyecto']: p for p in PROYECTOS_BASE_PRMV}
     config_map = {
@@ -1290,7 +1424,7 @@ def crear_familias_demo():
         'HOG-0010': ('Individual', ['PROY-005','PROY-008']),
         'HOG-0011': ('Individual', ['PROY-006','PROY-008']),
         'HOG-0012': ('Colectivo', ['PROY-002','PROY-007','PROY-008']),
-        'HOG-0013': ('Individual', ['PROY-001','PROY-003']),
+        'HOG-0013': ('Individual', ['PROY-001','PROY-003','PROY-005']),
         'HOG-0014': ('Colectivo', ['PROY-002','PROY-003','PROY-008']),
         'HOG-0015': ('Individual', ['PROY-003','PROY-005']),
         'HOG-0016': ('Colectivo', ['PROY-004','PROY-006']),
@@ -1298,6 +1432,18 @@ def crear_familias_demo():
         'HOG-0018': ('Individual', ['PROY-006','PROY-008']),
         'HOG-0019': ('Colectivo', ['PROY-002','PROY-007','PROY-008']),
         'HOG-0020': ('Individual', ['PROY-008','PROY-005']),
+        'HOG-0021': ('Colectivo', ['PROY-001','PROY-002','PROY-003']),
+        'HOG-0022': ('Individual', ['PROY-001','PROY-003','PROY-008']),
+        'HOG-0023': ('Individual', ['PROY-003','PROY-005']),
+        'HOG-0024': ('Colectivo', ['PROY-002','PROY-003','PROY-008']),
+        'HOG-0025': ('Colectivo', ['PROY-004','PROY-006','PROY-008']),
+        'HOG-0026': ('Individual', ['PROY-004','PROY-005','PROY-008']),
+        'HOG-0027': ('Individual', ['PROY-006','PROY-008']),
+        'HOG-0028': ('Colectivo', ['PROY-006','PROY-007','PROY-008']),
+        'HOG-0029': ('Individual', ['PROY-005','PROY-008']),
+        'HOG-0030': ('Colectivo', ['PROY-006','PROY-008']),
+        'HOG-0031': ('Individual', ['PROY-001','PROY-003','PROY-005']),
+        'HOG-0032': ('Colectivo', ['PROY-002','PROY-004','PROY-008']),
     }
     out=[]
     for h in HOGARES_M01_DEMO:
@@ -1316,7 +1462,7 @@ def crear_familias_demo():
             'fecha_clasificacion': '2026-01-15',
             'clasificado_por': USUARIO_PROTOTIPO,
             'estado': 'Activo',
-            'observaciones': 'Clasificación demo beta ampliada v18 para testing de todas las combinaciones principales.',
+            'observaciones': 'Clasificación demo beta ampliada v19 para testing interno con predios multi-hogar.',
         })
     return out
 
@@ -1370,10 +1516,11 @@ def crear_data_simulada():
                     'pk_origen': sujeto.get('pk_origen',''),
                     'id_predio': elegido['id_predio'],
                     'nombre_predio': elegido['nombre_predio'],
+                    'hogares_ligados_predio': len(hogares_ids_por_predio(elegido['id_predio'])),
                     'fecha_medicion': fecha_med.isoformat(),
                     'fecha_registro': (fecha_med + timedelta(days=1)).isoformat() + f" {8 + (idx % 9):02d}:30:00",
                     'registrado_por': USUARIO_PROTOTIPO,
-                    'observacion_general': f"Ejemplo beta v18: {proyecto['nombre_proyecto']} · {modalidad} · {tipo_sujeto} · {elegido['id_predio']}.",
+                    'observacion_general': f"Dato beta v19: {proyecto['nombre_proyecto']} · {modalidad} · {tipo_sujeto} · {elegido['id_predio']}.",
                 }
                 levantamientos.append(lev)
                 for j, (_, q) in enumerate(dfq.head(2).iterrows()):
@@ -1392,11 +1539,12 @@ def crear_data_simulada():
                         'nombre_sujeto': sujeto['nombre_sujeto'],
                         'id_predio': elegido['id_predio'],
                         'nombre_predio': elegido['nombre_predio'],
+                        'hogares_ligados_predio': len(hogares_ids_por_predio(elegido['id_predio'])),
                         'indicador_oficial': q['indicador_oficial'],
                         'pregunta_visible': q['pregunta_visible'],
                         'resultado_obtenido': 'Sí' if (idx + j) % 3 != 0 else 'No',
                         'valor_numerico': float(25 + ((idx * 7 + j * 13) % 76)),
-                        'observacion': f"Dato simulado v18 para probar {proyecto['nombre_proyecto']} / {modalidad} / {tipo_sujeto}.",
+                        'observacion': f"Dato simulado v19 para probar {proyecto['nombre_proyecto']} / {modalidad} / {tipo_sujeto}.",
                         'fecha_medicion': fecha_med.isoformat(),
                         'fecha_registro': lev['fecha_registro'],
                         'registrado_por': USUARIO_PROTOTIPO,
@@ -1407,7 +1555,7 @@ def crear_data_simulada():
                         'formula_oficial': q.get('formula_oficial',''),
                         'meta_oficial': q.get('meta_oficial',''),
                     })
-                historial.append({'id_historial': generar_id('HIS'), 'id_levantamiento': id_lev, 'id_respuesta': '', 'accion': 'creación demo v18', 'fecha_evento': fecha_hora(), 'usuario': USUARIO_PROTOTIPO, 'detalle': f"Levantamiento simulado para {proyecto['nombre_proyecto']} · {modalidad} · {tipo_sujeto}."})
+                historial.append({'id_historial': generar_id('HIS'), 'id_levantamiento': id_lev, 'id_respuesta': '', 'accion': 'creación demo v19', 'fecha_evento': fecha_hora(), 'usuario': USUARIO_PROTOTIPO, 'detalle': f"Levantamiento simulado para {proyecto['nombre_proyecto']} · {modalidad} · {tipo_sujeto}."})
                 idx += 1
     return levantamientos, respuestas, historial
 
@@ -1458,13 +1606,31 @@ def proyecto_por_id(id_proyecto):
     return next((p for p in st.session_state.proyectos_prmv if p.get('id_proyecto') == id_proyecto), None)
 
 
+def hogares_ids_por_predio(id_predio):
+    return sorted({r['id_hogar'] for r in PREDIOS_HOGARES_M05_DEMO if r.get('id_predio') == id_predio})
+
+
+def hogares_por_predio(predio):
+    ids = set(hogares_ids_por_predio(predio.get('id_predio')))
+    return [h for h in HOGARES_M01_DEMO if h.get('id_hogar') in ids]
+
+
+def lugares_ids_por_predio(predio):
+    ids = {h.get('id_lugar_poblado') for h in hogares_por_predio(predio) if h.get('id_lugar_poblado')}
+    if predio.get('id_lugar_poblado'):
+        ids.add(predio.get('id_lugar_poblado'))
+    return sorted(ids)
+
+
 def predio_label(p):
-    return f"{p.get('id_predio')} · {p.get('nombre_predio')} · Hogar: {p.get('id_hogar')} · Comunidad: {p.get('comunidad')}"
+    n = len(hogares_ids_por_predio(p.get('id_predio')))
+    sufijo = 'hogar ligado' if n == 1 else 'hogares ligados'
+    return f"{p.get('id_predio')} · {n} {sufijo}"
 
 
 def predios_por_filtros(modalidad=None, id_proyecto=None, id_componente=None):
     familias = st.session_state.get('familias_prmv', [])
-    ids_hogar = set()
+    ids_hogar_validos = set()
     for f in familias:
         if modalidad and f.get('modalidad_prmv') != modalidad:
             continue
@@ -1472,10 +1638,15 @@ def predios_por_filtros(modalidad=None, id_proyecto=None, id_componente=None):
             continue
         if id_componente and id_componente not in f.get('componentes_ids', []):
             continue
-        ids_hogar.add(f.get('id_hogar'))
-    if not ids_hogar:
+        ids_hogar_validos.add(f.get('id_hogar'))
+    if not ids_hogar_validos:
         return []
-    return [p for p in PREDIOS_M05_DEMO if p.get('id_hogar') in ids_hogar]
+    predios = []
+    for p in PREDIOS_M05_DEMO:
+        ids_predio = set(hogares_ids_por_predio(p.get('id_predio')))
+        if ids_predio.intersection(ids_hogar_validos):
+            predios.append(p)
+    return predios
 
 
 def sujeto_label(s):
@@ -1500,23 +1671,27 @@ def obtener_sujetos(tipo_sujeto, id_componente, id_proyecto, modalidad, predio=N
 
     Integración futura:
     - El predio debe leerse desde M05.predios.id_predio.
-    - El vínculo familia/predio se resuelve por predios.id_hogar -> M01.hogares.id_hogar.
-    - Personas se resuelven por M01.personas.id_hogar.
-    - Comunidad/OBC/interacciones se filtran por predios.id_lugar_poblado.
+    - El vínculo predio ↔ familia se resuelve con tabla puente M05.predios_hogares
+      o su equivalente técnico: id_predio + id_hogar.
+    - Un predio puede tener N hogares; por eso el filtro no usa predios.id_hogar
+      como relación única.
+    - Personas se resuelven por M01.personas.id_hogar para los hogares ligados al predio.
+    - Comunidad/OBC/interacciones se filtran por los lugares poblados de esos hogares.
     """
     sujetos=[]
-    id_hogar_predio = predio.get('id_hogar') if predio else None
-    id_lugar_predio = predio.get('id_lugar_poblado') if predio else None
+    ids_hogares_predio = set(hogares_ids_por_predio(predio.get('id_predio'))) if predio else set()
+    ids_lugares_predio = set(lugares_ids_por_predio(predio)) if predio else set()
     id_predio = predio.get('id_predio') if predio else ''
     nombre_predio = predio.get('nombre_predio') if predio else ''
+    n_hogares_predio = len(ids_hogares_predio)
 
     if tipo_sujeto == 'Familia':
         for f in st.session_state.familias_prmv:
             if modalidad and f.get('modalidad_prmv') != modalidad: continue
             if id_proyecto and id_proyecto not in f.get('proyectos_ids', []): continue
             if id_componente and id_componente not in f.get('componentes_ids', []): continue
-            if id_hogar_predio and f.get('id_hogar') != id_hogar_predio: continue
-            sujetos.append({'id_sujeto': f['id_hogar'], 'nombre_sujeto': f['nombre_referencia_hogar'], 'modalidad_prmv': f['modalidad_prmv'], 'proyectos_ids': f.get('proyectos_ids', []), 'componentes_ids': f.get('componentes_ids', []), 'zona': f.get('zona',''), 'comunidad': f.get('comunidad',''), 'tabla_origen': 'M01.hogares', 'pk_origen': 'id_hogar', 'id_hogar': f['id_hogar'], 'id_predio': id_predio, 'nombre_predio': nombre_predio})
+            if ids_hogares_predio and f.get('id_hogar') not in ids_hogares_predio: continue
+            sujetos.append({'id_sujeto': f['id_hogar'], 'nombre_sujeto': f['nombre_referencia_hogar'], 'modalidad_prmv': f['modalidad_prmv'], 'proyectos_ids': f.get('proyectos_ids', []), 'componentes_ids': f.get('componentes_ids', []), 'zona': f.get('zona',''), 'comunidad': f.get('comunidad',''), 'tabla_origen': 'M01.hogares', 'pk_origen': 'id_hogar', 'id_hogar': f['id_hogar'], 'id_predio': id_predio, 'nombre_predio': nombre_predio, 'hogares_ligados_predio': n_hogares_predio})
     elif tipo_sujeto == 'Persona':
         fams = {f['id_hogar']: f for f in st.session_state.familias_prmv}
         for p in PERSONAS_M01_DEMO:
@@ -1525,8 +1700,8 @@ def obtener_sujetos(tipo_sujeto, id_componente, id_proyecto, modalidad, predio=N
             if modalidad and fam.get('modalidad_prmv') != modalidad: continue
             if id_proyecto and id_proyecto not in fam.get('proyectos_ids', []): continue
             if id_componente and id_componente not in fam.get('componentes_ids', []): continue
-            if id_hogar_predio and p.get('id_hogar') != id_hogar_predio: continue
-            sujetos.append({'id_sujeto': p['id_persona'], 'nombre_sujeto': p['nombre'], 'modalidad_prmv': fam.get('modalidad_prmv'), 'proyectos_ids': fam.get('proyectos_ids', []), 'componentes_ids': fam.get('componentes_ids', []), 'zona': fam.get('zona',''), 'comunidad': fam.get('comunidad',''), 'tabla_origen': 'M01.personas', 'pk_origen': 'id_persona', 'id_hogar': p['id_hogar'], 'id_predio': id_predio, 'nombre_predio': nombre_predio})
+            if ids_hogares_predio and p.get('id_hogar') not in ids_hogares_predio: continue
+            sujetos.append({'id_sujeto': p['id_persona'], 'nombre_sujeto': p['nombre'], 'modalidad_prmv': fam.get('modalidad_prmv'), 'proyectos_ids': fam.get('proyectos_ids', []), 'componentes_ids': fam.get('componentes_ids', []), 'zona': fam.get('zona',''), 'comunidad': fam.get('comunidad',''), 'tabla_origen': 'M01.personas', 'pk_origen': 'id_persona', 'id_hogar': p['id_hogar'], 'id_predio': id_predio, 'nombre_predio': nombre_predio, 'hogares_ligados_predio': n_hogares_predio})
     elif tipo_sujeto == 'Organización comunitaria / OBC':
         for s in OBC_DEMO:
             if modalidad and s.get('modalidad_prmv') != modalidad: continue
@@ -1534,8 +1709,8 @@ def obtener_sujetos(tipo_sujeto, id_componente, id_proyecto, modalidad, predio=N
             if id_componente:
                 pids=[p['id_proyecto'] for p in st.session_state.proyectos_prmv if p.get('id_componente')==id_componente]
                 if not set(pids).intersection(s.get('proyectos_ids', [])): continue
-            if id_lugar_predio and s.get('id_lugar_poblado') != id_lugar_predio: continue
-            d=s.copy(); d['tabla_origen']='Módulo comunitario/OBC'; d['pk_origen']='id_organizacion/id_actor'; d['id_predio']=id_predio; d['nombre_predio']=nombre_predio; sujetos.append(d)
+            if ids_lugares_predio and s.get('id_lugar_poblado') not in ids_lugares_predio: continue
+            d=s.copy(); d['tabla_origen']='Módulo comunitario/OBC'; d['pk_origen']='id_organizacion/id_actor'; d['id_predio']=id_predio; d['nombre_predio']=nombre_predio; d['hogares_ligados_predio']=n_hogares_predio; sujetos.append(d)
     elif tipo_sujeto == 'Actividad / visita / interacción':
         for s in INTERACCIONES_DEMO:
             if modalidad and s.get('modalidad_prmv') != modalidad: continue
@@ -1543,8 +1718,8 @@ def obtener_sujetos(tipo_sujeto, id_componente, id_proyecto, modalidad, predio=N
             if id_componente:
                 pids=[p['id_proyecto'] for p in st.session_state.proyectos_prmv if p.get('id_componente')==id_componente]
                 if not set(pids).intersection(s.get('proyectos_ids', [])): continue
-            if id_lugar_predio and s.get('id_lugar_poblado') != id_lugar_predio: continue
-            d=s.copy(); d['tabla_origen']='M02.interacciones'; d['pk_origen']='id_interaccion'; d['id_predio']=id_predio; d['nombre_predio']=nombre_predio; sujetos.append(d)
+            if ids_lugares_predio and s.get('id_lugar_poblado') not in ids_lugares_predio: continue
+            d=s.copy(); d['tabla_origen']='M02.interacciones'; d['pk_origen']='id_interaccion'; d['id_predio']=id_predio; d['nombre_predio']=nombre_predio; d['hogares_ligados_predio']=n_hogares_predio; sujetos.append(d)
     elif tipo_sujeto == 'Comunidad / lugar poblado':
         for s in COMUNIDADES_DEMO:
             if modalidad and s.get('modalidad_prmv') != modalidad: continue
@@ -1552,10 +1727,9 @@ def obtener_sujetos(tipo_sujeto, id_componente, id_proyecto, modalidad, predio=N
             if id_componente:
                 pids=[p['id_proyecto'] for p in st.session_state.proyectos_prmv if p.get('id_componente')==id_componente]
                 if not set(pids).intersection(s.get('proyectos_ids', [])): continue
-            if id_lugar_predio and s.get('id_lugar_poblado') != id_lugar_predio: continue
-            d=s.copy(); d['tabla_origen']='M01.lugares_poblados'; d['pk_origen']='id_lugar_poblado'; d['id_predio']=id_predio; d['nombre_predio']=nombre_predio; sujetos.append(d)
+            if ids_lugares_predio and s.get('id_lugar_poblado') not in ids_lugares_predio: continue
+            d=s.copy(); d['tabla_origen']='M01.lugares_poblados'; d['pk_origen']='id_lugar_poblado'; d['id_predio']=id_predio; d['nombre_predio']=nombre_predio; d['hogares_ligados_predio']=n_hogares_predio; sujetos.append(d)
     return sujetos
-
 
 
 def notificar(tipo, msg):
@@ -1568,6 +1742,7 @@ def mostrar_info_sujeto(sujeto):
     st.markdown(f'<div class="subject-name">{escape(sujeto.get("id_sujeto", ""))} · {escape(sujeto.get("nombre_sujeto", ""))}</div>', unsafe_allow_html=True)
     chips = [
         f"Predio: {sujeto.get('id_predio','')}",
+        f"Hogares ligados al predio: {sujeto.get('hogares_ligados_predio','')}",
         f"Modalidad: {sujeto.get('modalidad_prmv','')}",
         f"Zona: {sujeto.get('zona','')}",
         f"Comunidad: {sujeto.get('comunidad','')}",
@@ -1595,7 +1770,7 @@ def mostrar_proyectos_componentes():
 def mostrar_clasificacion_familias():
     st.markdown('<div class="section-title">Clasificación de familias PRMV</div>', unsafe_allow_html=True)
     st.markdown('<div class="hint-box">Selecciona hogares simulados desde M01.hogares, asigna modalidad PRMV fija y marca uno o varios proyectos PRMV de la columna C del Excel. Esta capa controla qué preguntas aparecen después.</div>', unsafe_allow_html=True)
-    with st.expander('Ejemplos rápidos para testing', expanded=False):
+    with st.expander('Datos demo disponibles para testing', expanded=False):
         st.markdown('\n'.join([f"- {escape(e)}" for e in EJEMPLOS_TESTING]), unsafe_allow_html=True)
         st.dataframe(tabla_casos_testing(), use_container_width=True, hide_index=True)
     hogares_labels = [f"{h['id_hogar']} · {h['nombre_referencia_hogar']} · {h['comunidad']} · {h['zona']}" for h in HOGARES_M01_DEMO]
@@ -1652,6 +1827,9 @@ def selector_filtros_base(prefix, incluir_sujeto=True):
         predio_labels = [predio_label(p) for p in predios]
         predio_sel = col4.selectbox('Predio vinculado *', predio_labels, key=f'{prefix}_predio', help=TOOLTIPS['predio'])
         predio = predios[predio_labels.index(predio_sel)]
+        hogares_ligados = hogares_por_predio(predio)
+        if hogares_ligados:
+            st.caption('Hogares ligados al predio seleccionado: ' + ', '.join([h['id_hogar'] for h in hogares_ligados]))
     else:
         col4.info('No hay predios simulados vinculados a ese proyecto/modalidad.')
 
@@ -1816,7 +1994,7 @@ def mostrar_historico():
     if fmax: df = df[pd.to_datetime(df['fecha_medicion'], errors='coerce') <= pd.to_datetime(fmax)]
     m1,m2,m3,m4 = st.columns(4)
     m1.metric('Respuestas', len(df)); m2.metric('Sí', int((df['resultado_obtenido']=='Sí').sum()) if not df.empty else 0); m3.metric('No', int((df['resultado_obtenido']=='No').sum()) if not df.empty else 0); m4.metric('Sujetos únicos', int(df['id_sujeto'].nunique()) if not df.empty else 0)
-    cols=['fecha_medicion','nombre_proyecto','modalidad_prmv','capital','id_predio','nombre_predio','tipo_sujeto','id_sujeto','nombre_sujeto','id_pregunta','indicador_oficial','pregunta_visible','resultado_obtenido','valor_numerico','observacion','registrado_por','fecha_registro','fecha_actualizacion','actualizado_por']
+    cols=['fecha_medicion','nombre_proyecto','modalidad_prmv','capital','id_predio','hogares_ligados_predio','nombre_predio','tipo_sujeto','id_sujeto','nombre_sujeto','id_pregunta','indicador_oficial','pregunta_visible','resultado_obtenido','valor_numerico','observacion','registrado_por','fecha_registro','fecha_actualizacion','actualizado_por']
     cols=[c for c in cols if c in df.columns]
     st.dataframe(df[cols].sort_values(['fecha_medicion','id_sujeto'], ascending=[False, True]), use_container_width=True, hide_index=True)
     st.download_button('Descargar histórico CSV', data=df[cols].to_csv(index=False).encode('utf-8-sig'), file_name='historico_prmv26.csv', mime='text/csv', help='Descarga únicamente los registros visibles con los filtros aplicados.')
@@ -1833,7 +2011,7 @@ def mostrar_sidebar():
         st.session_state.usuario = st.text_input('Usuario', value=st.session_state.get('usuario', USUARIO_PROTOTIPO), help=TOOLTIPS['usuario'])
         seccion = st.radio('Sección de trabajo', ['Clasificación de familias', 'Captura', 'Edición', 'Histórico'], index=1, help=TOOLTIPS['seccion'])
         st.divider()
-        with st.expander('Ejemplos para testing', expanded=False):
+        with st.expander('Datos demo para testing', expanded=False):
             for e in EJEMPLOS_TESTING:
                 st.caption('• ' + e)
         if st.button('Guardar memoria local', help=TOOLTIPS['guardar_memoria']):

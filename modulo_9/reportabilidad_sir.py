@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import sqlite3
 from pathlib import Path
 from urllib.parse import urlparse
@@ -11,12 +12,13 @@ import streamlit.components.v1 as components
 DB_PATH = Path(__file__).with_name("reportabilidad.db")
 
 PANTALLAS = {
-    "modulo_1": "Módulo 1",
-    "modulo_8": "Módulo 8",
+    f"modulo_{numero}": f"Módulo {numero}"
+    for numero in range(1, 9)
 }
 
 
 def conectar() -> sqlite3.Connection:
+    """Abre la base de datos SQLite."""
     conexion = sqlite3.connect(DB_PATH)
     conexion.row_factory = sqlite3.Row
     return conexion
@@ -24,25 +26,71 @@ def conectar() -> sqlite3.Connection:
 
 def inicializar_bd() -> None:
     """
-    Crea una tabla que permite guardar un tablero distinto
-    para cada pantalla del sistema.
+    Crea la tabla que permite guardar varios dashboards por módulo.
+
+    También migra automáticamente los tableros guardados por las
+    versiones anteriores del archivo.
     """
     with conectar() as conexion:
         conexion.execute(
             """
-            CREATE TABLE IF NOT EXISTS dashboard_reportes (
-                pantalla TEXT PRIMARY KEY,
+            CREATE TABLE IF NOT EXISTS dashboards_reportes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                pantalla TEXT NOT NULL,
                 nombre TEXT NOT NULL,
                 url TEXT NOT NULL,
                 fecha_actualizacion TEXT NOT NULL
-                    DEFAULT CURRENT_TIMESTAMP
+                    DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (pantalla, nombre, url)
             )
             """
         )
 
-        # Conserva el tablero de la versión anterior y lo asigna
-        # automáticamente al Módulo 1.
-        tabla_anterior = conexion.execute(
+        conexion.execute(
+            """
+            CREATE INDEX IF NOT EXISTS
+                idx_dashboards_reportes_pantalla
+            ON dashboards_reportes (pantalla)
+            """
+        )
+
+        # Migración desde la versión que guardaba un tablero por módulo.
+        tabla_intermedia = conexion.execute(
+            """
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'table'
+              AND name = 'dashboard_reportes'
+            """
+        ).fetchone()
+
+        if tabla_intermedia:
+            registros = conexion.execute(
+                """
+                SELECT pantalla, nombre, url
+                FROM dashboard_reportes
+                """
+            ).fetchall()
+
+            for registro in registros:
+                conexion.execute(
+                    """
+                    INSERT OR IGNORE INTO dashboards_reportes (
+                        pantalla,
+                        nombre,
+                        url
+                    )
+                    VALUES (?, ?, ?)
+                    """,
+                    (
+                        registro["pantalla"],
+                        registro["nombre"],
+                        registro["url"],
+                    ),
+                )
+
+        # Migración desde la primera versión, que tenía un único tablero.
+        tabla_inicial = conexion.execute(
             """
             SELECT name
             FROM sqlite_master
@@ -51,8 +99,8 @@ def inicializar_bd() -> None:
             """
         ).fetchone()
 
-        if tabla_anterior:
-            registro_anterior = conexion.execute(
+        if tabla_inicial:
+            registro = conexion.execute(
                 """
                 SELECT nombre, url
                 FROM dashboard
@@ -60,10 +108,10 @@ def inicializar_bd() -> None:
                 """
             ).fetchone()
 
-            if registro_anterior:
+            if registro:
                 conexion.execute(
                     """
-                    INSERT OR IGNORE INTO dashboard_reportes (
+                    INSERT OR IGNORE INTO dashboards_reportes (
                         pantalla,
                         nombre,
                         url
@@ -72,32 +120,44 @@ def inicializar_bd() -> None:
                     """,
                     (
                         "modulo_1",
-                        registro_anterior["nombre"],
-                        registro_anterior["url"],
+                        registro["nombre"],
+                        registro["url"],
                     ),
                 )
 
 
-def obtener_dashboard(pantalla: str) -> sqlite3.Row | None:
+def obtener_dashboards(
+    pantalla: str | None = None,
+) -> list[sqlite3.Row]:
+    """Obtiene todos los dashboards o los de un módulo específico."""
     with conectar() as conexion:
+        if pantalla is None:
+            return conexion.execute(
+                """
+                SELECT
+                    id,
+                    pantalla,
+                    nombre,
+                    url,
+                    fecha_actualizacion
+                FROM dashboards_reportes
+                ORDER BY pantalla, id
+                """
+            ).fetchall()
+
         return conexion.execute(
             """
-            SELECT pantalla, nombre, url, fecha_actualizacion
-            FROM dashboard_reportes
+            SELECT
+                id,
+                pantalla,
+                nombre,
+                url,
+                fecha_actualizacion
+            FROM dashboards_reportes
             WHERE pantalla = ?
+            ORDER BY id
             """,
             (pantalla,),
-        ).fetchone()
-
-
-def obtener_dashboards() -> list[sqlite3.Row]:
-    with conectar() as conexion:
-        return conexion.execute(
-            """
-            SELECT pantalla, nombre, url, fecha_actualizacion
-            FROM dashboard_reportes
-            ORDER BY pantalla
-            """
         ).fetchall()
 
 
@@ -105,38 +165,46 @@ def guardar_dashboard(
     pantalla: str,
     nombre: str,
     url: str,
-) -> None:
-    with conectar() as conexion:
-        conexion.execute(
-            """
-            INSERT INTO dashboard_reportes (
-                pantalla,
-                nombre,
-                url,
-                fecha_actualizacion
+) -> bool:
+    """
+    Guarda un nuevo dashboard.
+
+    Devuelve False cuando el mismo dashboard ya fue registrado
+    exactamente con el mismo módulo, nombre y URL.
+    """
+    try:
+        with conectar() as conexion:
+            conexion.execute(
+                """
+                INSERT INTO dashboards_reportes (
+                    pantalla,
+                    nombre,
+                    url,
+                    fecha_actualizacion
+                )
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                """,
+                (pantalla, nombre, url),
             )
-            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(pantalla) DO UPDATE SET
-                nombre = excluded.nombre,
-                url = excluded.url,
-                fecha_actualizacion = CURRENT_TIMESTAMP
-            """,
-            (pantalla, nombre, url),
-        )
+        return True
+    except sqlite3.IntegrityError:
+        return False
 
 
-def eliminar_dashboard(pantalla: str) -> None:
+def eliminar_dashboard(dashboard_id: int) -> None:
+    """Elimina únicamente el dashboard seleccionado."""
     with conectar() as conexion:
         conexion.execute(
             """
-            DELETE FROM dashboard_reportes
-            WHERE pantalla = ?
+            DELETE FROM dashboards_reportes
+            WHERE id = ?
             """,
-            (pantalla,),
+            (dashboard_id,),
         )
 
 
 def url_power_bi_valida(url: str) -> bool:
+    """Valida enlaces HTTPS de inserción de Power BI."""
     try:
         parsed = urlparse(url.strip())
 
@@ -150,6 +218,10 @@ def url_power_bi_valida(url: str) -> bool:
 
 
 def aplicar_estilos() -> None:
+    """
+    Usa las variables del tema de Streamlit para funcionar
+    correctamente en modo claro y modo oscuro.
+    """
     st.markdown(
         """
         <style>
@@ -161,19 +233,12 @@ def aplicar_estilos() -> None:
 
             .sir-titulo {
                 background: #0b2f5b;
-                color: white;
+                color: #ffffff;
                 padding: 18px 24px;
                 border-radius: 10px;
                 margin-bottom: 18px;
                 font-size: 20px;
                 font-weight: 700;
-            }
-
-            .sir-subtitulo {
-                color: #24364b;
-                font-size: 24px;
-                font-weight: 700;
-                margin: 4px 0 18px;
             }
 
             .sir-visor-vacio {
@@ -182,19 +247,34 @@ def aplicar_estilos() -> None:
                 align-items: center;
                 justify-content: center;
                 text-align: center;
-                color: #6d7a8a;
-                background: white;
-                border: 1px solid #dbe3ec;
+                color: var(--text-color);
+                background: var(--secondary-background-color);
+                border: 1px solid rgba(128, 128, 128, 0.35);
                 border-radius: 10px;
                 padding: 30px;
             }
 
             .sir-estado {
                 padding: 14px 16px;
-                border: 1px solid #dbe3ec;
+                color: var(--text-color);
+                background: var(--secondary-background-color);
+                border: 1px solid rgba(128, 128, 128, 0.35);
                 border-radius: 9px;
-                background: #ffffff;
                 margin-bottom: 10px;
+            }
+
+            .sir-estado strong {
+                color: var(--text-color);
+            }
+
+            .sir-etiqueta {
+                color: var(--text-color);
+                opacity: 0.78;
+                font-size: 0.9rem;
+            }
+
+            [data-testid="stSidebar"] {
+                border-right: 1px solid rgba(128, 128, 128, 0.25);
             }
         </style>
         """,
@@ -203,50 +283,35 @@ def aplicar_estilos() -> None:
 
 
 def mostrar_carga_reportes() -> None:
+    """Pantalla para agregar y eliminar dashboards."""
     st.markdown(
         '<div class="sir-titulo">SIR · Carga de reportes</div>',
         unsafe_allow_html=True,
     )
 
     pantalla = st.selectbox(
-        "Pantalla donde se presentará el tablero",
+        "Pantalla donde se presentará el dashboard",
         options=list(PANTALLAS.keys()),
         format_func=lambda valor: PANTALLAS[valor],
     )
 
-    dashboard_actual = obtener_dashboard(pantalla)
-
-    nombre_actual = (
-        dashboard_actual["nombre"]
-        if dashboard_actual
-        else ""
-    )
-    url_actual = (
-        dashboard_actual["url"]
-        if dashboard_actual
-        else ""
-    )
-
     with st.form(
         "formulario_dashboard",
-        clear_on_submit=False,
+        clear_on_submit=True,
     ):
         nombre = st.text_input(
-            "Nombre del tablero",
-            value=nombre_actual,
+            "Nombre del dashboard",
             max_chars=120,
+            placeholder="Ejemplo: Seguimiento general de hogares",
         )
 
         url = st.text_input(
             "Enlace de inserción de Power BI",
-            value=url_actual,
-            placeholder=(
-                "https://app.powerbi.com/reportEmbed?..."
-            ),
+            placeholder="https://app.powerbi.com/reportEmbed?...",
         )
 
         guardar = st.form_submit_button(
-            "Cargar tablero",
+            "Cargar dashboard",
             type="primary",
             use_container_width=True,
         )
@@ -258,72 +323,70 @@ def mostrar_carga_reportes() -> None:
         if pantalla not in PANTALLAS:
             st.error("Seleccione una pantalla válida.")
         elif not nombre_limpio:
-            st.warning(
-                "Ingrese un nombre para el tablero."
-            )
+            st.warning("Ingrese un nombre para el dashboard.")
         elif not url_power_bi_valida(url_limpia):
             st.warning(
-                "Use un enlace HTTPS válido de "
-                "inserción de app.powerbi.com."
+                "Use un enlace HTTPS válido de inserción "
+                "de app.powerbi.com."
             )
         else:
-            guardar_dashboard(
+            creado = guardar_dashboard(
                 pantalla=pantalla,
                 nombre=nombre_limpio,
                 url=url_limpia,
             )
-            st.success(
-                "Tablero cargado correctamente en "
-                f"{PANTALLAS[pantalla]}."
-            )
-            st.rerun()
+
+            if creado:
+                st.success(
+                    "Dashboard cargado correctamente en "
+                    f"{PANTALLAS[pantalla]}."
+                )
+                st.rerun()
+            else:
+                st.warning(
+                    "Ese mismo dashboard ya está registrado "
+                    "en la pantalla seleccionada."
+                )
 
     st.divider()
-    st.subheader("Tableros cargados")
+    st.subheader("Dashboards cargados")
 
-    dashboards = {
-        registro["pantalla"]: registro
-        for registro in obtener_dashboards()
-    }
+    registros = obtener_dashboards()
 
-    for codigo_pantalla, nombre_pantalla in PANTALLAS.items():
-        registro = dashboards.get(codigo_pantalla)
+    if not registros:
+        st.info("Todavía no se han cargado dashboards.")
+        return
+
+    for registro in registros:
+        nombre_modulo = PANTALLAS.get(
+            registro["pantalla"],
+            registro["pantalla"],
+        )
+        nombre_seguro = html.escape(registro["nombre"])
 
         columna_estado, columna_accion = st.columns([5, 1])
 
         with columna_estado:
-            if registro:
-                st.markdown(
-                    f"""
-                    <div class="sir-estado">
-                        <strong>{nombre_pantalla}</strong><br>
-                        {registro["nombre"]}
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.markdown(
-                    f"""
-                    <div class="sir-estado">
-                        <strong>{nombre_pantalla}</strong><br>
-                        Sin tablero asignado
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+            st.markdown(
+                f"""
+                <div class="sir-estado">
+                    <strong>{nombre_seguro}</strong><br>
+                    <span class="sir-etiqueta">
+                        {html.escape(nombre_modulo)}
+                    </span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
         with columna_accion:
-            if registro and st.button(
+            if st.button(
                 "Quitar",
-                key=f"quitar_{codigo_pantalla}",
+                key=f"quitar_{registro['id']}",
                 use_container_width=True,
             ):
-                eliminar_dashboard(codigo_pantalla)
-                st.success(
-                    "Tablero retirado de "
-                    f"{nombre_pantalla}."
-                )
+                eliminar_dashboard(registro["id"])
+                st.success("Dashboard retirado correctamente.")
                 st.rerun()
 
 
@@ -331,44 +394,59 @@ def mostrar_pantalla_modulo(
     codigo_pantalla: str,
     nombre_pantalla: str,
 ) -> None:
+    """
+    Presenta todos los dashboards asignados al módulo.
+
+    Cuando existen varios, el usuario selecciona cuál desea visualizar.
+    """
     st.markdown(
         f'<div class="sir-titulo">SIR · {nombre_pantalla}</div>',
         unsafe_allow_html=True,
     )
 
-    dashboard = obtener_dashboard(codigo_pantalla)
+    dashboards = obtener_dashboards(codigo_pantalla)
 
-    if dashboard:
-        st.markdown(
-            f'<div class="sir-subtitulo">'
-            f'{dashboard["nombre"]}'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-
-        components.iframe(
-            dashboard["url"],
-            height=760,
-            scrolling=False,
-        )
-    else:
+    if not dashboards:
         st.markdown(
             f"""
             <div class="sir-visor-vacio">
                 <div>
                     <strong>
-                        No hay un tablero cargado para
-                        {nombre_pantalla}.
+                        No hay dashboards cargados para
+                        {html.escape(nombre_pantalla)}.
                     </strong>
                     <br><br>
                     Ingrese a <strong>Carga de reportes</strong>,
                     seleccione esta pantalla y registre
-                    el enlace de Power BI.
+                    uno o varios enlaces de Power BI.
                 </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
+        return
+
+    opciones = {
+        dashboard["id"]: dashboard
+        for dashboard in dashboards
+    }
+
+    dashboard_id = st.selectbox(
+        "Dashboard",
+        options=list(opciones.keys()),
+        format_func=lambda valor: opciones[valor]["nombre"],
+        key=f"selector_{codigo_pantalla}",
+    )
+
+    dashboard_seleccionado = opciones[dashboard_id]
+
+    st.subheader(dashboard_seleccionado["nombre"])
+
+    components.iframe(
+        dashboard_seleccionado["url"],
+        height=760,
+        scrolling=False,
+    )
 
 
 def ejecutar() -> None:
@@ -380,27 +458,27 @@ def ejecutar() -> None:
     inicializar_bd()
     aplicar_estilos()
 
+    opciones_menu = [
+        "Carga de reportes",
+        *PANTALLAS.values(),
+    ]
+
     opcion = st.sidebar.radio(
         "Reportabilidad",
-        options=[
-            "Carga de reportes",
-            "Módulo 1",
-            "Módulo 8",
-        ],
+        options=opciones_menu,
     )
 
     if opcion == "Carga de reportes":
         mostrar_carga_reportes()
-    elif opcion == "Módulo 1":
-        mostrar_pantalla_modulo(
-            codigo_pantalla="modulo_1",
-            nombre_pantalla="Módulo 1",
-        )
-    elif opcion == "Módulo 8":
-        mostrar_pantalla_modulo(
-            codigo_pantalla="modulo_8",
-            nombre_pantalla="Módulo 8",
-        )
+        return
+
+    for codigo_pantalla, nombre_pantalla in PANTALLAS.items():
+        if opcion == nombre_pantalla:
+            mostrar_pantalla_modulo(
+                codigo_pantalla=codigo_pantalla,
+                nombre_pantalla=nombre_pantalla,
+            )
+            return
 
 
 if __name__ == "__main__":

@@ -145,7 +145,7 @@ def pagina(mensaje: str = "") -> str:
                 </div>
                 <div>
                     <label for="url">Enlace de inserción de Power BI</label>
-                    <input id="url" name="url" type="url" placeholder="https://app.powerbi.com/links/pgNBhMw2E3?ctid=79f01b8c-23fe-478a-ae6c-2e2a0d2af794&pbi_source=linkShare" value="{url}" required>
+                    <input id="url" name="url" type="url" placeholder="https://app.powerbi.com/reportEmbed?..." value="{url}" required>
                 </div>
                 <button type="submit">Cargar tablero</button>
             </form>
